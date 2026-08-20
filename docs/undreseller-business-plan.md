@@ -53,9 +53,23 @@
    - Автоматизация и фоновые задачи изолируются прямо в код Next.js 15 / Node.js через **Trigger.dev v3 (100% Apache 2.0 Free OS)** или **Inngest** (`app/api/inngest/route.ts`).
    - Вся логика типизирована через **TypeScript + Zod**, верифицируется через `vitest` и версионируется в едином Git-репозитории клиента без JSON-простынь.
 
-2. **Sprint A (B2B Operations Plumbing): Dedicated n8n SUL Instance**
+2. **Sprint A (B2B Operations Plumbing): Dedicated n8n SUL Instance & Open-Source CRM**
    - Разворачивается **выделенный изолированный инстанс n8n** на сервере заказчика (Hetzner / VPS), что на 100% соответствует SUL-лицензии n8n (бесплатное использование в рамках индивидуальной консалтинговой настройки).
    - Генерация нод оптимизируется через **MCP-сервер `czlonkowski/n8n-mcp`** и Hybrid TypeScript + Zod Code Nodes (`NODE_FUNCTION_ALLOW_EXTERNAL=zod`).
+
+---
+
+## 🏛️ 1.2. Salesforce Certification Authority Hook & Open-Source CRM Architecture
+
+Наличие 3х международных сертификатов **Salesforce Certified Administrator I & II + Platform Developer** используется не для дорогого корпоративного внедрения (которое длится 6 месяцев и стоит $30k+/год за подписки на юзеров), а как **Тяжёлая Артиллерия Доверия (Authority Hook)** в холодных аутричах:
+
+* **Снайперский маркетинговый крючок (DM & Landing):**  
+  *"I'm a 3x Certified Salesforce Developer. I spent years seeing SMBs get ripped off for $30k/year on Salesforce seat licenses they only use 5% of. I deploy self-hosted, AI-native CRM engines (Twenty CRM / EspoCRM + Trigger.dev/n8n pipelines) on your private cloud with $0 monthly seat licenses. Flat $3.5k setup, 5-day delivery, full data ownership."*
+
+* **Двухуровневый фундамент CRM (NACE 62.01 Compliant):**
+  - **Основной стековый выбор — Twenty CRM (`twentyhq/twenty`):** TypeScript, NestJS, PostgreSQL, нативный MCP-сервер под Claude 3.7 / Cursor. Схемы создаются через `twenty-sdk` кодом и версионируются в Git.
+  - **Запасной клапан для сложной иерархии — EspoCRM:** Лёгкий PHP 8 монолит (жрёт < 1.5 GB RAM), идеальная 10-летняя ролевая модель RBAC / ACL под компании с 20+ менеджерами.
+  - **Защита от Постановления №415/GAAR (Грузия 1%):** Слова "CRM Consulting" и "Selection" строго запрещены в инвойсах. Формулировка: *"Computer programming activities: Deployment and integration of open-source CRM architecture and automated workflows (NACE 62.01)"*.
 
 ---
 
