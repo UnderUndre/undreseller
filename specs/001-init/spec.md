@@ -31,7 +31,7 @@ To validate sales at high velocity (via 100 DMs -> 15 Looms -> 1 Close / 2 wks),
 │                                                                             │
 │  [ Dogfooding SaaS Stand ] (demo.undreseller.com)                           │
 │  • Framework: Next.js 15 (App Router, SSR Cookies, Tailwind)                │
-│  • Boilerplate: nextjs/saas-starter or boxyhq/saas-starter-kit             │
+│  • Boilerplate: nextjs/saas-starter or undreseller/saas-starter-kit          │
 │  • Auth & DB: Supabase (Auth + RLS Policies + PostgreSQL)                   │
 │  • Billing: Stripe Test / Lemon Squeezy MoR                                 │
 │                                                                             │
@@ -109,6 +109,8 @@ So that setting `NEXT_PUBLIC_PROJECT_NAME=undreseller` displays the Productized 
 - **FR-006**: Docker deployment for client environments MUST run selectively via `docker compose --profile client-lite up -d` (running ONLY n8n + Supabase DB + UndeRoute proxy forwarding to Cloud API; heavy Ollama/Qdrant containers remain dormant), ensuring RAM usage < 1.5 GB.
 - **FR-007**: `undrllanding` MUST render the Undreseller landing page when `NEXT_PUBLIC_PROJECT_NAME=undreseller` is set.
 - **FR-008**: Contract and delivery artifacts MUST generate NACE 62.01 code packages (OpenAPI 3.0 specification, Supabase DDL SQL, Docker Compose Mock) in Git for 1% Georgian small business tax compliance (RS.ge / GAAR).
+- **FR-009**: Client shop templates (`undreseller`) and dogfooding auth layers MUST support federated Single Sign-On via **Undrlla IdP (`id.undrlla.network`)**, validating signed **RS256 JWT** tokens via public JWKS endpoint (`/.well-known/jwks.json`) and mapping them to Medusa 2.0 Auth (`@medusajs/auth`) or Supabase customer profiles per `undrlla/specs/005-sso-jwt-contract.md`.
+- **FR-010**: Sprint B (14-Day SaaS MVP Factory) MUST use Code-First workflow engines (Trigger.dev v3 / Inngest) embedded directly inside the Next.js 15 repository, eliminating n8n $50k/yr SUL Embed License risks and providing 100% Apache 2.0 / MIT clean license compliance.
 
 ---
 

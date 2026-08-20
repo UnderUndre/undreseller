@@ -1,271 +1,110 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/boxyhq/jackson/assets/66887028/871d9c0f-d351-49bb-9458-2542830d7910">
-  <source media="(prefers-color-scheme: light)" srcset="https://github.com/boxyhq/jackson/assets/66887028/4073c181-0653-4d5b-b74f-e7e84fe79da8">
-  <img alt="BoxyHQ Banner" src="https://github.com/boxyhq/jackson/assets/66887028/b40520b7-dbce-400b-88d3-400d1c215ea1">
-</picture>
+# 🌐 Undreseller — Productized Engineering & Turnkey B2B Systems
 
-# ⭐ Enterprise SaaS Starter Kit
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-15.1-black)](https://nextjs.org)
+[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-emerald)](https://supabase.com)
+[![n8n](https://img.shields.io/badge/n8n-Automation-red)](https://n8n.io)
+[![Escrow](https://img.shields.io/badge/Upwork-Direct_Contracts_Escrow-00a82d)](https://www.upwork.com/direct-contracts)
 
-<p>
-    <a href="https://github.com/boxyhq/saas-starter-kit/stargazers"><img src="https://img.shields.io/github/stars/boxyhq/saas-starter-kit" alt="Github stargazers"></a>
-    <a href="https://github.com/boxyhq/saas-starter-kit/issues"><img src="https://img.shields.io/github/issues/boxyhq/saas-starter-kit" alt="Github issues"></a>
-    <a href="https://github.com/boxyhq/saas-starter-kit/blob/main/LICENSE"><img src="https://img.shields.io/github/license/boxyhq/saas-starter-kit" alt="license"></a>
-    <a href="https://twitter.com/BoxyHQ"><img src="https://img.shields.io/twitter/follow/BoxyHQ?style=social" alt="Twitter"></a>
-    <a href="https://www.linkedin.com/company/boxyhq"><img src="https://img.shields.io/badge/LinkedIn-blue" alt="LinkedIn"></a>
-    <a href="https://discord.gg/uyb7pYt4Pa"><img src="https://img.shields.io/discord/877585485235630130" alt="Discord"></a>
-</p>
+**Undreseller** is an international **Productized Engineering Bureau** supplying production-grade B2B systems and SaaS MVPs within fixed 3–14 day timeboxes at fixed transparent pricing.
 
-The Open Source Next.js SaaS boilerplate for Enterprise SaaS app development.
+---
 
-Please star ⭐ the repo if you want us to continue developing and improving the SaaS Starter Kit! 😀
+## ⚡ Core Offers (2 Primary SKUs)
 
-## 📖 Additional Resources
-
-Video - [BoxyHQ's SaaS Starter Kit: Your Ultimate Enterprise-Compliant Boilerplate](https://www.youtube.com/watch?v=oF8QIwQIhyo) <br>
-Blog - [Enterprise-ready Saas Starter Kit](https://boxyhq.com/blog/enterprise-ready-saas-starter-kit)
-
-Next.js-based SaaS starter kit saves you months of development by starting you off with all the features that are the same in every product, so you can focus on what makes your app unique.
-
-## 🛠️ Built With
-
-- [Next.js](https://nextjs.org)
-  This is a React framework that provides features such as server-side rendering and static site generation. It's used for building the user interface of your application. The main configuration for Next.js can be found in `next.config.js`.
-- [Tailwind CSS](https://tailwindcss.com)
-  This is a utility-first CSS framework for rapidly building custom user interfaces. It's used for styling the application. The configuration for Tailwind CSS can be found in `postcss.config.js`.
-- [Postgres](https://www.postgresql.org)
-  This is a powerful, open source object-relational database system. It's used for storing application data. The connection to Postgres is likely managed through Prisma.
-- [React](https://reactjs.org)
-  This is a JavaScript library for building user interfaces. It's used for creating the interactive elements of your application. The React components are located in the components directory.
-- [Prisma](https://www.prisma.io)
-  This is an open-source database toolkit. It's used for object-relational mapping, which simplifies the process of writing database queries. Prisma configuration and schema can be found in the prisma directory.
-- [TypeScript](https://www.typescriptlang.org)
-  This is a typed superset of JavaScript that compiles to plain JavaScript. It's used to make the code more robust and maintainable. TypeScript definitions and configurations can be found in files like `next-env.d.ts` and `i18next.d.ts`.
-- [SAML Jackson](https://github.com/boxyhq/jackson) (Provides SAML SSO, Directory Sync)
-  This is a service for handling SAML SSO (Single Sign-On). It's used to allow users to sign in with a single ID and password to any of several related systems i.e (using a single set of credentials). The implementation of SAML Jackson is primarily located within the files associated with authentication.
-- [Svix](https://www.svix.com/) (Provides Webhook Orchestration)
-  This is a service for handling webhooks. It's used to emit events on user/team CRUD operations, which can then be caught and handled by other parts of the application or external services. The integration of Svix is distributed throughout the codebase, primarily in areas where Create, Read, Update, and Delete (CRUD) operations are executed.
-- [Retraced](https://github.com/retracedhq/retraced) (Provides Audit Logs Service)
-  This is a service for audit logging and data visibility. It helps track user activities within the application i.e (who did what and when in the application). The usage of Retraced would be dispersed throughout the codebase, likely in the files where important actions are performed.
-- [Stripe](https://stripe.com) (Provides Payments)
-  This is a service for handling payments. It's used to process payments for the application. The integration of Stripe is likely found in the files associated with billing and subscriptions.
-- [Playwright](https://playwright.dev) (Provides E2E tests)
-  This is a Node.js library for automating browsers. It's used to run end-to-end tests on the application. The Playwright configuration and tests can be found in the tests directory.
-- [Docker](https://www.docker.com) (Provides Docker Compose)
-  This is a platform for developing, shipping, and running applications. It's used to containerize the application and its dependencies. The Docker configuration can be found in the Dockerfile and docker-compose.yml.
-- [NextAuth.js](https://next-auth.js.org) (Provides Authentication)
-  This is a complete open-source authentication solution for Next.js applications. It's used to handle user authentication and authorization. The NextAuth.js configuration and providers can be found in the `pages/api/auth/[...nextauth].ts` file.
-
-## 🚀 Deployment
-
-<a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fboxyhq%2Fsaas-starter-kit&env=NEXTAUTH_SECRET,SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASSWORD,SMTP_FROM,DATABASE_URL,APP_URL">
-<img width="90" alt="Deploy with Vercel" src="https://vercel.com/button" />
-</a>
-
-<a href="https://heroku.com/deploy" alt="Deploy to Heroku">
-<img alt="Deploy to Heroku" src="https://www.herokucdn.com/deploy/button.svg" />
-</a>
-
-<a href="https://cloud.digitalocean.com/apps/new?repo=https://github.com/boxyhq/saas-starter-kit/tree/main" alt="Deploy to DO">
-<img width="200" alt="Deploy to DO" src="https://www.deploytodo.com/do-btn-blue-ghost.svg" />
-</a>
-
-## ✨ Getting Started
-
-Please follow these simple steps to get a local copy up and running.
-
-### Prerequisites
-
-- Node.js (Version: >=18.x)
-- PostgreSQL
-- NPM
-- Docker compose
-
-### Development
-
-#### 1. Setup
-
-- [Fork](https://github.com/boxyhq/saas-starter-kit/fork) the repository
-- Clone the repository by using this command:
-
-```bash
-git clone https://github.com/<your_github_username>/saas-starter-kit.git
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                    UNDRESELLER PRODUCTIZED CONVEYOR v16.0                     │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ 1. SPRINT A: B2B Workflow Plumbing ($3,500 setup + $500/mo)                  │
+│    • Delivery: 3 to 5 Business Days                                          │
+│    • Stack: n8n Docker + TypeScript Zod Code Nodes + Claude 3.7 + Supabase  │
+│                                                                              │
+│ 2. SPRINT B (HERO): 14-Day SaaS MVP Factory ($4,900 flat fee)                │
+│    • Delivery: 14 Calendar Days Guaranteed                                  │
+│    • Stack: Next.js 15 + Supabase Auth & RLS + Stripe / Lemon Squeezy        │
+│                                                                              │
+│ PAYMENT & CAPITAL RAILS:                                                     │
+│    • 100% Capital Protection: Upwork Direct Contracts Escrow (0% fee)        │
+│    • Live Onboarding Protocol: Day 14 60-min handover & $1 live transaction │
+│    • Legal Handover: NACE 62.01 Standard Code Deliverable (Git + DDL SQL)    │
+│    • Warranty: 7-Day Free P1/P2 Bugfix SLA Knife                             │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### 2. Go to the project folder
+---
+
+## 🛠️ Technology Stack
+
+- **Frontend & Auth**: Next.js 15 (App Router, Server Actions), Tailwind CSS, Supabase Auth (SSR Cookies) & Telegram Auth (`@telegram-auth/server`)
+- **Backend & Database**: Supabase PostgreSQL + Row Level Security (RLS) + Storage
+- **Automation Pipeline**: n8n (`NODE_FUNCTION_ALLOW_EXTERNAL=zod`) + TypeScript Zod Schema Validation + Dead-Letter Queue (DLQ)
+- **AI Routing & Orchestration**: Claude 3.7 API via `UndeRoute` (`http://host.docker.internal:20129/v1/chat/completions`)
+- **Billing & Escrow**: Stripe / Lemon Squeezy + Upwork Direct Contracts Escrow
+- **Testing & E2E**: Playwright end-to-end integration tests
+
+---
+
+## 🚀 Quickstart & Development
+
+### 1. Prerequisites
+
+- **Node.js**: `>=18.x`
+- **PostgreSQL / Supabase**
+- **Docker Compose**: `v2.20+`
+
+### 2. Installation
 
 ```bash
-cd saas-starter-kit
-```
+# Clone the repository
+git clone https://github.com/undreseller/undreseller.git
+cd undreseller
 
-#### 3. Install dependencies
-
-```bash
+# Install dependencies
 npm install
-```
 
-#### 4. Set up your .env file
-
-Duplicate `.env.example` to `.env`.
-
-```bash
+# Copy environment template
 cp .env.example .env
 ```
 
-#### 5. Create a database (Optional)
-
-To make the process of installing dependencies easier, we offer a `docker-compose.yml` with a Postgres container.
+### 3. Running the Dogfooding SaaS Stand
 
 ```bash
-docker-compose up -d
-```
+# Spin up lightweight client profile (n8n + Supabase + UndeRoute proxy)
+docker compose --profile client-lite up -d
 
-#### 6. Set up database schema
-
-```bash
+# Apply database migrations
 npx prisma db push
-```
 
-#### 7. Start the server
-
-In a development environment:
-
-```bash
+# Start Next.js development server
 npm run dev
 ```
 
-#### 8. Start the Prisma Studio
+The Dogfooding SaaS Stand will be live at `http://localhost:3000`.
 
-Prisma Studio is a visual editor for the data in your database.
+---
+
+## 🔒 OpSec & Financial Safety Protocol
+
+1. **Escrow Deposit (Day 1)**: Client deposits 50% or 100% of sprint budget into Upwork Direct Contracts Escrow (0% fee with Freelancer Plus). Funds remain frozen on neutral ground.
+2. **Conveyor Build (Days 1–13)**: Code built on Next.js 15 + Supabase + n8n modules with daily Git commits to client repository.
+3. **Live Onboarding Protocol (Day 14)**: 60-minute live session where client inputs production API keys and executes a live $1 billing test run before releasing escrow.
+4. **NACE 62.01 Compliance**: Handover includes complete Git source code, OpenAPI 3.0 specification, Supabase DDL SQL migrations, and Docker Compose environment.
+
+---
+
+## 🧪 Testing
 
 ```bash
-npx prisma studio
-```
-
-#### 9. Testing
-
-We are using [Playwright](https://playwright.dev/) to execute E2E tests. Add all tests inside the `/tests` folder.
-
-Update `playwright.config.ts` to change the playwright configuration.
-
-##### Install Playwright dependencies
-
-```bash
+# Update Playwright binaries
 npm run playwright:update
-```
 
-##### Run E2E tests
-
-```bash
+# Execute E2E integration tests
 npm run test:e2e
 ```
 
-_Note: HTML test report is generated inside the `report` folder. Currently supported browsers for test execution `chromium` and `firefox`_
-
-## ⚙️ Feature configuration
-
-To get started you only need to configure the database by following the steps above. For more advanced features, you can configure the following:
-
-### Authentication with NextAuth.js
-
-The default login options are email and GitHub. Configure below:
-
-1. Generate a secret key for NextAuth.js by running `openssl rand -base64 32` and adding it to the `.env` file as `NEXTAUTH_SECRET`.
-2. For email login, configure the `SMTP_*` environment variables in the `.env` file to send magic link login emails. You can use services like [AWS SES](https://aws.amazon.com/ses/), [Sendgrid](https://sendgrid.com/) or [Resend](https://resend.com/).
-3. For social login with GitHub and Google, you need to create OAuth apps in the respective developer consoles and add the client ID and secret to the `.env` file. The default is email login and For GitHub, follow the instructions [here](https://docs.github.com/en/developers/apps/building-oauth-apps/creating-an-oauth-app). For Google, follow the instructions [here](https://support.google.com/cloud/answer/6158849?hl=en).
-
-### Svix Webhooks
-
-1. Create an account on [Svix](https://www.svix.com/)
-2. The authenticaton token and add `SVIX_API_KEY` to the `.env` file.
-
-### Stripe Payments
-
-1. Create an account on [Stripe](https://stripe.com/)
-2. Add the [Stripe API secret key](https://dashboard.stripe.com/apikeys) to the `.env` file as `STRIPE_SECRET_KEY`.
-3. Create a webhook in the [Stripe dashboard](https://dashboard.stripe.com/webhooks). The URL is your app hostname plus `/api/webhooks/stripe`. If you want to set this up locally you will need to use the [Stripe CLI forwarder](https://docs.stripe.com/webhooks#test-webhook).
-4. Once created, add the signing secret to the `.env` file as `STRIPE_WEBHOOK_SECRET`.
-
-### Recaptcha
-
-1. Create an account on [Google reCAPTCHA](https://www.google.com/recaptcha/admin/enterprise). This will create a Google Cloud account if you don't have one.
-2. From the Key Details in the [Google Cloud Console](https://console.cloud.google.com/security/recaptcha), add the reCAPTCHA ID to the `.env` file as `RECAPTCHA_SITE_KEY`.
-3. Click Key Details > Integration then click Use legacy key to get the secret key and add it to the `.env` file as `RECAPTCHA_SECRET_KEY`.
-
-### Sentry
-
-1. Create an account on [Sentry](https://sentry.io/), skip the onboarding and create a new Next.js project.
-2. At the bottom of the page, get the DSN and add it to the `.env` file as `SENTRY_DSN`. The other variables are optional.
-
-#### Fully customizable boilerplate out of the box, see images below 👇👇👇
-
-![saas-starter-kit-poster](/public/saas-starter-kit-poster.png)
-
-## 🥇 Features
-
-- Create account
-- Sign in with Email and Password
-- Sign in with Magic Link
-- Sign in with SAML SSO
-- Sign in with Google [[Setting up Google OAuth](https://support.google.com/cloud/answer/6158849?hl=en)]
-- Sign in with GitHub [[Creating a Github OAuth App](https://docs.github.com/en/developers/apps/building-oauth-apps/creating-an-oauth-app)]
-- Directory Sync (SCIM)
-- Update account
-- Create team
-- Delete team
-- Invite users to the team
-- Manage team members
-- Update team settings
-- Webhooks & Events
-- Internationalization
-- Audit logs
-- Roles and Permissions
-- Dark mode
-- Email notifications
-- E2E tests
-- Docker compose
-- Prisma Studio
-- Update member role
-- Directory Sync Events
-- Avatar Upload
-- SAML SSO
-- Audit Log
-- Webhook
-- Payments
-- Security Headers
-
-## ➡️ Coming Soon
-
-- Billing & subscriptions
-- Unit and integration tests
-
-## ✨ Contributing
-
-Thanks for taking the time to contribute! Contributions make the open-source community a fantastic place to learn, inspire, and create. Any contributions you make are greatly appreciated.
-
-Please try to create bug reports that are:
-
-- _Reproducible._ Include steps to reproduce the problem.
-- _Specific._ Include as much detail as possible: which version, what environment, etc.
-- _Unique._ Do not duplicate existing opened issues.
-- _Scoped to a Single Bug._ One bug per report.
-
-[Contributing Guide](https://github.com/boxyhq/saas-starter-kit/blob/main/CONTRIBUTING.md)
-
-## 🤩 Community
-
-- [Discord](https://discord.gg/uyb7pYt4Pa) (For live discussion with the Open-Source Community and BoxyHQ team)
-- [Twitter](https://twitter.com/BoxyHQ) / [LinkedIn](https://www.linkedin.com/company/boxyhq) (Follow us)
-- [Youtube](https://www.youtube.com/@boxyhq) (Watch community events and tutorials)
-- [GitHub Issues](https://github.com/boxyhq/saas-starter-kit/issues) (Contributions, report issues, and product ideas)
-
-## 🌍 Contributors
-
-<a href="https://github.com/boxyhq/saas-starter-kit/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=boxyhq/saas-starter-kit" />
-</a>
-
-Made with [contrib.rocks](https://contrib.rocks).
+---
 
 ## 🛡️ License
 
-[Apache 2.0 License](https://github.com/boxyhq/saas-starter-kit/blob/main/LICENSE)
+Distributed under the **Apache 2.0 License**. See [`LICENSE`](LICENSE) for more information.

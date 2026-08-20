@@ -44,15 +44,18 @@
 
 ---
 
-## 🤖 1.1. AI-Vibecoding n8n Pipeline & MCP Интеграция
+## 🤖 1.1. AI-Vibecoding, Trigger.dev v3 & n8n Licensing Architecture
 
-Для 100% стабильной генерации воркфлоу n8n без синтаксических ошибок в AI IDE (Cursor / Claude Code) задействован **MCP-сервер `czlonkowski/n8n-mcp`**:
+Для 100% стабильной оркестрации процессов без юридических рисков и лицензионных ловушек применяется **Двухуровневая стратегия оркестрации (Code-First + n8n SUL Compliance)**:
 
-1. **MCP Интроспекция Нод:** Сервер предоставляет ассистенту функции `getNodeProperties`, `validate_workflow`, `deploy_workflow`, исключая выдумывание параметров нод.
-2. **3D-Connection Guard & Syntax Rules:**
-   - Все динамические выражения принудительно начинаются со знака `=`: `={{ $('NodeName').first().json.field }}`.
-   - Топология связей соблюдает 3D-массив: `{"Source_Node": {"main": [[{"node": "Target_Node", "type": "main", "index": 0}]]}}`.
-3. **Hybrid TypeScript + Zod Code Nodes:** 80% сложной логики маппинга выносится в единый **Code Node** на TypeScript с валидацией схем через **Zod** (`NODE_FUNCTION_ALLOW_EXTERNAL=zod`), сохраняя метаданные `pairedItem`.
+1. **Sprint B (14-Day SaaS MVP Engine): Trigger.dev v3 / Inngest (Code-First TS Engine)**
+   - Внутри продуктов SaaS категорически **исключён n8n** во избежание $50,000/год Embed License платить правообладателям n8n GmbH по лицензии Sustainable Use License (SUL).
+   - Автоматизация и фоновые задачи изолируются прямо в код Next.js 15 / Node.js через **Trigger.dev v3 (100% Apache 2.0 Free OS)** или **Inngest** (`app/api/inngest/route.ts`).
+   - Вся логика типизирована через **TypeScript + Zod**, верифицируется через `vitest` и версионируется в едином Git-репозитории клиента без JSON-простынь.
+
+2. **Sprint A (B2B Operations Plumbing): Dedicated n8n SUL Instance**
+   - Разворачивается **выделенный изолированный инстанс n8n** на сервере заказчика (Hetzner / VPS), что на 100% соответствует SUL-лицензии n8n (бесплатное использование в рамках индивидуальной консалтинговой настройки).
+   - Генерация нод оптимизируется через **MCP-сервер `czlonkowski/n8n-mcp`** и Hybrid TypeScript + Zod Code Nodes (`NODE_FUNCTION_ALLOW_EXTERNAL=zod`).
 
 ---
 

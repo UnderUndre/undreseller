@@ -171,11 +171,11 @@ return [validItems, deadLetterItems];
 
 ---
 
-### 1. Аудит шаблона: Что такое `boxyhq/saas-starter-kit`?
+### 1. Аудит шаблона: Что такое `undreseller/saas-starter-kit`?
 
-**BoxyHQ** — это не просто бойлерплейт, это **тяжёлый броневик для Enterprise B2B**.
+**Undreseller** — это не просто бойлерплейт, это **тяжёлый броневик для Enterprise B2B**.
 
-* **Стек:** Next.js (App/Pages), Prisma ORM, PostgreSQL, Tailwind CSS / daisyUI, NextAuth.js.
+* **Стек:** Next.js (App/Pages), Prisma ORM / Supabase, PostgreSQL, Tailwind CSS / daisyUI, NextAuth.js.
 * **Главный цимес:** В него из коробки вшиты **SAML Jackson** (Enterprise SSO под Okta/Azure AD), **Directory Sync (SCIM)**, аудит-логи **Retraced** и вебхук-оркестратор **Svix**.
 * **Вердикт:** Если ты целишься продавать B2B-системам с чеками $5k–$10k+, где корпораты требуют SSO и аудит-логи — это бронебойный выбор. Но учти: он тяжелее, чем минималистичный `nextjs/saas-starter`. Под капотом там крутится стандартный **NextAuth.js + Prisma**, а значит, прикрутить туда Telegram и Twitter можно без проблем.
 
@@ -185,7 +185,7 @@ return [validItems, deadLetterItems];
 
 В Telegram нет стандартного протокола OAuth2 (Authorization Code Flow). Telegram отдаёт объект пользователя с HMAC-SHA256 подписью от твоего Bot Token.
 
-Чтобы вкрутить это в **NextAuth (который стоит в BoxyHQ)**, тебе понадобятся 2 проверенные библиотеки:
+Чтобы вкрутить это в **NextAuth (который стоит в Undreseller)**, тебе понадобятся 2 проверенные библиотеки:
 
 #### 📦 Библиотеки
 
@@ -217,7 +217,7 @@ export const authOptions = {
 
         if (!user.id) throw new Error("Invalid Telegram signature");
 
-        // 3. Ищем или создаем пользователя в базе BoxyHQ (Prisma)
+        // 3. Ищем или создаем пользователя в базе Undreseller (Prisma / Supabase)
         let dbUser = await prisma.user.findFirst({
           where: { telegramId: user.id.toString() }
         });
@@ -251,7 +251,7 @@ export const authOptions = {
 Вместо того чтобы городить самодельные костыли для отправки сообщений, берешь **Novu**. Это универсальный пульт управления:
 
 * **Что умеет:** Управляет всеми каналами (In-App Inbox внутри SaaS, Email через Resend, SMS, Slack, Discord и **Telegram**) из одного API.
-* **Фишка:** Ты в коде BoxyHQ делаешь один вызов `novu.trigger('payment-success', { to: userId })`, а Novu сам отправляет юзеру пуш в веб-дашборд и сообщение в его Telegram-бот. У него официальный провайдер для Telegram Bot API.
+* **Фишка:** Ты в коде Undreseller делаешь один вызов `novu.trigger('payment-success', { to: userId })`, а Novu сам отправляет юзеру пуш в веб-дашборд и сообщение в его Telegram-бот. У него официальный провайдер для Telegram Bot API.
 
 #### 🔧 Путь Б: **GrammY (`grammyjs/grammY`)** — Топовый TS-фреймворк для Telegram-ботов
 
@@ -267,7 +267,7 @@ const bot = new Bot(process.env.TELEGRAM_BOT_TOKEN!);
 
 bot.command("start", (ctx) => ctx.reply("Undreseller System Online 🚀"));
 bot.command("status", async (ctx) => {
-  // Запрос в базу BoxyHQ Prisma
+  // Запрос в базу Undreseller Prisma / Supabase
   ctx.reply("Все пайплайны работают стабильно.");
 });
 
@@ -277,7 +277,7 @@ export const POST = webhookCallback(bot, "std/http");
 
 #### ⚡ Путь В: Твой любимый `n8n`
 
-Не забывай: у тебя в стеке уже есть n8n! В BoxyHQ встроен **Svix** (вебхуки). BoxyHQ стреляет вебхуком при любом событии (новый лид, оплата Stripe) ➔ n8n ловит через Webhook Node ➔ отправляет отформатированное сообщение в Telegram-канал или чат с клиентом.
+Не забывай: у тебя в стеке уже есть n8n! В Undreseller встроен **Svix** (вебхуки). Undreseller стреляет вебхуком при любом событии (новый лид, оплата Stripe) ➔ n8n ловит через Webhook Node ➔ отправляет отформатированное сообщение в Telegram-канал или чат с клиентом.
 
 ---
 
@@ -286,11 +286,11 @@ export const POST = webhookCallback(bot, "std/http");
 Если ты хочешь удивить клиентов и выставить прайс $4.9k, врежь вот эти три фичи:
 
 1. **Telegram Mini App (TWA) прямо в боте (`@twa-dev/sdk`):**  
-   Фронтенд BoxyHQ уже адаптивный. Ты можешь открывать дашборд прямо внутри окна Telegram через WebApp-кнопку. Пользователю даже не нужно логиниться — авторизация пролетает через `window.Telegram.WebApp.initData`.
+   Фронтенд Undreseller уже адаптивный. Ты можешь открывать дашборд прямо внутри окна Telegram через WebApp-кнопку. Пользователю даже не нужно логиниться — авторизация пролетает через `window.Telegram.WebApp.initData`.
 2. **2-Way Интерактивный пультик управления (Inline Keyboards):**  
    Когда в системе падает критический алерт или новый B2B-запрос, бот присылает сообщение с кнопками:  
    `[ ✅ Одобрить счет ]` `[ ❌ Отклонить ]`  
-   Клик по кнопке прямо из Telegram дёргает API BoxyHQ и меняет статус записи в Prisma.
+   Клик по кнопке прямо из Telegram дёргает API Undreseller и меняет статус записи в Prisma / Supabase.
 3. **Stripe Paywall & VIP Chat Gating:**  
    Пользователь оформил подписку в Stripe ➔ бэкенд генерирует одноразовую инвайт-ссылку в закрытый Telegram-канал (`bot.api.createChatInviteLink`). Отменил подписку — бот кикает его из группы.
 
@@ -299,7 +299,7 @@ export const POST = webhookCallback(bot, "std/http");
 ### 5. Интеграция с Twitter / X (На будущее / Post-MVP)
 
 * **Авторизация (Twitter Login):**  
-  В NextAuth (внутри BoxyHQ) уже есть встроенный `TwitterProvider` (OAuth 2.0 PKCE). Достаточно прописать `TWITTER_CLIENT_ID` и `TWITTER_CLIENT_SECRET` в `.env`.
+  В NextAuth (внутри Undreseller) уже есть встроенный `TwitterProvider` (OAuth 2.0 PKCE). Достаточно прописать `TWITTER_CLIENT_ID` и `TWITTER_CLIENT_SECRET` в `.env`.
 * **Постинг и чтение (Twitter API):**  
   Используй библиотеку **`twitter-api-v2`** — это абсолютный промышленный стандарт для TypeScript/Node.js.
 
@@ -309,9 +309,9 @@ export const POST = webhookCallback(bot, "std/http");
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                       АРХИТЕКТУРА ИНТЕГРАЦИЙ BOXYHQ                         │
+│                     АРХИТЕКТУРА ИНТЕГРАЦИЙ UNDRESELLER                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ 1. База & Ядро: BoxyHQ (Next.js + Prisma + NextAuth + Svix Webhooks)        │
+│ 1. База & Ядро: Undreseller (Next.js + Prisma/Supabase + NextAuth + Svix)   │
 │ 2. Авторизация ТГ: NextAuth Credentials + @telegram-auth/server             │
 │ 3. Бот & Команды: grammY (app/api/telegram/webhook/route.ts)                │
 │ 4. Алерты и нотификации: Novu (All-in-one) ИЛИ Svix Webhook -> n8n          │

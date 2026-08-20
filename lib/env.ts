@@ -56,11 +56,11 @@ const env = {
     url: process.env.JACKSON_URL,
     externalUrl: process.env.JACKSON_EXTERNAL_URL || process.env.JACKSON_URL,
     apiKey: process.env.JACKSON_API_KEY,
-    productId: process.env.JACKSON_PRODUCT_ID || 'boxyhq',
+    productId: process.env.JACKSON_PRODUCT_ID || 'undreseller',
     selfHosted: process.env.JACKSON_URL !== undefined,
     sso: {
       callback: `${process.env.APP_URL}`,
-      issuer: 'https://saml.boxyhq.com',
+      issuer: 'https://saml.undreseller.com',
       path: '/api/oauth/saml',
       oidcPath: '/api/oauth/oidc',
       idpLoginPath: '/auth/idp-login',
@@ -85,7 +85,7 @@ const env = {
   authProviders: process.env.AUTH_PROVIDERS || 'github,credentials',
 
   otel: {
-    prefix: process.env.OTEL_PREFIX || 'boxyhq.saas',
+    prefix: process.env.OTEL_PREFIX || 'undreseller.saas',
   },
 
   hideLandingPage: process.env.HIDE_LANDING_PAGE === 'true',

@@ -31,7 +31,7 @@ This plan specifies the implementation steps for setting up Undreseller's comple
 - Set up `client-lite` profile launching `omniroute` + `n8n` + `supabase` in < 1.5 GB RAM.
 
 ### Phase 2: Dogfooding SaaS Stand & n8n TG Bot Pipeline
-- Deploy `demo.undreseller.com` from `nextjs/saas-starter` / `boxyhq/saas-starter-kit`.
+- Deploy `demo.undreseller.com` from `nextjs/saas-starter` / `undreseller/saas-starter-kit`.
 - Implement `tg-lead-triage-workflow.json` in n8n with Zod TypeScript validation node and Dead-Letter queue alerts.
 - Connect n8n to `UndeRoute` AI API (`http://host.docker.internal:20129/v1/chat/completions`).
 
