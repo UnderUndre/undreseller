@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Undreseller — Productized Engineering & Turnkey B2B Systems</title>
+  <meta name="description" content="Production-Grade B2B MVPs & Self-Hosted Systems Shipped in 3–14 Days. Zero Seat Fees. Next.js 15, Supabase, Twenty CRM, Trigger.dev v3, n8n. Protected by Upwork Direct Contracts Escrow.">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              purple: '#4e007a',
+              orange: '#b45500',
+              green: '#69a700',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+  </style>
+</head>
+<body class="bg-[#06020a] text-slate-100 antialiased selection:bg-[#b45500] selection:text-white min-h-screen">
+
+  <!-- ============================================================================== -->
+  <!-- HEADER / NAVIGATION -->
+  <!-- ============================================================================== -->
+  <header class="fixed top-0 left-0 right-0 z-50 bg-[#06020a]/90 backdrop-blur-md border-b border-purple-900/30">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      <!-- Logo -->
+      <a href="#" class="inline-flex items-center gap-2.5 group">
+        <div class="w-8 h-8 rounded-lg bg-[#4e007a] flex items-center justify-center border border-[#b45500]/50 shadow-sm group-hover:scale-105 transition-transform">
+          <svg viewBox="0 0 512 512" class="w-6 h-6">
+            <rect width="512" height="512" rx="128" fill="#4e007a" />
+            <path d="M 156 116 L 156 276 A 100 100 0 0 0 356 276 L 356 116 L 296 116 L 296 266 A 40 40 0 0 1 216 266 L 216 116 Z" fill="#b45500" />
+            <polygon points="266,176 226,256 261,256 241,336 291,241 256,241" fill="#69a700" />
+            <circle cx="410" cy="102" r="24" fill="#69a700" stroke="#4e007a" stroke-width="8" />
+          </svg>
+        </div>
+        <span class="font-extrabold text-xl tracking-tight text-white">Undreseller</span>
+      </a>
+
+      <!-- Nav Links -->
+      <nav class="hidden md:flex items-center gap-8 text-xs font-semibold text-purple-200/80">
+        <a href="#loom-demo" class="hover:text-orange-400 transition-colors">How it works</a>
+        <a href="#pricing" class="hover:text-orange-400 transition-colors">Pricing</a>
+        <a href="#opsec" class="hover:text-orange-400 transition-colors">OpSec Protocol</a>
+        <a href="#comparison" class="hover:text-orange-400 transition-colors">Comparison</a>
+        <a href="#contact" class="hover:text-orange-400 transition-colors">Contact</a>
+      </nav>
+
+      <!-- Header CTA -->
+      <div>
+        <a href="#contact" class="px-4 py-2 bg-[#b45500] hover:bg-orange-600 text-white font-bold text-xs rounded-lg shadow-md transition-colors">
+          Reserve Spot →
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============================================================================== -->
+  <!-- 1. HERO SECTION -->
+  <!-- ============================================================================== -->
+  <section class="relative pt-32 pb-20 border-b border-purple-900/30 overflow-hidden">
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-950/40 via-transparent to-transparent pointer-events-none"></div>
+
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 text-center relative z-10">
+      <!-- Top Trust Badge -->
+      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-950/60 border border-purple-800/40 text-orange-400 text-xs font-semibold tracking-wide uppercase mb-8 shadow-sm">
+        <span class="w-2 h-2 rounded-full bg-[#69a700] animate-pulse inline-block mr-1"></span>
+        3X SALESFORCE CERTIFIED DEVELOPER | ERASE $15K–$40K/YR SAAS TAXES | UPWORK ESCROW VERIFIED
+      </div>
+
+      <!-- H1 Main Headline -->
+      <h1 class="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight mb-6 max-w-4xl mx-auto leading-tight text-white">
+        Production-Grade B2B MVPs & Self-Hosted Systems Shipped in{" "}
+        <span class="text-[#b45500] bg-clip-text text-transparent bg-gradient-to-r from-orange-400 via-amber-500 to-orange-600">
+          3–14 Days
+        </span>
+        . Zero Seat Fees.
+      </h1>
+
+      <!-- Subtitle -->
+      <p class="text-lg sm:text-xl text-purple-100/80 max-w-3xl mx-auto mb-10 leading-relaxed">
+        We replace slow $40k agencies, unpredictable freelancers, and bloated SaaS seat taxes (Salesforce, Notion, Linear, Intercom) with a fixed-price productized engineering conveyor. Built on Next.js 15, Supabase, Twenty CRM, Trigger.dev v3 & n8n.
+      </p>
+
+      <!-- CTA Buttons -->
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
+        <a href="https://www.upwork.com/direct-contracts" target="_blank" rel="noopener noreferrer" class="w-full sm:w-auto px-8 py-4 bg-[#b45500] hover:bg-orange-600 text-white font-bold rounded-lg shadow-lg shadow-orange-950/40 transition-all text-base text-center">
+          Book 14-Day Sprint via Escrow →
+        </a>
+        <a href="https://demo.undreseller.com" target="_blank" rel="noopener noreferrer" class="w-full sm:w-auto px-8 py-4 bg-purple-950/60 hover:bg-purple-900/70 text-purple-200 font-semibold rounded-lg transition-all text-base border border-purple-800/40 text-center flex items-center justify-center gap-2">
+          <span>Explore Live Sandbox App</span>
+          <span class="text-orange-400">↗</span>
+        </a>
+      </div>
+
+      <!-- Microcopy Under Buttons -->
+      <p class="text-xs text-purple-300/60 mb-12">
+        ⚡ Instant test: Log in as Demo Admin on <span class="font-mono text-orange-400">demo.undreseller.com</span> in 1 click. Escrow released only after your live $1 checkout verification.
+      </p>
+
+      <!-- 5 Trust Badges Grid -->
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-4xl mx-auto text-left pt-6 border-t border-purple-900/30">
+        <div class="p-3 bg-purple-950/30 rounded-lg border border-purple-900/40">
+          <div class="text-xs text-purple-300/70 uppercase font-semibold">Escrow Protection</div>
+          <div class="text-sm font-bold text-purple-100">Upwork / DocuSeal</div>
+        </div>
+        <div class="p-3 bg-purple-950/30 rounded-lg border border-purple-900/40">
+          <div class="text-xs text-purple-300/70 uppercase font-semibold">Modern Stack</div>
+          <div class="text-sm font-bold text-purple-100">Next.js 15 + Supabase</div>
+        </div>
+        <div class="p-3 bg-purple-950/30 rounded-lg border border-purple-900/40">
+          <div class="text-xs text-purple-300/70 uppercase font-semibold">FOSS Office Stack</div>
+          <div class="text-sm font-bold text-purple-100">Twenty CRM + Outline</div>
+        </div>
+        <div class="p-3 bg-purple-950/30 rounded-lg border border-purple-900/40">
+          <div class="text-xs text-purple-300/70 uppercase font-semibold">Legal Code</div>
+          <div class="text-sm font-bold text-purple-100">NACE 62.01 Standard</div>
+        </div>
+        <div class="p-3 bg-purple-950/30 rounded-lg border border-purple-900/40 col-span-2 md:col-span-1">
+          <div class="text-xs text-purple-300/70 uppercase font-semibold">Warranty</div>
+          <div class="text-sm font-bold text-[#69a700]">7-Day Bugfix SLA</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================================== -->
+  <!-- 2. LIVE TELEMETRY & PROOF SECTION -->
+  <!-- ============================================================================== -->
+  <section id="loom-demo" class="py-20 bg-[#08030f] border-b border-purple-900/30">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="text-center mb-12">
+        <span class="inline-block px-3 py-1 bg-[#69a700]/10 text-[#69a700] text-xs font-semibold rounded-full uppercase tracking-wider mb-3">
+          Live Telemetry & Sandbox Proof
+        </span>
+        <h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-white">
+          We Run on Our Own Code. Test Our Live Sandbox App.
+        </h2>
+        <p class="mt-4 text-purple-200/70 max-w-2xl mx-auto">
+          Every lead, payload, and payment at Undreseller is processed by the exact same architecture we deploy for you. Don't take our word for it — test the live production stand.
+        </p>
+
+        <!-- Direct Action Buttons -->
+        <div class="flex flex-wrap items-center justify-center gap-4 mt-6">
+          <a href="https://demo.undreseller.com" target="_blank" rel="noopener noreferrer" class="px-6 py-3 bg-[#b45500] hover:bg-orange-600 text-white font-bold rounded-lg transition-colors text-sm shadow-md flex items-center gap-2">
+            <span>Open Live Sandbox App (demo.undreseller.com)</span>
+            <span>↗</span>
+          </a>
+          <a href="https://demo.undreseller.com/api/docs" target="_blank" rel="noopener noreferrer" class="px-6 py-3 bg-purple-950/60 hover:bg-purple-900/70 text-purple-200 font-semibold rounded-lg transition-colors text-sm border border-purple-800/40 flex items-center gap-2">
+            <span>Inspect Live Swagger Spec (OpenAPI 3.0)</span>
+            <span>↗</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- 5-Step Pipeline Card Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div class="p-5 bg-[#12081f] rounded-xl border border-purple-900/30 shadow-sm">
+          <span class="text-xs font-mono font-bold text-orange-400">01 / INGEST</span>
+          <h4 class="font-semibold mt-1 mb-2 text-white text-sm">Webhook Ingest</h4>
+          <p class="text-xs text-purple-200/60">Raw JSON payload received from intake endpoints.</p>
+        </div>
+        <div class="p-5 bg-[#12081f] rounded-xl border border-purple-900/30 shadow-sm">
+          <span class="text-xs font-mono font-bold text-orange-400">02 / ZOD GUARD</span>
+          <h4 class="font-semibold mt-1 mb-2 text-white text-sm">Zod Schema Node</h4>
+          <p class="text-xs text-purple-200/60">Runtime validation via TypeScript Zod. Corrupted packets trapped immediately.</p>
+        </div>
+        <div class="p-5 bg-[#12081f] rounded-xl border border-purple-900/30 shadow-sm">
+          <span class="text-xs font-mono font-bold text-orange-400">03 / AI TRIAGE</span>
+          <h4 class="font-semibold mt-1 mb-2 text-white text-sm">Claude 3.7 AI</h4>
+          <p class="text-xs text-purple-200/60">Intent classification and task priority scoring in &lt;1.2 seconds.</p>
+        </div>
+        <div class="p-5 bg-[#12081f] rounded-xl border border-purple-900/30 shadow-sm">
+          <span class="text-xs font-mono font-bold text-orange-400">04 / DB STORAGE</span>
+          <h4 class="font-semibold mt-1 mb-2 text-white text-sm">Supabase RLS DB</h4>
+          <p class="text-xs text-purple-200/60">Encrypted write to PostgreSQL with strict Row Level Security (RLS) policies.</p>
+        </div>
+        <div class="p-5 bg-[#12081f] rounded-xl border border-purple-900/30 shadow-sm">
+          <span class="text-xs font-mono font-bold text-orange-400">05 / INCIDENT DLQ</span>
+          <h4 class="font-semibold mt-1 mb-2 text-white text-sm">Telegram DLQ</h4>
+          <p class="text-xs text-purple-200/60">Instant dispatch to engineering channel with one-click replay for quarantined packets.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================================== -->
+  <!-- 3. PRICING SECTION (2 CORE SKUS) -->
+  <!-- ============================================================================== -->
+  <section id="pricing" class="py-20 bg-[#06020a] border-b border-purple-900/30">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="text-center mb-16">
+        <span class="inline-block px-3 py-1 bg-purple-950/60 text-orange-400 text-xs font-semibold rounded-full uppercase tracking-wider mb-3 border border-purple-800/40">
+          Two Core SKUs Only — Fixed Price
+        </span>
+        <h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-white">
+          Two Fixed-Price Packages. Zero Hidden Surcharges.
+        </h2>
+        <p class="mt-4 text-purple-200/70 max-w-2xl mx-auto">
+          Pick your sprint. Lock scope. Funds remain in third-party Upwork Direct Contracts Escrow or DocuSeal e-Signed agreement until production deployment is verified.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+        <!-- SKU 1 Card -->
+        <div class="p-8 bg-[#110721]/80 rounded-2xl border border-purple-900/30 flex flex-col justify-between hover:border-purple-600/50 transition-colors">
+          <div>
+            <span class="inline-block px-3 py-1 bg-purple-950/60 text-purple-300 text-xs font-bold rounded-full uppercase tracking-wider mb-4 border border-purple-800/40">
+              GRAND SLAM FOSS OFFICE & OPERATIONS SPRINT
+            </span>
+            <h3 class="text-2xl font-bold text-white">SKU 1: B2B Operations & FOSS Office Stack</h3>
+            <p class="mt-2 text-sm text-purple-200/70">
+              Erase $15k–$40k/yr in SaaS seat taxes (Salesforce, Notion, Linear, Intercom, Calendly) with a self-hosted FOSS suite on Hetzner.
+            </p>
+
+            <div class="my-6">
+              <div class="text-4xl font-extrabold text-white">$3,500 <span class="text-base font-normal text-purple-300/60">setup flat fee</span></div>
+              <div class="text-sm font-semibold text-orange-400 mt-1">+ $500/month runtime maintenance & monitoring</div>
+              <div class="text-xs text-purple-300/60 mt-2 font-mono">⚡ Delivery: 3 to 5 Business Days</div>
+            </div>
+
+            <div class="space-y-3 mb-6">
+              <div class="text-xs font-bold uppercase tracking-wider text-purple-200">Included Scope (Fixed Scope):</div>
+              <ul class="space-y-2 text-sm text-purple-200/80">
+                <li class="flex items-start gap-2"><span class="text-[#69a700] font-bold">✓</span> Open-Source CRM (Twenty CRM / EspoCRM) with 0 monthly seat licenses.</li>
+                <li class="flex items-start gap-2"><span class="text-[#69a700] font-bold">✓</span> Grand Slam FOSS Office: Outline (Docs), Plane (Tasks), Chatwoot (Support), Cal.com.</li>
+                <li class="flex items-start gap-2"><span class="text-[#69a700] font-bold">✓</span> Dedicated n8n workflow deployment or Trigger.dev v3 code tasks.</li>
+                <li class="flex items-start gap-2"><span class="text-[#69a700] font-bold">✓</span> Strict runtime payload validation powered by TypeScript Zod.</li>
+                <li class="flex items-start gap-2"><span class="text-[#69a700] font-bold">✓</span> Supabase PostgreSQL audit log & Dead-Letter Queue (DLQ).</li>
+                <li class="flex items-start gap-2"><span class="text-[#69a700] font-bold">✓</span> Multi-channel notification routing (Telegram / Slack / Email).</li>
+                <li class="flex items-start gap-2"><span class="text-[#69a700] font-bold">✓</span> 7-Day post-deployment Bugfix SLA Knife (P1/P2 incidents).</li>
+              </ul>
+            </div>
+
+            <div class="p-4 bg-orange-950/20 border border-orange-800/30 rounded-lg text-xs text-orange-300 mb-6">
+              <strong>Fixed Scope Knife:</strong> Excludes customer-facing frontend portals & production email server hosting (email stays on Google Workspace / M365). Additional third-party API integrations beyond the 3 agreed services are billed at $100/hr in Phase 2.
+            </div>
+          </div>
+
+          <a href="https://www.upwork.com/direct-contracts" target="_blank" rel="noopener noreferrer" class="w-full py-3 px-6 bg-purple-900 hover:bg-purple-800 text-white font-semibold rounded-lg text-center transition-colors border border-purple-700/40">
+            Deploy Workflow & FOSS Office via Escrow →
+          </a>
+        </div>
+
+        <!-- SKU 2 Card -->
+        <div class="p-8 bg-[#180a2e]/90 rounded-2xl border-2 border-[#b45500] flex flex-col justify-between relative shadow-xl">
+          <div class="absolute -top-3 right-6 px-3 py-1 bg-[#b45500] text-white text-xs font-extrabold rounded-full uppercase tracking-wider shadow-md">
+            HERO SKU — 14 DAYS
+          </div>
+
+          <div>
+            <span class="inline-block px-3 py-1 bg-orange-500/10 text-orange-400 text-xs font-bold rounded-full uppercase tracking-wider mb-4 border border-orange-500/20">
+              FULL-STACK SAAS LAUNCH
+            </span>
+            <h3 class="text-2xl font-bold text-white">SKU 2: 14-Day SaaS MVP Factory</h3>
+            <p class="mt-2 text-sm text-purple-200/70">
+              A fully functional, production-ready B2B SaaS application deployed directly to your infrastructure, ready to charge users on Day 14.
+            </p>
+
+            <div class="my-6">
+              <div class="text-4xl font-extrabold text-white">$4,900 <span class="text-base font-normal text-purple-300/60">one-time flat fee</span></div>
+              <div class="text-sm font-semibold text-[#69a700] mt-1">Guaranteed Timebox Delivery</div>
+              <div class="text-xs text-purple-300/60 mt-2 font-mono">🚀 Delivery: 14 Calendar Days Flat</div>
+            </div>
+
+            <div class="space-y-3 mb-6">
+              <div class="text-xs font-bold uppercase tracking-wider text-purple-200">Included Scope (Fixed Scope):</div>
+              <ul class="space-y-2 text-sm text-purple-200/80">
+                <li class="flex items-start gap-2"><span class="text-[#69a700] font-bold">✓</span> Next.js 15 (App Router, Server Actions, Tailwind CSS, Shadcn UI).</li>
+                <li class="flex items-start gap-2"><span class="text-[#69a700] font-bold">✓</span> Supabase PostgreSQL, RLS policies, Auth (Email, Google OAuth).</li>
+                <li class="flex items-start gap-2"><span class="text-[#69a700] font-bold">✓</span> Stripe Checkout / Lemon Squeezy subscription webhooks & portal.</li>
+                <li class="flex items-start gap-2"><span class="text-[#69a700] font-bold">✓</span> Trigger.dev v3 / Inngest SUL-free background workflows in TS.</li>
+                <li class="flex items-start gap-2"><span class="text-[#69a700] font-bold">✓</span> NACE 62.01 Code Handover: Git repo, OpenAPI 3.0, DDL SQL, Docker.</li>
+                <li class="flex items-start gap-2"><span class="text-[#69a700] font-bold">✓</span> 60-Minute Live Onboarding Protocol on Day 14 with $1 test run.</li>
+                <li class="flex items-start gap-2"><span class="text-[#69a700] font-bold">✓</span> 7-Day Bugfix SLA Knife covering all critical post-launch bugs.</li>
+              </ul>
+            </div>
+
+            <div class="p-4 bg-orange-950/20 border border-orange-800/30 rounded-lg text-xs text-orange-300 mb-6">
+              <strong>Fixed Scope Knife:</strong> Excludes native mobile apps (iOS/Android) and custom AI fine-tuning. Post-MVP feature expansions are scheduled in Phase 2 at $100/hr.
+            </div>
+          </div>
+
+          <a href="https://www.upwork.com/direct-contracts" target="_blank" rel="noopener noreferrer" class="w-full py-3.5 px-6 bg-[#b45500] hover:bg-orange-600 text-white font-bold rounded-lg text-center transition-colors shadow-lg shadow-orange-950/40 text-base">
+            Lock 14-Day MVP Sprint via Escrow →
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================================== -->
+  <!-- 4. OPSEC & RISK ELIMINATION PROTOCOL -->
+  <!-- ============================================================================== -->
+  <section id="opsec" class="py-20 bg-[#08030f] border-b border-purple-900/30">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="text-center mb-16">
+        <span class="inline-block px-3 py-1 bg-[#69a700]/10 text-[#69a700] text-xs font-semibold rounded-full uppercase tracking-wider mb-3">
+          Zero Risk & Instant Contract Protocol
+        </span>
+        <h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-white">
+          How We Eliminate 100% of Your Financial and Technical Risk.
+        </h2>
+        <p class="mt-4 text-purple-200/70 max-w-2xl mx-auto">
+          You never transfer money to unverified personal accounts. We utilize standardized escrow mechanisms (Upwork Direct Contracts) or instant e-Signed MSA contracts via self-hosted DocuSeal.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-16">
+        <div class="p-6 bg-[#12081f] rounded-xl border border-purple-900/30 shadow-sm relative">
+          <div class="w-8 h-8 bg-[#b45500] text-white rounded-full flex items-center justify-center font-bold text-sm mb-4">1</div>
+          <h3 class="font-bold text-white mb-2">Escrow / DocuSeal (Day 1)</h3>
+          <p class="text-xs text-purple-200/60">
+            You deposit sprint funds into Upwork Direct Contracts Escrow OR sign an instant eIDAS-compliant MSA via DocuSeal (<span class="font-mono text-orange-400">sign.undreseller.com</span>). Funds remain frozen until release.
+          </p>
+        </div>
+
+        <div class="p-6 bg-[#12081f] rounded-xl border border-purple-900/30 shadow-sm relative">
+          <div class="w-8 h-8 bg-[#b45500] text-white rounded-full flex items-center justify-center font-bold text-sm mb-4">2</div>
+          <h3 class="font-bold text-white mb-2">Conveyor Build (Days 1–13)</h3>
+          <p class="text-xs text-purple-200/60">
+            Development runs in an isolated staging environment using pre-built Next.js 15 / Supabase / Trigger.dev modules with daily Git commits to your private repo.
+          </p>
+        </div>
+
+        <div class="p-6 bg-[#12081f] rounded-xl border border-purple-900/30 shadow-sm relative">
+          <div class="w-8 h-8 bg-[#b45500] text-white rounded-full flex items-center justify-center font-bold text-sm mb-4">3</div>
+          <h3 class="font-bold text-white mb-2">Live Onboarding (Day 14)</h3>
+          <p class="text-xs text-purple-200/60">
+            A 60-minute handover session. You inject your live production API keys. We run a live $1 transaction through your Stripe. You release escrow only after confirming payment receipt.
+          </p>
+        </div>
+
+        <div class="p-6 bg-[#12081f] rounded-xl border border-purple-900/30 shadow-sm relative">
+          <div class="w-8 h-8 bg-[#b45500] text-white rounded-full flex items-center justify-center font-bold text-sm mb-4">4</div>
+          <h3 class="font-bold text-white mb-2">7-Day Bugfix SLA</h3>
+          <p class="text-xs text-purple-200/60">
+            7 calendar days of post-release warranty. Any P1 (downtime) or P2 (broken flow) issues are resolved within 24 hours at zero additional cost.
+          </p>
+        </div>
+      </div>
+
+      <!-- NACE 62.01 & DocuSeal Banner -->
+      <div class="p-6 bg-[#120524] text-white rounded-xl flex flex-col md:flex-row items-center justify-between gap-6 border border-purple-800/40">
+        <div>
+          <span class="text-xs font-mono font-bold text-orange-400 uppercase">LEGAL & COMPLIANCE STANDARD</span>
+          <h4 class="text-lg font-bold mt-1">NACE 62.01 Code Handover & DocuSeal ESIGN Protocol</h4>
+          <p class="text-xs text-purple-200/70 mt-1">
+            Source code, DDL SQL schemas, and OpenAPI specs are transferred under EU NACE 62.01 classification. Contracts signed via self-hosted DocuSeal conform to ESIGN Act 2000 & eIDAS 910/2014 standards.
+          </p>
+        </div>
+        <div class="px-4 py-2 bg-purple-900/40 text-[#69a700] border border-purple-700/40 rounded-lg text-xs font-mono whitespace-nowrap">
+          ESIGN & NACE 62.01 CERTIFIED
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================================== -->
+  <!-- 5. COMPARISON MATRIX -->
+  <!-- ============================================================================== -->
+  <section id="comparison" class="py-20 bg-[#06020a] border-b border-purple-900/30">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6">
+      <div class="text-center mb-16">
+        <span class="inline-block px-3 py-1 bg-purple-950/60 text-orange-400 text-xs font-semibold rounded-full uppercase tracking-wider mb-3 border border-purple-800/40">
+          Comparison
+        </span>
+        <h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-white">
+          Engineered Speed vs. Industry Standard Inefficiency.
+        </h2>
+        <p class="mt-4 text-purple-200/70 max-w-2xl mx-auto">
+          See how Productized Engineering eliminates budget drag and unpredictable freelance timelines.
+        </p>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm border-collapse">
+          <thead>
+            <tr class="border-b border-purple-900/30 bg-[#110721]/60">
+              <th class="p-4 font-bold text-white">Evaluation Metric</th>
+              <th class="p-4 font-bold text-orange-400">Undreseller Productized Bureau</th>
+              <th class="p-4 font-bold text-purple-300/50">Traditional Software Agencies</th>
+              <th class="p-4 font-bold text-purple-300/50">Marketplace Freelancers</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-purple-900/30">
+            <tr>
+              <td class="p-4 font-semibold text-white">Delivery Timeline</td>
+              <td class="p-4 font-bold text-[#69a700]">3–14 Calendar Days (Guaranteed)</td>
+              <td class="p-4 text-purple-300/60">3 to 6 Months</td>
+              <td class="p-4 text-purple-300/60">Unpredictable (2–12 Weeks)</td>
+            </tr>
+            <tr>
+              <td class="p-4 font-semibold text-white">Pricing Structure</td>
+              <td class="p-4 font-bold text-[#69a700]">$3,500 – $4,900 Flat Fee</td>
+              <td class="p-4 text-purple-300/60">$30,000 – $60,000+ (T&M)</td>
+              <td class="p-4 text-purple-300/60">$30–$80/hr (Scope bloat)</td>
+            </tr>
+            <tr>
+              <td class="p-4 font-semibold text-white">CRM User Seat Fees</td>
+              <td class="p-4 font-bold text-[#69a700]">$0 / month (Self-Hosted Open Source)</td>
+              <td class="p-4 text-purple-300/60">$15,000 – $35,000 / yr (Salesforce/HubSpot)</td>
+              <td class="p-4 text-purple-300/60">No CRM integration included</td>
+            </tr>
+            <tr>
+              <td class="p-4 font-semibold text-white">Capital Security</td>
+              <td class="p-4 font-bold text-[#69a700]">100% Upwork Escrow Protection</td>
+              <td class="p-4 text-purple-300/60">50% non-refundable upfront deposit</td>
+              <td class="p-4 text-purple-300/60">100% upfront or weekly tracking</td>
+            </tr>
+            <tr>
+              <td class="p-4 font-semibold text-white">Architecture Quality</td>
+              <td class="p-4 font-bold text-purple-100">Next.js 15 + Supabase + Zod Types</td>
+              <td class="p-4 text-purple-300/60">Over-engineered legacy stack</td>
+              <td class="p-4 text-purple-300/60">Undocumented spaghetti code</td>
+            </tr>
+            <tr>
+              <td class="p-4 font-semibold text-white">Runtime Error Handling</td>
+              <td class="p-4 font-bold text-purple-100">Automated Zod DLQ + Telegram Alerts</td>
+              <td class="p-4 text-purple-300/60">Paid support ticketing</td>
+              <td class="p-4 text-purple-300/60">None (Silent app failures)</td>
+            </tr>
+            <tr>
+              <td class="p-4 font-semibold text-white">Post-Launch Warranty</td>
+              <td class="p-4 font-bold text-[#69a700]">7-Day P1/P2 Bugfix SLA Included</td>
+              <td class="p-4 text-purple-300/60">Expensive monthly SLA contracts</td>
+              <td class="p-4 text-purple-300/60">Disappears after final payment</td>
+            </tr>
+            <tr>
+              <td class="p-4 font-semibold text-white">Code & IP Ownership</td>
+              <td class="p-4 font-bold text-purple-100">Git + OpenAPI 3.0 + Supabase DDL</td>
+              <td class="p-4 text-purple-300/60">Proprietary CMS lock-in</td>
+              <td class="p-4 text-purple-300/60">Incomplete repository handover</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================================== -->
+  <!-- 6. FINAL HIGH-CONTRAST CTA SECTION -->
+  <!-- ============================================================================== -->
+  <section id="contact" class="py-20 bg-[#08030f] text-white border-b border-purple-900/30">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 text-center">
+      <span class="inline-block px-3 py-1 bg-purple-950/60 text-orange-400 text-xs font-semibold rounded-full uppercase tracking-wider mb-3 border border-purple-800/40">
+        Limited Production Slots
+      </span>
+      <h2 class="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
+        Stop Burning Runway. Ship Your Product This Month.
+      </h2>
+      <p class="text-purple-200/70 max-w-xl mx-auto mb-10 text-sm">
+        We accept only 3 engineering sprints per month to enforce our strict 14-day SLA. Submit your task brief below to secure your production slot.
+      </p>
+
+      <form class="p-8 bg-[#120524] rounded-2xl border border-purple-800/40 text-left max-w-xl mx-auto mb-10 space-y-4 shadow-2xl">
+        <div>
+          <label class="block text-xs font-medium text-purple-200 mb-1">Work Email Address *</label>
+          <input type="email" required placeholder="name@company.com" class="w-full px-4 py-3 bg-[#090212] border border-purple-900/50 rounded-lg text-sm text-white focus:outline-none focus:border-[#b45500]">
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-purple-200 mb-1">Telegram Username / WhatsApp *</label>
+          <input type="text" required placeholder="@username or phone" class="w-full px-4 py-3 bg-[#090212] border border-purple-900/50 rounded-lg text-sm text-white focus:outline-none focus:border-[#b45500]">
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-purple-200 mb-1">Select Sprint *</label>
+          <select class="w-full px-4 py-3 bg-[#090212] border border-purple-900/50 rounded-lg text-sm text-white focus:outline-none focus:border-[#b45500]">
+            <option value="sku2">SKU 2 - 14-Day SaaS MVP Factory ($4,900 flat)</option>
+            <option value="sku1">SKU 1 - B2B Operations & FOSS Office Stack ($3,500 + $500/mo)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-purple-200 mb-1">Describe your product or automation bottleneck in 2-3 sentences *</label>
+          <textarea required rows="3" placeholder="e.g. Need Next.js + Supabase auth, Stripe subscriptions, and Trigger.dev v3 background workflows..." class="w-full px-4 py-3 bg-[#090212] border border-purple-900/50 rounded-lg text-sm text-white focus:outline-none focus:border-[#b45500]"></textarea>
+        </div>
+
+        <button type="submit" class="w-full py-4 bg-[#b45500] hover:bg-orange-600 text-white font-bold rounded-lg shadow-lg shadow-orange-950/40 transition-colors text-sm">
+          Initialize Sprint Proposal via Escrow →
+        </button>
+      </form>
+
+      <div class="pt-6 border-t border-purple-900/30 text-xs text-purple-300/60">
+        <p class="mb-2">Prefer to bypass forms and initiate the contract directly?</p>
+        <a href="https://www.upwork.com/direct-contracts" target="_blank" rel="noopener noreferrer" class="inline-block px-4 py-2 bg-purple-950/60 hover:bg-purple-900/70 text-purple-200 rounded-lg font-semibold transition-colors border border-purple-800/40">
+          Open Direct Upwork Escrow Contract →
+        </a>
+        <p class="mt-2 text-purple-300/40">Standard Upwork Direct Contract. 0% extra client fee, full third-party dispute mediation included.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================================== -->
+  <!-- FOOTER -->
+  <!-- ============================================================================== -->
+  <footer class="bg-[#080808] border-t border-purple-900/30 text-purple-300/70 text-xs py-12">
+    <div class="mx-auto max-w-6xl px-4 sm:px-6">
+      <div class="grid gap-10 sm:grid-cols-12 pb-12 border-b border-purple-900/30">
+        <div class="space-y-3 sm:col-span-12 lg:col-span-4 text-left">
+          <div class="inline-flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-[#4e007a] flex items-center justify-center border border-[#b45500]/50">
+              <svg viewBox="0 0 512 512" class="w-6 h-6">
+                <rect width="512" height="512" rx="128" fill="#4e007a" />
+                <path d="M 156 116 L 156 276 A 100 100 0 0 0 356 276 L 356 116 L 296 116 L 296 266 A 40 40 0 0 1 216 266 L 216 116 Z" fill="#b45500" />
+                <polygon points="266,176 226,256 261,256 241,336 291,241 256,241" fill="#69a700" />
+                <circle cx="410" cy="102" r="24" fill="#69a700" stroke="#4e007a" stroke-width="8" />
+              </svg>
+            </div>
+            <span class="font-extrabold text-xl text-white">Undreseller</span>
+          </div>
+          <p class="text-xs text-purple-300/60 leading-relaxed max-w-sm">
+            Productized Engineering Bureau — Production-grade B2B MVPs & self-hosted systems shipped in 3–14 days with zero seat fees.
+          </p>
+          <div class="text-[11px] text-purple-300/40">
+            &copy; 2026 Undreseller. All rights reserved.
+          </div>
+        </div>
+
+        <div class="space-y-2 sm:col-span-6 md:col-span-3 lg:col-span-2 text-left">
+          <h3 class="text-xs font-bold text-white uppercase tracking-wider">Features</h3>
+          <ul class="space-y-2">
+            <li><a class="hover:text-white transition-colors" href="#pricing">Pricing</a></li>
+            <li><a class="hover:text-white transition-colors" href="#pricing">Sprint A ($3.5k)</a></li>
+            <li><a class="hover:text-white transition-colors" href="#pricing">Sprint B ($4.9k)</a></li>
+          </ul>
+        </div>
+
+        <div class="space-y-2 sm:col-span-6 md:col-span-3 lg:col-span-2 text-left">
+          <h3 class="text-xs font-bold text-white uppercase tracking-wider">Payments & Escrow</h3>
+          <ul class="space-y-2">
+            <li><span class="text-[#69a700] font-semibold">Upwork Escrow (0% fee)</span></li>
+            <li><span class="text-purple-200">DocuSeal e-Signed MSAs</span></li>
+            <li><span class="text-purple-200">Stripe / Lemon Squeezy</span></li>
+          </ul>
+        </div>
+
+        <div class="space-y-2 sm:col-span-6 md:col-span-3 lg:col-span-4 text-left">
+          <h3 class="text-xs font-bold text-white uppercase tracking-wider">Socials</h3>
+          <div class="flex flex-wrap gap-2.5 pt-1">
+            <a href="https://github.com/UnderUndre" target="_blank" class="px-3 py-1.5 rounded-xl border border-purple-900/40 bg-[#12081f] text-purple-200 hover:text-orange-400 text-xs">GitHub</a>
+            <a href="https://x.com/UnderUndre" target="_blank" class="px-3 py-1.5 rounded-xl border border-purple-900/40 bg-[#12081f] text-purple-200 hover:text-orange-400 text-xs">Twitter / X</a>
+            <a href="https://t.me/UnderUndre" target="_blank" class="px-3 py-1.5 rounded-xl border border-purple-900/40 bg-[#12081f] text-purple-200 hover:text-orange-400 text-xs">Telegram</a>
+            <a href="https://www.linkedin.com/in/underundre" target="_blank" class="px-3 py-1.5 rounded-xl border border-purple-900/40 bg-[#12081f] text-purple-200 hover:text-orange-400 text-xs">LinkedIn</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-8 flex items-center justify-between text-[11px] text-purple-300/40">
+        <div class="flex gap-4">
+          <span>Privacy Policy</span>
+          <span>Terms of Service</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
