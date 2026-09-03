@@ -4,7 +4,7 @@
 **Repository**: `undreseller`  
 **Created**: 2026-08-16  
 **Status**: Draft (Clarified)  
-**Input**: Business Plan v16.0 (`docs/undreseller-business-plan.md`), Dogfooding Architecture Guide (`specs/001-init/TODO.md`), n8n MCP Integration, UndeRoute Router, and Multi-Project Landing Engine (`undrllanding`).
+**Input**: Business Plan v17.1 (`docs/undreseller-business-plan.md`), Dogfooding Architecture Guide (`specs/001-init/TODO.md`), n8n MCP Integration, UndeRoute Router, and Multi-Project Landing Engine (`undrllanding`).
 
 ---
 
@@ -112,6 +112,7 @@ So that setting `NEXT_PUBLIC_PROJECT_NAME=undreseller` displays the Productized 
 - **FR-009**: Client shop templates (`undreseller`) and dogfooding auth layers MUST support federated Single Sign-On via **Undrlla IdP (`id.undrlla.network`)**, validating signed **RS256 JWT** tokens via public JWKS endpoint (`/.well-known/jwks.json`) and mapping them to Medusa 2.0 Auth (`@medusajs/auth`) or Supabase customer profiles per `undrlla/specs/005-sso-jwt-contract.md`.
 - **FR-010**: Sprint B (14-Day SaaS MVP Factory) MUST use Code-First workflow engines (Trigger.dev v3 / Inngest) embedded directly inside the Next.js 15 repository, eliminating n8n $50k/yr SUL Embed License risks and providing 100% Apache 2.0 / MIT clean license compliance.
 - **FR-011**: Sprint A (B2B Operations & CRM Plumbing) MUST support deployment and schema integration for Open-Source CRM engines (**Twenty CRM** via `twenty-sdk` TypeScript schemas / **EspoCRM** for strict RBAC roles), eliminating monthly per-seat licensing fees ($0/mo seat fees vs $30k/yr in Salesforce) under NACE 62.01 Computer Programming compliance.
+- **FR-012**: `undreseller` MUST provide a Direct Booking Engine widget template and cold outreach pitch artifacts (targeting 18% OTA fee reduction for boutique hotels/hosts) as productized assets for local Phase 0 tech-barter bootstrapping and B2B client acquisitions.
 
 ---
 

@@ -35,6 +35,7 @@ This plan specifies the implementation steps for setting up Undreseller's comple
 - Implement `tg-lead-triage-workflow.json` in n8n with Zod TypeScript validation node and Dead-Letter queue alerts.
 - Connect n8n to `UndeRoute` AI API (`http://host.docker.internal:20129/v1/chat/completions`).
 
-### Phase 3: Undreseller Landing Page in `undrllanding`
+### Phase 3: Undreseller Landing Page & NACE 62.01 / Tech-Barter Artifacts
 - Create `projects/undreseller` in `undrllanding` with Hero, 2 Core SKUs ($3.5k/$4.9k) pricing, and 90s Loom demo section.
 - Implement project resolver in `lib/project-config.ts` driven by `process.env.NEXT_PUBLIC_PROJECT_NAME`.
+- Add Direct Booking Engine widget template and cold outreach pitch assets for local Phase 0 tech-barter bootstrapping (v17.1).

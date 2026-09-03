@@ -27,13 +27,14 @@
 
 ---
 
-### Phase 3: Undreseller Landing Page & NACE 62.01 Artifacts (Priority: P2) [US3]
+### Phase 3: Undreseller Landing Page & NACE 62.01 / Tech-Barter Artifacts (Priority: P2) [US3]
 
 - [ ] **TASK-301** `[FE]` `[US3]`: Create `projects/undreseller/` in `undrllanding` with 2 Core SKUs ($3.5k/$4.9k) pricing table and Loom demo player.
 - [ ] **TASK-302** `[FE]` `[US3]`: Create `lib/project-config.ts` inspecting `process.env.NEXT_PUBLIC_PROJECT_NAME`.
 - [ ] **TASK-303** `[FE]` `[US3]`: Update `app/(default)/page.tsx` to dynamically render Undreseller lander when `NEXT_PUBLIC_PROJECT_NAME=undreseller`.
 - [ ] **TASK-304** `[DOC]` `[US3]`: Create Product 0 (SPECIFICATION) Git export templates (OpenAPI 3.0, Supabase DDL SQL, Docker Compose Mock) for NACE 62.01 GAAR compliance.
-- [ ] **TASK-305** `[E2E]` `[US3]`: Verify build (`pnpm build`) and deploy to Vercel under `undreseller.com`.
+- [ ] **TASK-305** `[DOC]` `[US3]`: Add Direct Booking Engine widget template and cold outreach pitch templates (OTA 18% fee bypass) for Phase 0 tech-barter bootstrapping (`Volunteer-Armenia.md`).
+- [ ] **TASK-306** `[E2E]` `[US3]`: Verify build (`pnpm build`) and deploy to Vercel under `undreseller.com`.
 
 ---
 
@@ -42,7 +43,7 @@
 ```text
 TASK-101 → TASK-102 → TASK-103 → TASK-104 → TASK-105
 TASK-201 → TASK-202 → TASK-203 → TASK-204
-TASK-301 → TASK-302 → TASK-303 → TASK-304 → TASK-305
+TASK-301 → TASK-302 → TASK-303 → TASK-304 → TASK-305 → TASK-306
 ```
 
 ---
@@ -53,7 +54,7 @@ TASK-301 → TASK-302 → TASK-303 → TASK-304 → TASK-305
 |---|---|---|
 | Lane 1 (Docker Infra & Code Refactor) | TASK-101, TASK-102, TASK-103, TASK-104, TASK-105 | DevOps (`[OPS]`) & Refactor (`[REFACTOR]`) |
 | Lane 2 (SaaS & n8n) | TASK-201, TASK-202, TASK-203, TASK-204 | Backend (`[BE]`) & Frontend (`[FE]`) |
-| Lane 3 (Lander & NACE) | TASK-301, TASK-302, TASK-303, TASK-304, TASK-305 | Frontend (`[FE]`) & Docs (`[DOC]`) |
+| Lane 3 (Lander & NACE) | TASK-301, TASK-302, TASK-303, TASK-304, TASK-305, TASK-306 | Frontend (`[FE]`) & Docs (`[DOC]`) |
 
 ---
 
