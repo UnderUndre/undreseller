@@ -3,7 +3,7 @@
 **Feature Directory**: `specs/001-init`  
 **Repository**: `undreseller`  
 **Created**: 2026-08-16  
-**Status**: Draft (Clarified)  
+**Status**: Superseded (Архивировано — заменено на `specs/002-dogfood-portal` / `underundre.com`)  
 **Input**: Business Plan v17.1 (`docs/undreseller-business-plan.md`), Dogfooding Architecture Guide (`specs/001-init/TODO.md`), n8n MCP Integration, UndeRoute Router, and Multi-Project Landing Engine (`undrllanding`).
 
 ---
