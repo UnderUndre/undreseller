@@ -10,15 +10,17 @@
 ## 📖 Executive Summary & Core Concept
 
 **UnderUndre** (`underundre.com`) — международное инженерное бюро Productized Engineering & Turnkey B2B Systems.
-Портал построен на принципе **100% Dogfooding («Skin in the Game»)** с жестким физическим разделением сред:
-1. **Боевой закрытый контур (Internal Ops):** все сервисы, которые бюро продает клиентам (Sprint A: $3,500 + $500/mo FOSS Office Stack на Hetzner CPX42), развернуты и используются агентством для собственной работы 24/7 за шлюзом Authentik SSO / Cloudflare Access.
-2. **Публичные изолированные демо-песочницы (Public Showcases):** клиенты взаимодействуют с отдельными демонстрационными инстансами с синтетическими данными (mock data) и автоматическим ночным сбросом по расписанию (`seed-reset.sh` в 04:00 UTC), исключая утечку коммерческой тайны и персональных данных реальных лидов.
+Портал построен на принципе **100% Dogfooding («Skin in the Game»)**:
+1. **Боевой закрытый контур (Internal Ops):** боевой стек бюро (Twenty CRM, Outline, Chatwoot, Cal.com, Authentik, DocuSeal + PostgreSQL + PgBouncer на Hetzner CPX42) развернут для собственной работы 24/7 за шлюзом Authentik SSO / Cloudflare Access.
+2. **Публичная витрина (Showcase & Interactive Walkthroughs):** посетители сайта изучают живую работу сервисов через интерактивные встраиваемые туры (Arcade / Supademo) и прозрачные дашборды телеметрии памяти, исключая расходование оперативной памяти хоста на параллельный дублирующий демо-стек.
+3. **Безопасность периметра (Zero-Open-Ports):** категорический запрет на прямой проброс портов (Port Forwarding на бытовых роутерах). Доступ к хостам обеспечивается строго через Cloudflare Tunnel (`cloudflared`) или дата-центровый WAF.
 
 ## 📌 Clarifications
 
-### Session 2026-10-06 (Post-Audit Hardening per `gemini-3.8-flash.md`)
+### Session 2026-10-06 (Post-Audit Hardening per `gemini-3.8-flash.md` & `keenetic-red-team-audit.md`)
 - **Q (CRM Engine):** Какой селф-хостед CRM-движок использовать как основной? → **A:** **Twenty CRM (`twentyhq/twenty`)** на TypeScript/NestJS/Postgres с нативным MCP-сервером.
-- **Q (Demo Security & PII Isolation):** Как организовать демонстрацию стека без риска утечки реальных лидов (GDPR/CCPA)? → **A:** **Полная физическая изоляция Демо и Продакшена**. Боевой инстанс закрыт за Authentik SSO/mTLS. Демо-песочницы (`demo-crm.underundre.com`, `demo-plane.underundre.com`) работают на синтетических фикстурах с ночным авто-сбросом базы в 04:00 UTC.
+- **Q (Demo Security & Memory Paradox):** Как организовать демонстрацию стека без риска утечки PII и переполнения памяти на 1 VPS? → **A:** Боевой инстанс на Hetzner CPX42 закрыт за Authentik SSO/mTLS. На лендинге витрина оформляется в виде **интерактивных демо-туров (Arcade/Storylane) + скрин-видео разборов**, что сохраняет 100% RAM сервера под боевые процессы и исключает $24\text{ GB}$ перегруз.
+- **Q (Сетевая безопасность и хостинг):** Допустим ли проброс портов (Port Forwarding) на домашнем роутере (Keenetic) для бэкенда? → **A:** **Категорически ЗАПРЕЩЕНО**. Проброс портов в WAN открывает спальню сканерам Shodan/Censys, создает SSRF/OOB утечки через исходящий трафик и дает RTT-джиттер $250\text{ ms}$. Стандарт: **Zero-Open-Ports через Cloudflare Tunnel (`cloudflared`)** со строго исходящим QUIC/HTTP2 туннелем до Cloudflare Edge.
 - **Q (Router & Stack Hygiene):** Какой роутер и ORM использовать во фронтенде? → **A:** Чистый **Next.js 15 App Router (`app/`)** без гибридного зоопарка; база данных — **PostgreSQL + Prisma ORM с пулером PgBouncer** (избыточный клиентский Supabase RLS вырезан).
 - **Q (Async Task Runner):** Чем оркестрировать лидогенерацию и алерты? → **A:** Легковесный **Inngest Serverless / BullMQ** (с автоматическими ретраями) вместо развертывания отдельного тяжелого self-hosted кластера Trigger.dev.
 - **Q (Upwork & Contract Gate):** Как технически устроен шлюз мгновенной оплаты? → **A:** Для Tripwire SpecKit ($490) используется **Upwork Project Catalog** с прямой публичной ссылкой; для кастомных спринтов — ручной инвайт в Upwork Direct Contracts; DocuSeal контракт активируется строго по вебхуку оплаты 40% аванса через Stripe/Paddle.
@@ -29,7 +31,7 @@
 
 ### User Story 1 - Live Authority Hook & SaaS Savings Calculator (Priority: P1)
 
-Посетитель (фаундер SMB/CTO) заходит на `underundre.com`, видит позиционирование 3x Certified Salesforce Developer со ссылкой на официальный верификатор **Salesforce Trailblazer / Credly**, рассчитывает экономию от отказа от SaaS-налога ($15k–$40k/год) и переходит в изолированные демо-песочницы сервисов.
+Посетитель (фаундер SMB/CTO) заходит на `underundre.com`, видит позиционирование 3x Certified Salesforce Developer со ссылкой на официальный верификатор **Salesforce Trailblazer / Credly**, рассчитывает экономию от отказа от SaaS-налога ($15k–$40k/год) и изучает интерактивные туры сервисов.
 
 **Why this priority**: Главный конверсионный экран (Hero), мгновенно отстраивающий UnderUndre от традиционных агентств за счет доказанной экспертизы и интерактивного расчета ROI.
 
@@ -38,7 +40,7 @@
 **Acceptance Scenarios**:
 1. **Given** пользователь выбирает 15 сотрудников и стек Salesforce + Slack + Intercom + Notion, **When** ползунок передвигается, **Then** калькулятор отображает: «Текущий расход: $28,800/год ➔ Расход с UnderUndre: $6,000/год ➔ Экономия: $22,800/год (Окупаемость Sprint A за 55 дней)».
 2. **Given** пользователь кликает по бейджу Salesforce, **Then** открывается официальная страница подтверждения сертификации на Trailblazer.me / Credly.
-3. **Given** пользователь нажимает «Live Stack Demo», **Then** открывается интерактивная панель со статусом демонстрационных песочниц (`demo-crm.underundre.com`, `docs.underundre.com`, `demo-plane.underundre.com`, `chat.underundre.com`, `cal.underundre.com`) и графиком потребления RAM.
+3. **Given** пользователь нажимает «Live Stack Demo», **Then** открывается интерактивная панель с интерактивными турами сервисов (`Twenty CRM`, `Outline`, `Chatwoot`, `Cal.com`, `DocuSeal`) и графиком потребления RAM на боевом сервере.
 
 ---
 

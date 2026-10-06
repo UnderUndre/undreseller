@@ -9,10 +9,10 @@
 
 Разработка и запуск официального портала международного инженерного бюро **UnderUndre** (`underundre.com`) на чистом Next.js 15 App Router с защищенной архитектурой догфудинга:
 1. Конверсионный Hero-экран с верифицированным бейджем 3x Salesforce Developer (ссылка на Trailblazer.me / Credly) и калькулятором $30k FOSS-экономии.
-2. Изолированная витрина демонстрационных песочниц (`demo-crm`, `docs`, `demo-plane`, `chat`, `cal`) с синтетическими данными и ночным авто-сбросом (`seed-reset.sh`), исключающая утечку PII реальных клиентов.
+2. Интерактивная витрина сервисов (`Twenty CRM`, `Outline`, `Chatwoot`, `Cal.com`, `DocuSeal`) через встраиваемые интерактивные туры (Arcade/Storylane) и живую телеметрию памяти, исключающая запуск параллельного демо-стека на 24GB RAM.
 3. Автоматизированный легковесный интейк-конвейер (Cal.com + Inngest Serverless / BullMQ + Twenty CRM API + Telegram Alerts).
 4. Шлюз контрактации через Upwork Project Catalog ($490) и прямые договоры DocuSeal со связкой на получение 40% аванса через Stripe/Paddle.
-5. Серверный стек на Hetzner CPX42 с обязательным пулером **PgBouncer** и жестким квотированием памяти Docker Memory Fencing ($\le 14.6\text{ GB RAM}$).
+5. Серверный стек на Hetzner CPX42 с обязательным пулером **PgBouncer** ($\le 14.1\text{ GB RAM}$) и сетевым стандартом **Zero-Open-Ports через Cloudflare Tunnel (`cloudflared`)** — категорический запрет на проброс портов в бытовых роутерах (Keenetic).
 
 ---
 
@@ -20,13 +20,14 @@
 
 **Language/Version**: TypeScript 5.x, Node.js 22 LTS  
 **Primary Framework**: Next.js 15 (Pure App Router `/app`) + Tailwind CSS + shadcn/ui  
-**Database & Storage**: PostgreSQL 16 + PgBouncer (Connection Pooler) + Prisma ORM  
+**Database & Storage**: PostgreSQL 16 + PgBouncer (Connection Pooler max 30) + Prisma ORM  
 **Async Task Runner**: Inngest Serverless SDK / BullMQ (с поддержкой автоматических ретраев)  
+**Security & Networking**: **Zero-Open-Ports via Cloudflare Tunnel (`cloudflared`)**, strict bridge Docker networks, disabled sleep states  
 **Integrations**: Cal.com Embed API, Chatwoot Live Widget, DocuSeal API, Upwork Project Catalog, Stripe / Paddle Invoicing  
 **Testing**: Jest + React Testing Library (unit/component), Playwright (E2E flows)  
 **Target Platform**: Vercel / Cloudflare Pages (Frontend) + Hetzner CPX42 VPS (Dogfooded FOSS Stack)  
 **Performance Goals**: FCP $< 0.8\text{ s}$, LCP $< 1.5\text{ s}$, PageSpeed Score $\ge 95$  
-**Security & Constraints**: Изоляция боевых и демо-данных, PgBouncer pool max 30 conns, NACE 62.01 compliance  
+**Security & Constraints**: Изоляция боевых данных за SSO, отсутствие открытых портов в WAN, NACE 62.01 compliance  
 
 ---
 

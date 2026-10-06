@@ -11,8 +11,8 @@
 - [ ] `T-001` `[SETUP]` Install dependencies: Inngest SDK, Prisma client, Lucide icons, Framer Motion (`package.json`)
 - [ ] `T-002` `[DB]` Add Prisma schema models for `Lead`, `IntakeSubmission`, `BookingEvent`, `Contract` (`prisma/schema.prisma`)
 - [ ] `T-003` `[DB]` Configure Prisma Client with PgBouncer connection string in `lib/db/prisma.ts`
-- [ ] `T-004` `[OPS]` Create production `docker/docker-compose.hetzner.yml` with `pgbouncer` container (max 30 pool) and memory limits for 6 FOSS services on Hetzner CPX42
-- [ ] `T-005` `[OPS]` Create nightly demo sandbox auto-reset script `docker/seed-reset.sh` with synthetic mock fixtures
+- [ ] `T-004` `[OPS]` Create production `docker/docker-compose.hetzner.yml` with `pgbouncer` container (max 30 pool) and memory limits for 6 FOSS services on Hetzner CPX42 ($\le 14.1\text{ GB RAM}$)
+- [ ] `T-005` `[OPS]` Create Cloudflare Tunnel daemon config `docker/cloudflared.yml` enforcing the Zero-Open-Ports standard
 
 ---
 
@@ -20,7 +20,7 @@
 
 - [ ] `T-006` `[FE]` `[US1]` Create `components/landing/SavingsCalculator.tsx` with dynamic seat slider (1–50) and SaaS replacement checklist
 - [ ] `T-007` `[FE]` `[US1]` Implement `components/landing/HeroSection.tsx` with verified 3x Salesforce Developer hook (linking to Trailblazer.me/Credly) and CTA
-- [ ] `T-008` `[FE]` `[US1]` Build `components/landing/LiveStackDemo.tsx` with status chips and direct links to isolated demo sandboxes (`demo-crm`, `docs`, `demo-plane`, `chat`, `cal`)
+- [ ] `T-008` `[FE]` `[US1]` Build `components/landing/LiveStackDemo.tsx` with interactive walk-through embeds (Arcade / Storylane) for the FOSS stack without parallel server memory load
 - [ ] `T-009` `[FE]` `[US1]` Assemble main landing page layout in `app/page.tsx` (Pure App Router)
 
 ---
