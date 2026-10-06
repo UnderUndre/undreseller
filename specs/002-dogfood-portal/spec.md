@@ -17,13 +17,24 @@
 
 ## 📌 Clarifications
 
-### Session 2026-10-06 (Post-Audit Hardening per `gemini-3.8-flash.md` & `keenetic-red-team-audit.md`)
-- **Q (CRM Engine):** Какой селф-хостед CRM-движок использовать как основной? → **A:** **Twenty CRM (`twentyhq/twenty`)** на TypeScript/NestJS/Postgres с нативным MCP-сервером.
-- **Q (Demo Security & Memory Paradox):** Как организовать демонстрацию стека без риска утечки PII и переполнения памяти на 1 VPS? → **A:** Боевой инстанс на Hetzner CPX42 закрыт за Authentik SSO/mTLS. На лендинге витрина оформляется в виде **интерактивных демо-туров (Arcade/Storylane) + скрин-видео разборов**, что сохраняет 100% RAM сервера под боевые процессы и исключает $24\text{ GB}$ перегруз.
-- **Q (Сетевая безопасность и хостинг):** Допустим ли проброс портов (Port Forwarding) на домашнем роутере (Keenetic) для бэкенда? → **A:** **Категорически ЗАПРЕЩЕНО**. Проброс портов в WAN открывает спальню сканерам Shodan/Censys, создает SSRF/OOB утечки через исходящий трафик и дает RTT-джиттер $250\text{ ms}$. Стандарт: **Zero-Open-Ports через Cloudflare Tunnel (`cloudflared`)** со строго исходящим QUIC/HTTP2 туннелем до Cloudflare Edge.
-- **Q (Router & Stack Hygiene):** Какой роутер и ORM использовать во фронтенде? → **A:** Чистый **Next.js 15 App Router (`app/`)** без гибридного зоопарка; база данных — **PostgreSQL + Prisma ORM с пулером PgBouncer** (избыточный клиентский Supabase RLS вырезан).
-- **Q (Async Task Runner):** Чем оркестрировать лидогенерацию и алерты? → **A:** Легковесный **Inngest Serverless / BullMQ** (с автоматическими ретраями) вместо развертывания отдельного тяжелого self-hosted кластера Trigger.dev.
-- **Q (Upwork & Contract Gate):** Как технически устроен шлюз мгновенной оплаты? → **A:** Для Tripwire SpecKit ($490) используется **Upwork Project Catalog** с прямой публичной ссылкой; для кастомных спринтов — ручной инвайт в Upwork Direct Contracts; DocuSeal контракт активируется строго по вебхуку оплаты 40% аванса через Stripe/Paddle.
+### Session 2026-10-06 (Post-Audit Hardening per `grok-4.6.md`, `gemini-3.8-flash.md` & `keenetic-red-team-audit.md`)
+- **Q (Арифметика RAM и Memory Fencing):** Каков точный бюджет оперативной памяти контейнеров на 16 GiB Hetzner CPX42? → **A:** Суммарный лимит контейнеров жестко ограничен **13.5 GB RAM**, оставляя **2.5 GB неснижаемого буфера под ядро Linux, page cache и dockerd**:
+  - `twenty-crm` (server + worker): **2.5 GB**
+  - `chatwoot` (Puma + Sidekiq): **3.0 GB**
+  - `authentik` (server + worker): **2.0 GB**
+  - `outline`: **1.2 GB**
+  - `cal-diy`: **1.0 GB**
+  - `docuseal`: **1.0 GB**
+  - `postgres-16` (shared_buffers 1.5GB) + `pgbouncer` (max 30 pool): **2.0 GB**
+  - `redis-7`: **0.5 GB**
+  - `cloudflared` + internal reverse proxy: **0.3 GB**
+  - *Swap:* 4 GB NVMe чисто как предохранитель ядра (`vm.swappiness=10`), на воркерах `memswap_limit = mem_limit` (самоперезапуск утекающих воркеров по healthcheck без I/O троттлинга диска).
+- **Q (Лицензия Cal.com vs Cal.diy):** Какой контур календаря разворачивается как FOSS? → **A:** Разворачивается **`Cal.diy` (MIT)** для стандартного персонального букинга (после закрытия исходников Cal.com 15.04.2026). Командный роутинг при необходимости подключается через Cal.com Cloud.
+- **Q (Prisma Migrate & PgBouncer):** Как избежать сбоя миграций в transaction mode пулера? → **A:** Внедрены **два DSN**: `DATABASE_URL` (порт 6432 с `?pgbouncer=true`) для прикладных запросов и `DIRECT_URL` (порт 5432) сугубо для `prisma migrate` и DDL-структур.
+- **Q (Резервное копирование и риск сбоя NVMe):** Как защищены данные на single VPS без аппаратного RAID? → **A:** Автоматический бэкап-конвейер: `pg_dump` + WAL архивация каждые **6 часов** на изолированное шифрованное объектное хранилище (**Hetzner Storage Box / Backblaze B2**) с регулярным проверочным restore-тестом по стандарту `[P0-05: Backup 3-2-1-1-0]`.
+- **Q (GDPR / PII в Telegram):** Как отправлять алерты без утечки персональных данных в облако Telegram? → **A:** В Telegram отправляется только обезличенный `Lead ID`, имя компании и кнопка-ссылка в закрытую CRM (`crm.underundre.com` за Authentik SSO). Сырые email и телефоны в текст сообщений Telegram **не передаются**.
+- **Q (Калькулятор экономии):** Как учитывается стоимость внедрения Sprint A? → **A:** Для Года 1 формула: $(\text{SaaS Seat} \times N \times 12) - \$9,500$ (учитывая $\$3,500$ setup + $\$500 \times 12$ retainer); для Года 2+: $(\text{SaaS Seat} \times N \times 12) - \$6,000$.
+- **Q (PageSpeed NFR vs Виджеты):** Как обеспечить PageSpeed $\ge 95$ при наличии Chatwoot и Cal.com? → **A:** Скрипты Chatwoot и Cal.com загружаются **строго отложенно** (по `requestIdleCallback` или первому пользовательскому скроллу), не блокируя FCP и LCP первого экрана.
 
 ---
 
@@ -31,31 +42,31 @@
 
 ### User Story 1 - Live Authority Hook & SaaS Savings Calculator (Priority: P1)
 
-Посетитель (фаундер SMB/CTO) заходит на `underundre.com`, видит позиционирование 3x Certified Salesforce Developer со ссылкой на официальный верификатор **Salesforce Trailblazer / Credly**, рассчитывает экономию от отказа от SaaS-налога ($15k–$40k/год) и изучает интерактивные туры сервисов.
+Посетитель (фаундер SMB/CTO) заходит на `underundre.com`, видит позиционирование 3x Certified Salesforce Developer со ссылкой на официальный верификатор **Salesforce Trailblazer / Credly**, рассчитывает экономию от отказа от SaaS-налога с учетом стоимости сетапа и изучает интерактивные туры сервисов.
 
 **Why this priority**: Главный конверсионный экран (Hero), мгновенно отстраивающий UnderUndre от традиционных агентств за счет доказанной экспертизы и интерактивного расчета ROI.
 
-**Independent Test**: Доступен на `GET /`, калькулятор динамически пересчитывает годовую экономию при выборе количества сотрудников (1–50) и текущего стека (Salesforce, Slack, Intercom, Notion, Linear) и выводит чистый годовой выигрыш и срок окупаемости спринта.
+**Independent Test**: Доступен на `GET /`, калькулятор динамически пересчитывает годовую экономию при выборе количества сотрудников (1–50) и текущего стека и выводит чистый выигрыш за Год 1 ($-\$9,500$) и Год 2+ ($-\$6,000$).
 
 **Acceptance Scenarios**:
-1. **Given** пользователь выбирает 15 сотрудников и стек Salesforce + Slack + Intercom + Notion, **When** ползунок передвигается, **Then** калькулятор отображает: «Текущий расход: $28,800/год ➔ Расход с UnderUndre: $6,000/год ➔ Экономия: $22,800/год (Окупаемость Sprint A за 55 дней)».
+1. **Given** пользователь выбирает 15 сотрудников и стек Salesforce + Slack + Intercom + Notion ($28,800/год), **When** ползунок передвигается, **Then** калькулятор отображает: «Год 1: Расход $9,500 ➔ Чистая экономия $19,300 (Окупаемость сетапа за 45 дней); Год 2+: Расход $6,000/год ➔ Экономия $22,800/год».
 2. **Given** пользователь кликает по бейджу Salesforce, **Then** открывается официальная страница подтверждения сертификации на Trailblazer.me / Credly.
-3. **Given** пользователь нажимает «Live Stack Demo», **Then** открывается интерактивная панель с интерактивными турами сервисов (`Twenty CRM`, `Outline`, `Chatwoot`, `Cal.com`, `DocuSeal`) и графиком потребления RAM на боевом сервере.
+3. **Given** пользователь нажимает «Live Stack Demo», **Then** открывается интерактивная панель с интерактивными турами сервисов (`Twenty CRM`, `Outline`, `Chatwoot`, `Cal.diy`, `DocuSeal`) и проверенным графиком потребления RAM (13.5 GB cap).
 
 ---
 
 ### User Story 2 - Automated Scoping Intake & Cal.com Embed (Priority: P2)
 
-Потенциальный клиент нажимает «Book 20-Min Scoping Call», проходит 4-шаговый квалификационный опрос (размер команды, текущие боли, бюджет, серверные предпочтения) и выбирает удобный слот во встроенном виджете Cal.com.
+Потенциальный клиент нажимает «Book 20-Min Scoping Call», проходит 4-шаговый квалификационный опрос и выбирает удобный слот во встроенном виджете Cal.com.
 
 **Why this priority**: Фильтрует нецелевые лиды («воздуханов»), сохраняет квалификационные данные прямо в Twenty CRM и бронирует звонок без ручной переписки.
 
-**Independent Test**: Доступен на `/book`, отправка формы создает запись в PostgreSQL, запускает воркер Inngest/BullMQ и открывает слот в Cal.com.
+**Independent Test**: Доступен на `/book`, отправка формы создает запись в PostgreSQL через `DIRECT_URL`, запускает воркер Inngest и открывает слот в Cal.com.
 
 **Acceptance Scenarios**:
-1. **Given** пользователь заполнил интейк-форму, **When** он выбирает время в Cal.com и подтверждает встречу, **Then** воркер Inngest/BullMQ:
+1. **Given** пользователь заполнил интейк-форму, **When** он выбирает время в Cal.com и подтверждает встречу, **Then** воркер Inngest:
    - Создает лид в боевой `crm.underundre.com` (Twenty CRM) со всеми полями интейка;
-   - Шлет мгновенный алерт в Telegram фаундеру с кнопками подтверждения;
+   - Шлет обезличенный алерт в Telegram фаундеру («Новый лид #124 от Acme Corp, слот 14:00 UTC») со ссылкой в закрытую CRM без утечки PII;
    - Создает приватную заметку в `docs.underundre.com` (Outline) для ведения брифа.
 
 ---
@@ -70,17 +81,17 @@
 
 **Acceptance Scenarios**:
 1. **Given** клиент заказывает Tripwire SpecKit Audit ($490), **When** выбирает Upwork, **Then** открывается страница Upwork Project Catalog с четким SLA «48 hours delivery, OpenAPI 3.0 + Supabase DDL + Docker Mock».
-2. **Given** клиент выбирает Direct B2B Contract, **When** подписывает договор в DocuSeal, **Then** формируется инвойс на 40% аванса через Stripe/Paddle, а статус проекта переходит в `ACTIVE` только после поступления платежа по вебхуку.
+2. **Given** клиент выбирает Direct B2B Contract, **When** подписывает договор в DocuSeal, **Then** формируется инвойс на 40% аванса через Stripe/Paddle, а статус проекта переходит в `ACTIVE` только после поступления платежа по вебхуку с проверкой идемпотентного `event_id`.
 
 ---
 
 ### User Story 4 - Live Omnichannel Support (Chatwoot Widget) (Priority: P4)
 
-Посетитель сайта нажимает на иконку онлайн-чата в правом нижнем углу и задает технический вопрос. Сообщение мгновенно попадает в селф-хостед инбокс `chat.underundre.com` (Chatwoot), откуда фаундер отвечает через веб или мобильное приложение.
+Посетитель сайта нажимает на иконку онлайн-чата в правом нижнем углу и задает технический вопрос. Скрипт Chatwoot подгружается по клику или `requestIdleCallback`, сообщение попадает в селф-хостед инбокс `chat.underundre.com`.
 
-**Why this priority**: Прямая демонстрация работы омниканального виджета Chatwoot на реальном трафике лендинга.
+**Why this priority**: Прямая демонстрация работы омниканального виджета Chatwoot на реальном трафике лендинга без деградации PageSpeed.
 
-**Independent Test**: Виджет Chatwoot загружается на всех публичных страницах `underundre.com`, сообщение посетителя появляется в инбоксе `chat.underundre.com`.
+**Independent Test**: Виджет Chatwoot отложено инициализируется на страницах `underundre.com`, сообщение посетителя появляется в инбоксе `chat.underundre.com`.
 
 ---
 
@@ -89,20 +100,21 @@
 ### 1. Frontend & UI (Next.js 15 App Router `/app`)
 * **FR-01 (Clean App Router Architecture):** Использование строго `app/layout.tsx`, `app/page.tsx`, `app/book/page.tsx`, `app/pricing/page.tsx`.
 * **FR-02 (Hero Section & Verified Badges):** Заголовок, подзаголовок, кликабельный бейдж 3x Salesforce Certified Developer со ссылкой на Trailblazer.me/Credly, кнопки CTA.
-* **FR-03 (SaaS Savings Interactive Calculator):** Ползунки количества сотрудников (1–50) и чекбоксы заменяемых сервисов. Формула: $\text{Savings} = \sum (\text{SaaS Monthly Seat} \times N \times 12) - \$6,000$.
-* **FR-04 (Live Dogfooding Dashboard):** Табы со статусом 6 поддоменов (`crm`, `docs`, `plane`, `chat`, `cal`, `auth`) с кнопками входа в демо-режим.
+* **FR-03 (SaaS Savings Interactive Calculator):** Ползунки количества сотрудников (1–50) и чекбоксы заменяемых сервисов. Формула: Год 1 $= \sum (\text{SaaS Monthly Seat} \times N \times 12) - \$9,500$; Год 2+ $= \sum (\text{SaaS Monthly Seat} \times N \times 12) - \$6,000$.
+* **FR-04 (Live Dogfooding Dashboard):** Табы со статусом сервисов (`Twenty CRM`, `Outline`, `Chatwoot`, `Cal.diy`, `Authentik`) и интерактивными турами.
 * **FR-05 (Product Ladder Cards):**
   * *Card 0: Tripwire SpecKit Audit* — $350–$490 Flat, 24–48h SLA (ссылка на Upwork Project Catalog).
   * *Card 1: Sprint A (FOSS Office Stack)* — $3,500 setup + $500/mo retainer.
   * *Card 2: Sprint B (14-Day SaaS MVP Factory)* — $4,900 Flat.
 
 ### 2. Backend, Database & Pipelines (`/app/api`)
-* **FR-06 (PostgreSQL & Prisma Schema with PgBouncer):** Таблицы `Lead`, `IntakeSubmission`, `CalculatorLog`, `BookingEvent`, `Contract`. Подключение к базе строго через `PgBouncer` (Connection Pooling).
-* **FR-07 (Inngest / BullMQ Task Engine):** Воркер `lead-enrichment`: валидация email $\to$ создание лида в боевой Twenty CRM $\to$ алерт в Telegram фаундеру $\to$ создание бриф-документа в Outline.
-* **FR-08 (Cal.com Webhook Handler):** Синхронизация статусов встреч (`/app/api/webhooks/calcom/route.ts`).
-* **FR-09 (DocuSeal & Payment Webhook Handler):** Связка подписи договора с получением 40% оплаты через Stripe/Paddle (`/app/api/webhooks/payment/route.ts`).
+* **FR-06 (PostgreSQL & Dual Prisma DSNs):** Таблицы `Lead`, `IntakeSubmission`, `CalculatorLog`, `BookingEvent`, `Contract`. `DATABASE_URL` через PgBouncer (порт 6432) для транзакций, `DIRECT_URL` (порт 5432) для миграций.
+* **FR-07 (Inngest Task Engine):** Воркер `lead-enrichment`: валидация email $\to$ создание лида в Twenty CRM $\to$ обезличенный алерт в Telegram $\to$ бриф в Outline.
+* **FR-08 (Cal.com Webhook Handler):** Синхронизация статусов встреч (`/app/api/webhooks/calcom/route.ts`) с проверкой подписи и идемпотентности.
+* **FR-09 (DocuSeal & Payment Webhook Handler):** Связка подписи договора с получением 40% оплаты через Stripe/Paddle (`/app/api/webhooks/payment/route.ts`) с защитой от повторной обработки по `event_id`.
 
 ### 3. Non-Functional Requirements, DevOps & Security
-* **NFR-01 (Performance):** PageSpeed Score $\ge 95$ на десктопе, First Contentful Paint $< 0.8\text{ s}$.
-* **NFR-02 (Zero Data Leak Isolation):** Боевая CRM и таск-трекер закрыты за Authentik SSO/mTLS. Демо-песочницы вынесены на изолированные поддомены с синтетическими данными и ночным сбросом (`seed-reset.sh` в 04:00 UTC).
-* **NFR-03 (Memory Fencing & PgBouncer Spec):** Конфигурация Docker Compose с обязательным `pgbouncer` контейнером (лимит пула 30 коннектов) и лимитами памяти (`limits.memory`): Twenty CRM (2.5G), Chatwoot (3.5G), Outline (1.5G), Cal.com (1.5G), Authentik (2.0G), Postgres+PgBouncer (2.5G), Redis (0.8G), Traefik (0.3G). Суммарно $\le 14.6\text{ GB RAM}$.
+* **NFR-01 (Performance & Lazy Loading):** PageSpeed Score $\ge 95$ на десктопе, First Contentful Paint $< 0.8\text{ s}$. Скрипты Chatwoot и Cal.com загружаются строго через `requestIdleCallback` или по первому скроллу.
+* **NFR-02 (Zero Data Leak & Zero-Open-Ports Isolation):** Боевая CRM и сервисы закрыты за Authentik SSO/mTLS. Доступ к серверу — строго через Cloudflare Tunnel (`cloudflared`) с правилом `nftables default drop` на все входящие порты.
+* **NFR-03 (Hardened Memory Fencing Spec):** Конфигурация Docker Compose с обязательным `pgbouncer` контейнером (лимит пула 30 коннектов) и суммарным лимитом контейнеров **$\le 13.5\text{ GB RAM}$** при неснижаемом буфере хоста **$>2.5\text{ GB}$** на Hetzner CPX42 (16 GiB).
+* **NFR-04 (Offsite Automated PITR Backup):** Автоматический дамп PostgreSQL каждые 6 часов на Hetzner Storage Box / Backblaze B2 по стандарту `[P0-05: Backup 3-2-1-1-0]`.
