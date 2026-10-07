@@ -10,9 +10,9 @@
 Разработка и запуск официального портала международного инженерного бюро **UnderUndre** (`underundre.com`) на чистом Next.js 15 App Router с защищенной архитектурой догфудинга:
 1. Конверсионный Hero-экран с верифицированным бейджем 3x Salesforce Developer (ссылка на Trailblazer.me / Credly) и калькулятором $30k FOSS-экономии (с честным учетом $9,500 расходов Года 1).
 2. Интерактивная витрина сервисов (`Twenty CRM`, `Outline`, `Chatwoot`, `Cal.diy`, `DocuSeal`) через встраиваемые интерактивные туры (Arcade/Storylane) и живую телеметрию памяти, исключающая запуск параллельного демо-стека на 24GB RAM.
-3. Автоматизированный легковесный интейк-конвейер (Cal.diy + Inngest Serverless / BullMQ + Twenty CRM API + Telegram Alerts без передачи сырых PII).
+3. Автоматизированный легковесный интейк-конвейер (Cal.diy + Inngest Cloud in-process + Twenty CRM API + Telegram Alerts без передачи сырых PII).
 4. Шлюз контрактации через Upwork Project Catalog ($490) и прямые договоры DocuSeal со связкой на получение 40% аванса через Stripe/Paddle с проверкой `event_id`.
-5. Серверный стек на Hetzner CPX42: лимит контейнеров **$\le 13.5\text{ GB RAM}$** при неснижаемом буфере хоста **$>2.5\text{ GB}$**, обязательный пулер **PgBouncer** (max 30), dual DSN для Prisma, автоматический оффсайт-бэкап каждые 6 часов и сетевой стандарт **Zero-Open-Ports через Cloudflare Tunnel (`cloudflared`)** — категорический запрет на проброс портов в бытовых роутерах (Keenetic).
+5. Единый VPS **Hetzner CPX42** (16 GiB, `fsn1`): весь Next.js App Router (SSR + API routes) в контейнере `portal` рядом с боевым стеком — PaaS-serverless (Vercel) исключён, так как serverless-функции не имеют TCP-маршрута к Postgres за `nftables default drop`. Лимит контейнеров **$\le 13.5\text{ GB RAM}$** (сумма **13.4 GB**) при неснижаемом буфере хоста **$\ge 2.6\text{ GB}$**, обязательный пулер **PgBouncer** (max 30), dual DSN (`DATABASE_URL` — только runtime, `DIRECT_URL` — только миграции), PITR-бэкап pgBackRest/WAL-G (base 6h + непрерывный WAL, RPO ≤ 5 мин) в две immutable-копии и сетевой стандарт **Zero-Open-Ports через Cloudflare Tunnel (`cloudflared`)** — категорический запрет на проброс портов в бытовых роутерах (Keenetic).
 
 ---
 
@@ -20,13 +20,13 @@
 
 **Language/Version**: TypeScript 5.x, Node.js 22 LTS  
 **Primary Framework**: Next.js 15 (Pure App Router `/app`) + Tailwind CSS + shadcn/ui  
-**Database & Storage**: PostgreSQL 16 + PgBouncer (Transaction Pooling max 30) + Dual Prisma DSNs (`DATABASE_URL` + `DIRECT_URL`)  
-**Async Task Runner**: Inngest Serverless SDK / BullMQ (с поддержкой автоматических ретраев)  
+**Database & Storage**: PostgreSQL 16 + PgBouncer (Transaction Pooling max 30) + Dual Prisma DSNs (`DATABASE_URL`:6432 — только runtime; `DIRECT_URL`:5432 — только migrate/DDL)  
+**Async Task Runner**: Inngest Cloud (in-process handlers внутри `portal`; без BullMQ и отдельного worker-контейнера), автоматические ретраи  
 **Security & Networking**: **Zero-Open-Ports via Cloudflare Tunnel (`cloudflared`)**, `nftables default drop`, bridge Docker networks  
-**Disaster Recovery**: Automated 6h encrypted `pg_dump` + WAL offsite backups (Hetzner Storage Box / Backblaze B2, `[P0-05]`)  
+**Disaster Recovery**: pgBackRest/WAL-G — base backup 6h + непрерывная WAL-архивация (PITR, RPO ≤ 5 мин) → Hetzner Storage Box **и** Backblaze B2 (object-lock ≥ 30 дней), `[P0-05]`  
 **Integrations**: Cal.diy Embed API, Chatwoot Live Widget (отложенная загрузка `requestIdleCallback`), DocuSeal API, Upwork Project Catalog, Stripe / Paddle Invoicing  
 **Testing**: Jest + React Testing Library (unit/component), Playwright (E2E flows)  
-**Target Platform**: Vercel / Cloudflare Pages (Frontend) + Hetzner CPX42 VPS (Dogfooded FOSS Stack)  
+**Target Platform**: Единый VPS Hetzner CPX42 (16 GiB, `fsn1`) — Frontend (SSR App Router) + API routes + FOSS-стек за Cloudflare Tunnel; Vercel / Cloudflare Pages исключены (serverless-функции не имеют TCP-маршрута к Postgres за `nftables default drop`)  
 **Performance Goals**: FCP $< 0.8\text{ s}$, LCP $< 1.5\text{ s}$, PageSpeed Score $\ge 95$  
 **Security & Constraints**: Изоляция боевых данных за SSO, отсутствие PII в Telegram, NACE 62.01 compliance  
 
@@ -47,10 +47,10 @@ undreseller/
 │   │   └── page.tsx                   # Interactive topology & Docker memory specs
 │   └── api/
 │       ├── leads/
-│       │   └── submit/route.ts        # Lead intake ingestion endpoint (via DIRECT_URL)
+│       │   └── submit/route.ts        # Lead intake ingestion endpoint (via DATABASE_URL / PgBouncer 6432)
 │       ├── inngest/route.ts           # Inngest background task handler
 │       └── webhooks/
-│           ├── calcom/route.ts        # Cal.diy booking webhook handler
+│           ├── caldiy/route.ts        # Cal.diy booking webhook handler
 │           ├── docuseal/route.ts      # DocuSeal contract signed handler
 │           └── payment/route.ts       # Stripe/Paddle 40% deposit handler (idempotent event_id)
 ├── components/
@@ -62,7 +62,7 @@ undreseller/
 │   │   └── EscrowTrustGate.tsx        # Upwork Project Catalog vs DocuSeal + Stripe
 │   ├── booking/
 │   │   ├── IntakeForm.tsx             # 4-step qualifying questionnaire
-│   │   └── CalComEmbed.tsx            # Inline Cal.diy 20-min scheduler (deferred load)
+│   │   └── CalDiyEmbed.tsx            # Inline Cal.diy 20-min scheduler (deferred load)
 │   └── common/
 │       └── ChatwootWidget.tsx         # Lazy-loaded self-hosted live chat (requestIdleCallback)
 ├── lib/
@@ -76,9 +76,9 @@ undreseller/
 │   └── db/
 │       └── prisma.ts                  # Prisma Client with dual DSNs (DATABASE_URL + DIRECT_URL)
 └── docker/
-    ├── docker-compose.hetzner.yml     # Production CPX42 compose with PgBouncer & 13.5GB cap
+    ├── docker-compose.hetzner.yml     # Production CPX42 compose: FOSS stack + portal + PgBouncer, 13.4GB cap
     ├── cloudflared.yml                # Cloudflare Tunnel zero-open-ports configuration
-    └── backup-offsite.sh              # 6-hour automated offsite backup script to B2/Storage Box
+    └── backup-offsite.sh              # pgBackRest/WAL-G: 6h base backup + continuous WAL push to Storage Box + B2
 ```
 
 ---
@@ -88,11 +88,12 @@ undreseller/
 ### 1. Database Schema (`prisma/schema.prisma`)
 * `Lead`: `id`, `email`, `name`, `company`, `teamSize`, `currentStack` (JSON), `estimatedSavings`, `status` (NEW, QUALIFIED, CALLED, WON, LOST), `crmLeadId`, `createdAt`.
 * `IntakeSubmission`: `id`, `leadId`, `projectType` (TRIPWIRE, SPRINT_A, SPRINT_B), `budgetRange`, `timelineDays`, `hostingPreference` (HETZNER, AWS, DIGITALOCEAN), `notes`, `submittedAt`.
+* `CalculatorLog`: `id`, `teamSize`, `currentStack` (JSON), `estimatedSavingsYear1`, `estimatedSavingsYear2`, `createdAt`.
 * `BookingEvent`: `id`, `leadId`, `calBookingUid`, `startTime`, `endTime`, `meetingUrl`, `status`.
 * `Contract`: `id`, `leadId`, `contractType` (UPWORK_CATALOG, DOCUSEAL_DIRECT), `status` (PENDING, SIGNED, DEPOSIT_PAID, COMPLETED), `amount`, `contractUrl`, `depositPaidAt`, `eventId`.
 
 ### 2. Integration Webhook Endpoints
-* `POST /app/api/webhooks/calcom` — валидация сигнатуры, обновление `BookingEvent`, триггер Inngest события `lead.booked`.
+* `POST /app/api/webhooks/caldiy` — валидация сигнатуры, обновление `BookingEvent`, триггер Inngest события `lead.booked`.
 * `POST /app/api/webhooks/docuseal` — валидация подписи, обновление `Contract.status = SIGNED`.
 * `POST /app/api/webhooks/payment` — вебхук Stripe/Paddle: проверка идемпотентного `eventId`, перевод `Contract.status = DEPOSIT_PAID`, уведомление фаундера о старте спринта.
 
@@ -106,5 +107,5 @@ undreseller/
 4. **Step 4 (Intake & Booking):** Создание `/app/book/page.tsx` с интейк-формой и отложенным виджетом Cal.diy.
 5. **Step 5 (Inngest Pipeline):** Настройка воркера Inngest (`lead.created` $\to$ Twenty CRM $\to$ обезличенный Telegram-алерт $\to$ Outline бриф).
 6. **Step 6 (Contract & Escrow Gateway):** Подключение прямых ссылок Upwork Project Catalog ($490) и DocuSeal + Stripe вебхуков с проверкой `event_id`.
-7. **Step 7 (Docker Compose & Backup):** Сборка `docker-compose.hetzner.yml` с контейнером `pgbouncer`, `cloudflared` и 6-часовым оффсайт-бэкапом `backup-offsite.sh`.
+7. **Step 7 (Docker Compose & Backup):** Сборка `docker-compose.hetzner.yml` — FOSS-стек + `portal` + `pgbouncer` (Postgres без `ports:` на хост), `cloudflared`; образы собираются в CI (GitHub Actions → GHCR), на VPS только pull; бэкап-конвейер pgBackRest/WAL-G `backup-offsite.sh` (base 6h + непрерывный WAL).
 8. **Step 8 (E2E Verification):** Прогон Playwright тестов, замер PageSpeed $\ge 95$ и верификация типов (`npm run check-types`).
