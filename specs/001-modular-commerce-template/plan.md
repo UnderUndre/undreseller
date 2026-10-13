@@ -36,6 +36,7 @@ app/
       reindex/route.ts
       escalations/route.ts
       orders/[id]/purge/route.ts
+      users/purge/route.ts
 components/
   catalog/ItemCard.tsx
   booking/SlotGrid.tsx
@@ -48,25 +49,26 @@ lib/
   db/prisma.ts                      # runtime client uses DATABASE_URL only
   booking/windows.ts
   booking/lock.ts                   # expiry UPDATE + INSERT, maps 23P01 → 409
-  security/initData.ts              # HMAC-SHA256 + auth_date ≤ 3600s
-  security/adminAuth.ts             # Bearer vs ADMIN_TOKEN, timingSafeEqual
+  security/initData.ts              # HMAC-SHA256 + auth_date ≤ 3600s (±60s skew)
+  security/adminAuth.ts             # Bearer vs ADMIN_TOKEN (dual rotation), timingSafeEqual, audit logging
   security/rateLimiter.ts           # lru-cache; valid because replica count = 1
   security/whatsappSignature.ts     # HMAC over raw body
   bot/telegramBot.ts
-  bot/whatsappClient.ts             # template send only
+  bot/whatsappClient.ts             # template send only, backoff retry
   bot/cooldown.ts
-  ai/documentParser.ts              # 10 MB / 50 pages, 500/50 chunks
-  ai/knowledgeEngine.ts             # FTS top 5, model ids from env
+  ai/documentParser.ts              # 10 MB / 50 pages, 500/50 chunks, 200 chunks cap
+  ai/knowledgeEngine.ts             # FTS top 5, model ids from env, dual-failure immediate escalation
   payments/stars.ts                 # integer XTR
   payments/nowpayments.ts           # sig + 99% rule
   payments/fulfillment.ts           # the one PAID transaction
-  telemetry/logger.ts               # denylist
+  telemetry/logger.ts               # denylist + admin audit logging
   jobs/inngest.ts                   # functions listed in spec §2.8
 prisma/
   schema.prisma
   migrations/<ts>_init/migration.sql
   migrations/<ts>_init/down.sql     # drops objects of this migration only
 scripts/seed.ts
+scripts/drain-inbox.ts              # emergency offline drain utility
 docker/bench-memory.sh
 docs/whitelabel-quickstart.md
 tests/e2e/commerce-flow.spec.ts
@@ -83,20 +85,20 @@ Postgres runs as its **own** container. App RSS is recorded; 500 MB is not a shi
 
 ## 2. Decisions the tasks are not allowed to reopen
 
-1. **Retrieval.** `plainto_tsquery(ftsConfig)` → top 5 `KnowledgeChunk` rows → one LLM call. No full-document prompt path.
-2. **Jobs.** Inngest Cloud orchestrates. Functions run in this app through `app/api/inngest`. There is no second worker. Async handlers commit `InboxEvent`, then `inngest.send` with the row id, and return 200 only after send accepts. The inbox cron is every 1 minute, not 30 s. It resends `PENDING` rows older than 15 s and marks `FAILED` after 10 misses. LLM, template send, invoice create, reindex, hold sweep, PII purge, and that resend are functions. Stars `pre_checkout_query` and `successful_payment` are **not** functions: the Telegram webhook calls `lib/payments/stars.ts` and answers before it returns.
+1. **Retrieval.** `plainto_tsquery(ftsConfig)` (SLA < 50ms) → top 5 `KnowledgeChunk` rows → one LLM call. Hard cap: ≤ 200 chunks (~100k tokens). Atomic transaction with `DELETE` before `INSERT`. Advisory lock `pg_try_advisory_xact_lock(hashtext('knowledge_reindex'))` returns 409 if locked. No full-document prompt path.
+2. **Jobs.** Inngest Cloud orchestrates. Functions run in this app through `app/api/inngest`. There is no second worker. Async handlers commit `InboxEvent`, then `inngest.send` with the row id, and return 200 only after send accepts. The inbox cron is every 1 minute, not 30 s. It resends `PENDING` rows older than 15 s and marks `FAILED` after 10 misses. Emergency offline drain `scripts/drain-inbox.ts` (`npm run inbox:drain`) allows host-side sequential queue processing during extended Inngest outages. Outbound messenger dispatches feature exponential backoff with jitter and 429 Retry-After handling. Dual LLM errors immediately escalate without waiting for the 8s wall timeout. LLM, template send, invoice create, reindex, hold sweep, PII purge, and resend are functions. Stars `pre_checkout_query` and `successful_payment` are **not** functions: the Telegram webhook calls `lib/payments/stars.ts` and answers before it returns.
 3. **Replicas.** Compose file sets `deploy.replicas: 1` for the app. Comment in `rateLimiter.ts` points at spec §2.9.
 4. **DSN.** `lib/db/prisma.ts` reads `DATABASE_URL`. `DIRECT_URL` is read only by `scripts/migrate.ts`. A grep test fails the build if `app/` or `lib/` reads `DIRECT_URL`. No dump helper under `lib/`.
-5. **Lock.** `btree_gist` + `EXCLUDE USING gist` as in spec §2.6. Application lock function does not use `SELECT … FOR UPDATE` on a newly inserted reservation as the concurrency control.
+5. **Lock.** `btree_gist` + `EXCLUDE USING gist` as in spec §2.6. Application lock function does not use `SELECT … FOR UPDATE` on a newly inserted reservation as the concurrency control. Late payment for an expired/rebooked slot records payment and alerts admin for manual rescheduling.
 6. **States.** `PENDING | PAID | CANCELLED | FULFILLED`. Reservation `HELD | BOOKED | RELEASED`. No `CONFIRMED`, no `PERMANENT_BOOKED`.
 7. **Stock.** Decremented only inside the PAID transaction. Released only when a `PAID` order is cancelled by admin. `UPDATE … WHERE stock >= qty` is the guard.
 8. **Rails.** Stars (`starsPrice` integer) and NOWPayments. Checkout UI has two buttons. No Stripe/Paddle/YooKassa/TON/raw address.
 9. **WhatsApp.** Graph API template send using `ShopSettings.whatsappTemplateName`. No session text.
-10. **initData.** `lib/security/initData.ts` is the only implementation. `TelegramProvider.tsx` does not verify initData.
-11. **Admin.** Bearer `ADMIN_TOKEN`. Items, hours, reindex, escalation list, purge. Images are URLs.
+10. **initData.** `lib/security/initData.ts` is the only implementation. Validates `auth_date <= now + 60s` (±60s clock skew) and `now - auth_date <= 3600s`. `TelegramProvider.tsx` does not verify initData.
+11. **Admin.** Bearer `ADMIN_TOKEN` (supports `NEW_TOKEN,OLD_TOKEN` comma-split for zero-downtime rotation). Items, hours, reindex, escalation list, orders purge, and user purge (`/api/admin/users/purge`). All admin requests write `[ADMIN_ACTION]` audit logs via `logger.ts` without PII. Images are URLs.
 12. **Logs.** `logger.ts` drops keys in the denylist (spec §2.11) recursively before write.
 13. **Schema lifecycle.** First migration is create-only. Header of `down.sql` forbids running it on a database with client orders. Later migrations follow expand/contract; this plan does not include one.
-14. **Backup.** No backup daemon in this repo. Quickstart says RPO = host Restic/`pg_dump` interval (confirm on Day 14), RTO = restore dump, not PITR.
+14. **Backup & DR.** No backup daemon in this repo. Quickstart says RPO = host Restic/`pg_dump` interval (confirm on Day 14), RTO = restore dump, not PITR. Mandatory verified restore drill into isolated PostgreSQL container required before Day-14 client handover.
 15. **Commercial.** Quickstart states Sprint B is 14 days / $4,900, Demand Gate, Day-14 $1 charge, and that the legacy fork's v16.0 business plan is not the source. This repo's `LICENSE` stays MIT.
 16. **Base.** No fork of Cal.diy, Payload, Medusa, Vendure, Saleor, Vercel Commerce, or Your Next Store. Slots stay the gist exclusion in this database.
 

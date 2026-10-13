@@ -57,6 +57,13 @@ Stars + NOWPayments                         frozen through Phase A
 one app container; RSS measured             Redis + Meili + Medusa workers
 ```
 
+### 1.4. Glossary & Domain Terminology
+
+- **Template Codebase**: The clean, cloneable Next.js 15 repository template (`undreseller`) implementing Track 1 light commerce.
+- **Storefront UI**: Public-facing Next.js App Router catalog and checkout interface, shared between desktop web browsers and Telegram Mini App (TMA).
+- **App Container**: The single runtime Docker container running Next.js SSR + API routes + in-process Inngest function handlers (`deploy.replicas: 1`).
+- **Client Tenant**: Individual customer deployment provisioned from this template with unique environment variables, brand assets, and database schema.
+
 ---
 
 ## 2. Clarifications & Architectural Decisions
@@ -77,7 +84,7 @@ The catalog and the booking page are the same Next.js routes a browser uses. Ins
 
 `initData` is checked only when the caller claims a Telegram user:
 
-- `POST /api/booking/lock` and `POST /api/checkout` with an `initData` field: HMAC-SHA256 per Telegram's algorithm, key derived from `TELEGRAM_BOT_TOKEN`. `auth_date` older than **3600 s** → 401. The order stores `customerTgId` from the checked payload, never from a separate client field.
+- `POST /api/booking/lock` and `POST /api/checkout` with an `initData` field: HMAC-SHA256 per Telegram's algorithm, key derived from `TELEGRAM_BOT_TOKEN`. Validates `auth_date <= now + 60s` (±60s clock skew tolerance between client/Telegram and server) and `now - auth_date <= 3600s`. Older or future beyond 60s → 401. The order stores `customerTgId` from the checked payload, never from a separate client field.
 - The same routes **without** `initData` are a browser checkout: require `customerName` and `customerPhone`, leave `customerTgId` null. Sending a Telegram id without `initData` → 401.
 - Stars `pre_checkout_query` does not carry `initData`. The order was already bound to `customerTgId` at checkout. The query only re-reads that order's hold and stock.
 
@@ -86,11 +93,11 @@ The catalog and the booking page are the same Next.js routes a browser uses. Ins
 Postgres full-text only. No "or paste the whole file into the prompt" branch.
 
 - Input files: `content/knowledge.md` (required) and `content/knowledge.pdf` (optional).
-- Caps before parse: **10 MB**, **50 PDF pages**. Over the cap, reindex fails the job and does not parse.
+- Caps before parse: **10 MB**, **50 PDF pages**. Hard ceiling of **200 chunks** (~100,000 tokens) on total `KnowledgeChunk` rows. Over the cap, reindex fails the job and does not parse.
 - Chunks: **500 tokens**, overlap **50**, split with `js-tiktoken` encoding `cl100k_base` (exact package version in T-001, no `latest`). Each row's `tsv` is `to_tsvector(ftsConfig, content)` in the same `INSERT`. No trigger. GIN index as in §6.
-- A question runs `plainto_tsquery` on the shop language (`shop.config.ts` → `ftsConfig`, default `simple`). Top **5** chunks, hard ceiling **8,000 tokens** of context.
+- A question runs `plainto_tsquery` on the shop language (`shop.config.ts` → `ftsConfig`, default `simple`) with an SLA of `< 50ms`. Top **5** chunks, hard ceiling **8,000 tokens** of context.
 - Zero hits, or the model says it cannot answer from those chunks → the fixed escalation sentence and an `EscalationTicket`. No second retrieval strategy.
-- PDF/markdown parse runs inside the reindex **job**, not on the webhook request path.
+- PDF/markdown parse runs inside the reindex **job**, not on the webhook request path. Reindex executes in an atomic transaction (`DELETE FROM "KnowledgeChunk"` before batch `INSERT`), protected by a PostgreSQL advisory lock (`pg_try_advisory_xact_lock(hashtext('knowledge_reindex'))`), returning 409 Conflict if a reindex is already in progress.
 - Reindex: `POST /api/admin/reindex` (admin token) enqueues the job. Boot does not re-parse a PDF.
 
 ### 2.4. Prepayment — two rails
@@ -146,11 +153,13 @@ ALTER TABLE "SlotReservation"
 - Lock transaction, in order: `UPDATE` this item's expired `HELD` rows to `RELEASED`; `INSERT` the new `HELD` row. A conflicting insert raises `23P01`; the API returns **409**. Two shoppers cannot both hold the same range, because the constraint is on the range, not on a random new id.
 - `SELECT … FOR UPDATE` on a freshly inserted row is not the lock. The gist exclusion is the lock.
 - Sweeper job (every 60 s): `HELD` with `holdExpiresAt <= now()` → `RELEASED`, and the parent `PENDING` order → `CANCELLED`.
+- Late payment collision: If `successful_payment` arrives for a `CANCELLED` order whose hold was released, `PaymentEvent` idempotency records payment, order moves to `PAID`, and stock decrements. If the underlying slot range was re-booked by a concurrent customer in the interim, the reservation transition logs `[SLOT_OVERBOOK_COLLISION]`, marks slot reservation as requiring operator action, and dispatches an immediate Telegram alert to `ADMIN_CHAT_ID` with the order id for manual rescheduling.
 - Services (`stock IS NULL`) do not check stock. Products (`stock` integer ≥ 0) refuse a checkout when `stock < quantity`. Stock changes only in the PAID / cancel-after-PAID transaction (`UPDATE … WHERE stock >= $qty`).
 
 ### 2.7. Admin (FR-01 is real)
 
-Public visitors read the catalog. Writes require `Authorization: Bearer` equal to `ADMIN_TOKEN` (`timingSafeEqual`). One admin token, no accounts, no RBAC matrix.
+Public visitors read the catalog. Writes require `Authorization: Bearer` equal to `ADMIN_TOKEN` (`timingSafeEqual`). Zero-downtime token rotation supports comma-separated dual tokens (`NEW_TOKEN,OLD_TOKEN`) in `ADMIN_TOKEN` during transition windows.
+- **Admin Audit Trail:** Every request to `/api/admin/*` emits a structured log event `[ADMIN_ACTION] action=<path> method=<METHOD> targetId=<id> status=<STATUS>` via `logger.ts`. Tokens, passwords, and PII are never logged.
 
 | Lives in | Changes without image rebuild? |
 | --- | --- |
@@ -173,6 +182,9 @@ v1 uses **Inngest Cloud**:
 - Inngest Cloud stores the queue and calls `app/api/inngest` on this app. Function code runs **in this container**. There is no second worker process. A claim that the worker is off-box is false.
 - **Async webhook path** (Telegram messages, WhatsApp, NOWPayments): insert `InboxEvent` (`@@unique([provider, eventId])`) and commit. If the unique insert conflicts, return **200** (duplicate delivery). If it inserts, call `inngest.send`. Return **200 only after `inngest.send` accepts**. If send throws, return **500** so the provider retries. The row stays `PENDING`.
 - **Inbox sweep** (Inngest cron, every 1 minute; a 30 s cron is not expressible): rows with `status = PENDING` and `createdAt` older than **15 s** get one `inngest.send` with `id` equal to the inbox row id. On accept, nothing else (the function sets `SENT`). After **10** failed sends, set `FAILED` and alert `ADMIN_CHAT_ID` with the event id only. This is the path WhatsApp will not retry for us.
+- **Emergency Offline Drain:** In the event of an extended Inngest Cloud outage, an operator can execute `scripts/drain-inbox.ts` (`npm run inbox:drain`) on the host to process `PENDING` inbox events sequentially directly against the database, bypassing Inngest.
+- **Outbound Messenger Retries:** Outbound HTTP dispatches to Telegram Bot API and Meta Graph API use exponential backoff with jitter (initial 500ms, max 3 attempts) and respect HTTP 429 `Retry-After`. A 3rd failure marks the delivery failed and logs `[OUTBOUND_DISPATCH_FAIL]`.
+- **Deterministic Dual LLM Fallback:** If both primary `AI_MODEL` and fallback `AI_FALLBACK_MODEL` return errors or timeouts, the handler immediately logs `[AI_DUAL_FAILURE]`, creates an `EscalationTicket`, sends the escalation reply, and alerts `ADMIN_CHAT_ID` without waiting for the 8s wall timeout.
 - **Stars exception, synchronous.** `pre_checkout_query` and `successful_payment` are **not** enqueued. `POST /api/bot/telegram/webhook` answers them in-process, before the HTTP response, by calling `lib/payments/stars.ts`. Telegram stops waiting after a few seconds; an off-box worker cannot meet that. These two updates do not insert `InboxEvent`. Idempotency is `PaymentEvent` (`successful_payment`) and a read of hold/stock (`pre_checkout_query`).
 - AI answers, NOWPayments invoice creation, reindex, hold expiry, PII purge, and the inbox sweep are functions. The HTTP handler does not await the LLM. T-027 and T-031 only **add** a function to `lib/jobs/inngest.ts`; they do not rewrite the client created in T-015.
 
@@ -193,7 +205,8 @@ v1 deploy is **exactly one** app replica. The in-memory limiter (`lru-cache`, 60
 
 - Logs and traces **must not** contain: bot tokens, `ADMIN_TOKEN`, `initData`, raw webhook bodies, phone, email, payment signature, NOWPayments payload. Log the order id, provider event id, and HTTP/Meta error code.
 - The logger also emits three counters (log lines, not a metrics vendor): `inbox_send_fail`, `hold_expired`, `webhook_rejected`. No OpenTelemetry collector in v1.
-- Nightly job: for orders in `CANCELLED` or `FULFILLED` whose `updatedAt` is older than **30 days**, set `customerPhone`, `customerEmail`, and `customerName` to null. `customerTgId` is kept (it is the support key), unless the admin calls `POST /api/admin/orders/:id/purge`.
+- Nightly job: for orders in `CANCELLED` or `FULFILLED` whose `updatedAt` is older than **30 days**, set `customerPhone`, `customerEmail`, and `customerName` to null. `customerTgId` is kept as a support key for up to **90 days**, after which it is also nulled by the nightly job.
+- User erasure: `POST /api/admin/users/purge` accepts `{ customerTgId }` or `{ phone }` and immediately nulls personal data across both `MessengerContact` and associated `Order` records upon user erasure request.
 - `EscalationTicket.queryText` is customer content. Same 30-day nulling.
 
 ### 2.12. Schema lifecycle
@@ -219,6 +232,7 @@ v1 migration is **create-only**. Expand/contract starts at the first migration a
 
 - `GET /api/health` returns 200 after `SELECT 1`. It returns no env, no row counts of PII.
 - This template does not run its own backup daemon. Orders live in the host PostgreSQL. Restore uses the host's existing Restic + `pg_dump` job (Sprint A retainer). **RPO = that job's interval** (today documented as 6 hours — operator confirms before Day 14). **RTO = restore-from-dump**, not point-in-time. Do not label a 6-hour dump as PITR.
+- **DR Verification Drill:** Before Day-14 client handover, operator must execute a verified restore drill of `pg_dump` into an isolated test database container, verifying schema integrity and matching table row counts.
 
 ### 2.15. Memory number
 
@@ -282,21 +296,21 @@ From a `PENDING` order the visitor pays in Stars or via a NOWPayments invoice. O
 
 ### 4.1. Catalog, hours, booking
 
-- **FR-01 Admin CRUD.** Admin token can create/update/deactivate `Item` (product with `stock >= 0` or service with `stock = null` and `durationMin > 0`) and replace `WeeklyHours`. Public `GET /api/catalog` returns `isActive` items only. Seed script loads the demo shop.
+- **FR-01 Admin CRUD & Audit.** Admin token (supporting dual-token rotation) can create/update/deactivate `Item` (product with `stock >= 0` or service with `stock = null` and `durationMin > 0`) and replace `WeeklyHours`. All mutations emit `[ADMIN_ACTION]` audit logs. Public `GET /api/catalog` returns `isActive` items only. Seed script loads the demo shop.
 - **FR-02 Windows.** `GET /api/booking/slots?itemId&date` returns free windows for that local date in `shopTimezone`, excluding starts before `now + minNoticeMin`.
 - **FR-03 Hold.** `POST /api/booking/lock` performs the transaction in §2.6. Response is 201, 409, or 400. No hold without a `PENDING` order id.
 
 ### 4.2. Messengers
 
 - **FR-04 Telegram webhook.** Secret, `/start`, `/help`, catalog WebApp button, free text → AI job, manager button → escalation. `my_chat_member` maintains `isBlocked`.
-- **FR-05 initData.** Algorithm, 3600 s max age. Used by lock and by `POST /api/checkout` only when `initData` is present. Browser checkout without it requires name + phone and rejects a bare Telegram id. Theme provider must not implement HMAC.
+- **FR-05 initData.** Algorithm, 3600 s max age, ±60s clock skew tolerance. Used by lock and by `POST /api/checkout` only when `initData` is present. Browser checkout without it requires name + phone and rejects a bare Telegram id. Theme provider must not implement HMAC.
 - **FR-06 WhatsApp webhook.** `hub.challenge`, raw-body HMAC, 401 on failure, template send only.
 - **FR-07 Cooldown.** One template per phone per 24 h, stored on `MessengerContact`.
 
 ### 4.3. Knowledge
 
-- **FR-08 Ingest.** Job parses md/pdf under the size caps into `KnowledgeChunk` (500/50) and fills `tsv`.
-- **FR-09 Answer.** Top 5 FTS chunks, ≤ 8,000 tokens, system instruction: answer only from the chunks; if they do not contain the answer, say the escalation sentence and emit the tool/flag that opens a ticket. No second strategy.
+- **FR-08 Ingest.** Job parses md/pdf under size caps (10 MB / 50 pages, ≤ 200 chunks ceiling) into `KnowledgeChunk` (500/50) in an atomic transaction protected by advisory lock, filling `tsv`.
+- **FR-09 Answer.** Top 5 FTS chunks, ≤ 8,000 tokens, query SLA < 50ms, system instruction: answer only from chunks; deterministic fallback to escalation on dual LLM error. No second strategy.
 - **FR-10 Escalation.** `EscalationTicket` row + Telegram alert to `ADMIN_CHAT_ID`.
 
 ### 4.4. Payments
@@ -307,7 +321,7 @@ From a `PENDING` order the visitor pays in Stars or via a NOWPayments invoice. O
 
 ### 4.5. Cross-cutting
 
-- **FR-14 Jobs.** Inngest functions for greeting send, template send, AI answer, invoice create, reindex, hold sweep, PII purge, and the inbox resend sweep (§2.8). Stars payment updates are the exception in that section.
+- **FR-14 Jobs.** Inngest functions for greeting send, template send, AI answer, invoice create, reindex, hold sweep, PII purge (30d orders, 90d customerTgId), and inbox resend sweep (§2.8). Outbound retries with exponential backoff and emergency offline drain via `scripts/drain-inbox.ts`.
 - **FR-15 Health.** `GET /api/health`.
 - **FR-16 Log denylist.** §2.11, enforced by the logger API (a single `log(event, fields)` that strips the denylist keys).
 
@@ -319,7 +333,7 @@ From a `PENDING` order the visitor pays in Stars or via a NOWPayments invoice. O
 - **NFR-02 Webhook HTTP budget.** The handler returns in < 1.5 s (target < 500 ms for Telegram). It does not call the LLM and does not call NOWPayments create-invoice inline. "Returns quickly" is not a downtime guarantee. The shop is one container; a crash loses in-flight requests, and Telegram retries.
 - **NFR-03 Perimeter.** Secrets only from the environment. No wallet private keys. Rate limit per §2.9. Admin routes fail closed when `ADMIN_TOKEN` is unset.
 - **NFR-04 Whitelabel split.** §2.7. Brand chrome is a commit; prices, hours, greeting, and template name are data.
-- **NFR-05 Restore.** §2.14. Dump interval is the RPO. Not PITR.
+- **NFR-05 Restore & DR Drill.** §2.14. Dump interval is the RPO. Not PITR. Verified restore drill into a test container required before Day-14 client handover.
 
 ---
 

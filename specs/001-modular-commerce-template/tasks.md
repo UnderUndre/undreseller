@@ -21,9 +21,9 @@ Out of scope, do not file tasks: Stripe, Paddle, YooKassa, TON Connect, raw wall
 
 ## Phase 2: Admin write path (FR-01)
 
-- [ ] `T-007` `[SEC]` `[US1]` `lib/security/adminAuth.ts`. Bearer compared with `timingSafeEqual`. Missing `ADMIN_TOKEN` → 401 on every admin route.
+- [ ] `T-007` `[SEC]` `[US1]` `lib/security/adminAuth.ts`. Bearer compared with `timingSafeEqual` (supports `NEW_TOKEN,OLD_TOKEN` dual rotation). Missing `ADMIN_TOKEN` → 401 on every admin route. All admin calls emit `[ADMIN_ACTION]` audit logs via `logger.ts` without PII.
 - [ ] `T-008` `[BE]` `[US1]` `POST/PATCH /api/admin/items` and `PUT /api/admin/hours`. Zod-validated. Reject `WeeklyHours` with `endMin <= startMin`, a break outside the shift, `weekday` outside 1–7, or two overlapping intervals for the same `(itemId, weekday)`. Public `GET /api/catalog` and `GET /api/catalog/[slug]` return active items only. Price change is visible without rebuild.
-- [ ] `T-009` `[BE]` `[US4]` `GET /api/admin/escalations`. `POST /api/admin/orders/[id]/purge` nulls PII fields immediately.
+- [ ] `T-009` `[BE]` `[US4]` `GET /api/admin/escalations`. `POST /api/admin/orders/[id]/purge` nulls order PII immediately. `POST /api/admin/users/purge` nulls user PII across `MessengerContact` and `Order` records upon erasure request.
 
 ## Phase 3: Booking
 
@@ -34,40 +34,40 @@ Out of scope, do not file tasks: Stripe, Paddle, YooKassa, TON Connect, raw wall
 
 ## Phase 4: Auth, inbox, jobs, logs
 
-- [ ] `T-014` `[SEC]` `[US2]` `lib/security/initData.ts` + unit tests: valid HMAC, bad HMAC, `auth_date` older than 3600 s. Lock and checkout call it when a Telegram user is claimed.
-- [ ] `T-015` `[BE]` `[US2]` `InboxEvent` insert (`@@unique([provider, eventId])`), `lib/jobs/inngest.ts`, and `app/api/inngest/route.ts`. Functions run in this app. Async handlers commit the row, then `inngest.send` with that row id, and return 200 only after send accepts; unique conflict returns 200 without a second send. Cron is every 1 minute, not 30 s: resend `PENDING` rows older than 15 s; on the 11th failure set `FAILED` and alert `ADMIN_CHAT_ID` with the event id only. Later tasks that need a function (T-027, T-031) only append one; they do not replace this file's client.
-- [ ] `T-016` `[OPS]` `[NFR]` `lib/telemetry/logger.ts` denylist (spec §2.11) + unit test that a phone, an email, `initData`, and a bot token are absent from the written line. Same logger writes counters `inbox_send_fail`, `hold_expired`, `webhook_rejected` (one line each, no OpenTelemetry).
+- [ ] `T-014` `[SEC]` `[US2]` `lib/security/initData.ts` + unit tests: valid HMAC, bad HMAC, `auth_date <= now + 60s` (±60s clock skew tolerance), and `now - auth_date <= 3600s`. Lock and checkout call it when a Telegram user is claimed.
+- [ ] `T-015` `[BE]` `[US2]` `InboxEvent` insert (`@@unique([provider, eventId])`), `lib/jobs/inngest.ts`, `app/api/inngest/route.ts`, and emergency offline drain `scripts/drain-inbox.ts` (`npm run inbox:drain`). Functions run in this app. Async handlers commit the row, then `inngest.send` with that row id, and return 200 only after send accepts; unique conflict returns 200 without a second send. Cron is every 1 minute, not 30 s: resend `PENDING` rows older than 15 s; on the 11th failure set `FAILED` and alert `ADMIN_CHAT_ID` with the event id only. Later tasks that need a function (T-027, T-031) only append one; they do not replace this file's client.
+- [ ] `T-016` `[OPS]` `[NFR]` `lib/telemetry/logger.ts` denylist (spec §2.11) + `[ADMIN_ACTION]` format + unit test that a phone, an email, `initData`, and a bot token are absent from the written line. Same logger writes counters `inbox_send_fail`, `hold_expired`, `webhook_rejected` (one line each, no OpenTelemetry).
 - [ ] `T-017` `[SEC]` `[NFR]` `lib/security/rateLimiter.ts` (10 / 60 s, 10k keys). Comment states replica count is 1. Applied on both messenger webhooks and on lock.
 
 ## Phase 5: Telegram and WhatsApp
 
-- [ ] `T-018` `[BE]` `[US2]` grammY handlers in `lib/bot/telegramBot.ts`: `/start`, `/help`, WebApp button, free text, manager button, `my_chat_member` → `isBlocked`.
+- [ ] `T-018` `[BE]` `[US2]` grammY handlers in `lib/bot/telegramBot.ts`: `/start`, `/help`, WebApp button, free text, manager button, `my_chat_member` → `isBlocked`. Outbound dispatches feature exponential backoff retry.
 - [ ] `T-019` `[BE]` `[US2]` `POST /api/bot/telegram/webhook`. Wrong secret → 403 and no `InboxEvent`. `pre_checkout_query` and `successful_payment` call `lib/payments/stars.ts` in this process and return that answer; they do not insert `InboxEvent` and do not call `inngest.send`. Every other update is inbox + enqueue. No LLM call in the handler. The Stars branch is implemented in T-028; this task leaves a typed dispatch that T-028 fills, so the file is not written by two people at once.
-- [ ] `T-020` `[BE]` `[US3]` `lib/bot/whatsappClient.ts`: send the named template only. `lib/security/whatsappSignature.ts` over the **raw** body.
+- [ ] `T-020` `[BE]` `[US3]` `lib/bot/whatsappClient.ts`: send the named template only with exponential backoff (initial 500ms, max 3 retries, 429 `Retry-After` handling). `lib/security/whatsappSignature.ts` over the **raw** body.
 - [ ] `T-021` `[BE]` `[US3]` `GET/POST /api/bot/whatsapp/webhook`. GET `hub.challenge`. POST bad signature → 401 and no row. Job uses `lib/bot/cooldown.ts` (24 h). Graph error logs the code, not the phone.
 
 ## Phase 6: Knowledge
 
-- [ ] `T-022` `[BE]` `[US4]` `lib/ai/documentParser.ts`. Reject > 10 MB or > 50 pages. Split with `js-tiktoken` `cl100k_base`, 500 tokens, overlap 50. `INSERT` sets `tsv` to `to_tsvector(ftsConfig, content)` in the same statement. No trigger. Runs only inside the reindex function.
+- [ ] `T-022` `[BE]` `[US4]` `lib/ai/documentParser.ts`. Reject > 10 MB, > 50 pages, or > 200 chunks ceiling. Split with `js-tiktoken` `cl100k_base`, 500 tokens, overlap 50. `INSERT` sets `tsv` to `to_tsvector(ftsConfig, content)` inside an atomic transaction (`DELETE` before batch `INSERT`) protected by advisory lock `pg_try_advisory_xact_lock(hashtext('knowledge_reindex'))`. Runs only inside reindex function.
 - [ ] `T-023` `[BE]` `[US4]` `POST /api/admin/reindex` enqueues that function. App boot does not parse the PDF.
-- [ ] `T-024` `[BE]` `[US4]` `lib/ai/knowledgeEngine.ts`. FTS top 5, ≤ 8,000 tokens. Model ids from `AI_MODEL` and `AI_FALLBACK_MODEL` (spec §1.3). Fallback on 404, 429, 529, 5xx, and timeout. No retired model id, no full-file branch. Miss → escalation sentence + `EscalationTicket` + alert to `ADMIN_CHAT_ID` (ticket id + 200 chars).
+- [ ] `T-024` `[BE]` `[US4]` `lib/ai/knowledgeEngine.ts`. FTS top 5, ≤ 8,000 tokens (query SLA < 50ms). Model ids from `AI_MODEL` and `AI_FALLBACK_MODEL` (spec §1.3). Fallback on 404, 429, 529, 5xx, and timeout. Immediate escalation dispatch on dual-model error. Miss → escalation sentence + `EscalationTicket` + alert to `ADMIN_CHAT_ID` (ticket id + 200 chars).
 - [ ] `T-025` `[BE]` `[US4]` Five fixtures (spec US4 AC2) as a unit test against a fixture markdown file and a stubbed model.
 
 ## Phase 7: Payment state machine
 
-- [ ] `T-026` `[BE]` `[US5]` `lib/payments/fulfillment.ts`. One transaction: insert `PaymentEvent`, set `PAID`, reservation `BOOKED`, `UPDATE item SET stock = stock - qty WHERE stock >= qty` for products. Unique `(provider, providerRef)` makes the replay a no-op that returns 200. Admin cancel of a `PAID` order restores stock and sets `RELEASED`.
+- [ ] `T-026` `[BE]` `[US5]` `lib/payments/fulfillment.ts`. One transaction: insert `PaymentEvent`, set `PAID`, reservation `BOOKED`, `UPDATE item SET stock = stock - qty WHERE stock >= qty` for products. Unique `(provider, providerRef)` makes the replay a no-op that returns 200. Admin cancel of a `PAID` order restores stock and sets `RELEASED`. Late payment for released/re-booked slot records payment and alerts admin for manual rescheduling.
 - [ ] `T-027` `[BE]` `[US5]` Append one function to `lib/jobs/inngest.ts` (do not rewrite the client from T-015). Every 60 s: expired `HELD` → `RELEASED`, parent `PENDING` → `CANCELLED`. No stock change. Log `hold_expired`.
 - [ ] `T-028` `[BE]` `[US5]` `lib/payments/stars.ts`, called from the dispatch T-019 left in `app/api/bot/telegram/webhook/route.ts`. Integer `starsPrice`, currency `XTR`. `pre_checkout_query` re-reads hold and stock in this process; expired hold → `ok: false`. `successful_payment` calls fulfillment in this process. Neither update calls `inngest.send`. Invoice **creation** (`sendInvoice`) stays on the checkout job from T-030.
 - [ ] `T-029` `[BE]` `[US5]` `lib/payments/nowpayments.ts` + `POST /api/payments/crypto/webhook`. Bad `x-nowpayments-sig` → 401 and no row. Accepted job: paid/quoted < 0.99 → stay `PENDING` and alert admin; else fulfillment. No other crypto provider.
 - [ ] `T-030` `[BE]` `[US5]` `POST /api/checkout` + `CheckoutModal` + `app/checkout/page.tsx`. Route: same initData rule as T-011; creates a product `PENDING` order (no reservation) or attaches a rail to an existing `PENDING` order; enqueues `sendInvoice` or NOWPayments invoice create; does not capture money. UI: two actions, Stars and NOWPayments. No fiat button. The modal does not verify HMAC.
-- [ ] `T-031` `[BE]` `[NFR]` Append one function to `lib/jobs/inngest.ts` (do not rewrite the client from T-015). Nightly: `CANCELLED`/`FULFILLED` older than 30 days, null name/phone/email and `EscalationTicket.queryText`.
+- [ ] `T-031` `[BE]` `[NFR]` Append one function to `lib/jobs/inngest.ts` (do not rewrite the client from T-015). Nightly: `CANCELLED`/`FULFILLED` older than 30 days, null name/phone/email and `EscalationTicket.queryText`; null `customerTgId` older than 90 days.
 
 ## Phase 8: Ops, bench, docs
 
 - [ ] `T-032` `[BE]` `[NFR]` `GET /api/health`. 200 on `SELECT 1`, 503 otherwise. Body has no env and no PII.
-- [ ] `T-033` `[OPS]` `[NFR]` `docker/bench-memory.sh` per plan §4. Print app RSS and Postgres RSS. Do not fail the script only because app RSS is over 500 MB.
+- [ ] `T-033` `[OPS]` `[NFR]` `docker/bench-memory.sh` per plan §4. Print app RSS and Postgres RSS. Run verified DR restore drill of `pg_dump` into test PostgreSQL container before Day-14 sign-off. Do not fail the script only because app RSS is over 500 MB.
 - [ ] `T-034` `[E2E]` `[US1]` Playwright: catalog → lock → second lock 409 → checkout Stars stub → order `PAID` once. Plus unit tests already named in T-014, T-016, T-025, T-026.
-- [ ] `T-035` `[DOC]` `docs/whitelabel-quickstart.md`: clone steps, env list (`AI_MODEL`, `AI_FALLBACK_MODEL`), Day-14 checklist (plan §5), RPO = host dump interval (not PITR), Demand Gate, Sprint B 14 days / $4,900, and the warning that the legacy fork's v16.0 business plan is not the commercial source.
+- [ ] `T-035` `[DOC]` `docs/whitelabel-quickstart.md`: clone steps, env list (`AI_MODEL`, `AI_FALLBACK_MODEL`), Day-14 checklist (plan §5), verified DR restore drill, zero-downtime `ADMIN_TOKEN` rotation procedure, emergency `inbox:drain` runbook, RPO = host dump interval (not PITR), Demand Gate (10 tripwires), Sprint B 14 days / $4,900, and the warning that the legacy fork's v16.0 business plan is not the commercial source.
 
 ---
 
