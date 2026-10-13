@@ -62,8 +62,10 @@
 - **Загруженные бизнес-планы**: 
   - `undreplans/docs/projects/undreseller/undreseller-business-plan.md` (v18.3)
   - `undreplans/ROADMAP.md` (v2.4)
+  - `undrllanding/specs/001-init-separate-landings/spec.md` (мультипроектный изолированный лендинг)
 - **Проверка жестких правил и фокуса**:
   - Полное соответствие предложению **Sprint B ($4,900 flat / 14 дней)**.
+  - Топология сервисов: маркетинговый лендинг размещается в `repos/undrllanding` (`projects/undreseller/` по спецификации `001-init-separate-landings`), а `undreseller` является транзакционным ядром (каталог, бронирование слотов, чекаут, Telegram Mini App). Дублирование исключено.
   - Scope knife: ровно 1 бизнес-процесс (каталог → холд → оплата).
   - Day 14 онбординг: тестовая транзакция на $1 перед высвобождением эскроу.
   - Demand Gate (10 оплаченных трипвайров) зафиксирован в quickstart.

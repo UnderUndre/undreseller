@@ -29,7 +29,7 @@ Out of scope, do not file tasks: Stripe, Paddle, YooKassa, TON Connect, raw wall
 
 - [ ] `T-010` `[BE]` `[US1]` `lib/booking/windows.ts` + `GET /api/booking/slots`. Windows from `WeeklyHours` in `shopTimezone`, minus `HELD`/`BOOKED` ranges, minus holds that are not yet expired, minus any start earlier than `now + minNoticeMin` from `shop.config.ts`.
 - [ ] `T-011` `[BE]` `[US1]` `lib/booking/lock.ts` + `POST /api/booking/lock`. If `initData` is present, verify it (T-014); if `customerTgId` is present without `initData`, return 401; browser body is name + phone and no Telegram id. Transaction: release expired `HELD` for this item, insert `PENDING` order + `HELD` reservation. Map SQLSTATE `23P01` to 409. Do not use `FOR UPDATE` on the new row as the lock.
-- [ ] `T-012` `[FE]` `[US1]` Catalog page, `ItemCard`, book page, `SlotGrid`. Conflict from 409 shown as "slot just taken".
+- [ ] `T-012` `[FE]` `[US1]` Transactional catalog page, `ItemCard`, book page, `SlotGrid`. Conflict from 409 shown as "slot just taken". Note: marketing lander (Hero, 2-SKU pricing, Loom showcase) is served by `repos/undrllanding` (`projects/undreseller`).
 - [ ] `T-013` `[FE]` `[US2]` `TelegramProvider.tsx` + layout: theme, MainButton, haptic. File must not import or implement initData HMAC.
 
 ## Phase 4: Auth, inbox, jobs, logs
@@ -67,7 +67,7 @@ Out of scope, do not file tasks: Stripe, Paddle, YooKassa, TON Connect, raw wall
 - [ ] `T-032` `[BE]` `[NFR]` `GET /api/health`. 200 on `SELECT 1`, 503 otherwise. Body has no env and no PII.
 - [ ] `T-033` `[OPS]` `[NFR]` `docker/bench-memory.sh` per plan §4. Print app RSS and Postgres RSS. Run verified DR restore drill of `pg_dump` into test PostgreSQL container before Day-14 sign-off. Do not fail the script only because app RSS is over 500 MB.
 - [ ] `T-034` `[E2E]` `[US1]` Playwright: catalog → lock → second lock 409 → checkout Stars stub → order `PAID` once. Plus unit tests already named in T-014, T-016, T-025, T-026.
-- [ ] `T-035` `[DOC]` `docs/whitelabel-quickstart.md`: clone steps, env list (`AI_MODEL`, `AI_FALLBACK_MODEL`), Day-14 checklist (plan §5), verified DR restore drill, zero-downtime `ADMIN_TOKEN` rotation procedure, emergency `inbox:drain` runbook, RPO = host dump interval (not PITR), Demand Gate (10 tripwires), Sprint B 14 days / $4,900, and the warning that the legacy fork's v16.0 business plan is not the commercial source.
+- [ ] `T-035` `[DOC]` `docs/whitelabel-quickstart.md`: clone steps, env list (`AI_MODEL`, `AI_FALLBACK_MODEL`), Day-14 checklist (plan §5), verified DR restore drill, zero-downtime `ADMIN_TOKEN` rotation procedure, emergency `inbox:drain` runbook, service topology (marketing lander in `repos/undrllanding` vs transactional storefront in `undreseller`), RPO = host dump interval (not PITR), Demand Gate (10 tripwires), Sprint B 14 days / $4,900, and the warning that the legacy fork's v16.0 business plan is not the commercial source.
 
 ---
 

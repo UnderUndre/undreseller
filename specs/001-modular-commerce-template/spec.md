@@ -20,11 +20,12 @@
 
 ### 1.1. What this spec is
 
-UnderUndre ships a **cloneable light storefront** (Track 1): a Next.js 15 catalog, service-slot booking, a Telegram bot that opens that catalog as a Mini App, a WhatsApp **approved-template** first reply, a Postgres full-text answer over a local `.md`/`.pdf` knowledge file, and prepayment on **two rails**.
+UnderUndre ships a **cloneable light storefront** (Track 1): a Next.js 15 transactional catalog, service-slot booking, a Telegram bot that opens that catalog as a Mini App, a WhatsApp **approved-template** first reply, a Postgres full-text answer over a local `.md`/`.pdf` knowledge file, and prepayment on **two rails**.
 
-Track 2 (Medusa fork in `repos/undrecommerce`, warehouses, 1000+ SKU) stays **frozen through Phase A**. This spec does not thaw it, quote it, or share its schema.
+- **Marketing Landing Page Boundary**: The public marketing landing page (Hero, Loom teardowns, 2-SKU pricing cards $3.5k/$4.9k, Upwork escrow badges, authority hooks) **lives in `repos/undrllanding`** (`projects/undreseller/`, per `undrllanding/specs/001-init-separate-landings`). This repository (`undreseller`) does **not** duplicate the marketing landing page; it hosts the functional transactional engine (catalog `/catalog`, booking `/book`, checkout `/checkout`, Telegram Mini App, and backend API routes). CTAs from `undrllanding` link directly to this application.
+- **Track 2 Separation**: Track 2 (Medusa fork in `repos/undrecommerce`, warehouses, 1000+ SKU) stays **frozen through Phase A**. This spec does not thaw it, quote it, or share its schema.
 
-The code home is the root of **this** repository. Create it with `create-next-app` (App Router, TypeScript, Tailwind, no `src/`). Do not import the legacy fork: no `pages/`, no next-auth middleware, no Jackson, no `prisma db push`. The license file already in the repo is MIT; do not replace it. The agency portal is a different repository; it is not a spec in this tree.
+The code home for the commerce and booking engine is the root of **this** repository. Create it with `create-next-app` (App Router, TypeScript, Tailwind, no `src/`). Do not import the legacy fork: no `pages/`, no next-auth middleware, no Jackson, no `prisma db push`. The license file already in the repo is MIT; do not replace it. The agency portal is a different repository; it is not a spec in this tree.
 
 ### 1.2. Commercial envelope (v18.3)
 
@@ -59,8 +60,9 @@ one app container; RSS measured             Redis + Meili + Medusa workers
 
 ### 1.4. Glossary & Domain Terminology
 
+- **Marketing Lander**: The high-converting marketing landing page hosted in sibling repository `undrllanding` (`projects/undreseller/`, per `undrllanding/specs/001-init-separate-landings`). Serves the public face, 2-SKU pricing ($3.5k/$4.9k), Loom showcase, and directs visitors to this transactional storefront app.
 - **Template Codebase**: The clean, cloneable Next.js 15 repository template (`undreseller`) implementing Track 1 light commerce.
-- **Storefront UI**: Public-facing Next.js App Router catalog and checkout interface, shared between desktop web browsers and Telegram Mini App (TMA).
+- **Storefront UI**: Public-facing Next.js App Router transactional catalog, booking, and checkout interface, shared between desktop web browsers and Telegram Mini App (TMA).
 - **App Container**: The single runtime Docker container running Next.js SSR + API routes + in-process Inngest function handlers (`deploy.replicas: 1`).
 - **Client Tenant**: Individual customer deployment provisioned from this template with unique environment variables, brand assets, and database schema.
 

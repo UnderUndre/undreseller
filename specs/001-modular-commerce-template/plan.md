@@ -13,6 +13,8 @@ This plan implements the revised spec. It does not re-open Track 2, fiat rails, 
 
 One Next.js App Router app at the **root of this repository** (`app/`, `lib/`, `prisma/`, `config/`, `content/`). Create it with `create-next-app` (TypeScript, Tailwind, no `src/`). There is no `apps/commerce-starter/`. Do not copy `pages/`, next-auth middleware, Jackson, or `prisma db push` from the legacy fork. Tasks use those root paths.
 
+- **Service Topology**: The public marketing landing page (Hero, Loom teardowns, 2-SKU pricing cards $3.5k/$4.9k, Upwork badges) is hosted in sibling repository `repos/undrllanding` (`projects/undreseller/`, per `undrllanding/specs/001-init-separate-landings`). This repository (`undreseller`) hosts the functional transactional engine (catalog, slot scheduling `/book`, checkout modal `/checkout`, Telegram Mini App, and backend API routes). CTAs from `undrllanding` link directly to this application.
+
 ```text
 app/
   layout.tsx
