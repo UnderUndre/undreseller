@@ -25,12 +25,13 @@ Out of scope, do not file tasks: Stripe, Paddle, YooKassa, TON Connect, raw wall
 - [ ] `T-008` `[BE]` `[US1]` `POST/PATCH /api/admin/items` and `PUT /api/admin/hours`. Zod-validated. Reject `WeeklyHours` with `endMin <= startMin`, a break outside the shift, `weekday` outside 1–7, or two overlapping intervals for the same `(itemId, weekday)`. Public `GET /api/catalog` and `GET /api/catalog/[slug]` return active items only. Price change is visible without rebuild.
 - [ ] `T-009` `[BE]` `[US4]` `GET /api/admin/escalations`. `POST /api/admin/orders/[id]/purge` nulls order PII immediately. `POST /api/admin/users/purge` nulls user PII across `MessengerContact` and `Order` records upon erasure request.
 
-## Phase 3: Booking
+## Phase 3: Booking, Storefront UI & SEO
 
 - [ ] `T-010` `[BE]` `[US1]` `lib/booking/windows.ts` + `GET /api/booking/slots`. Windows from `WeeklyHours` in `shopTimezone`, minus `HELD`/`BOOKED` ranges, minus holds that are not yet expired, minus any start earlier than `now + minNoticeMin` from `shop.config.ts`.
 - [ ] `T-011` `[BE]` `[US1]` `lib/booking/lock.ts` + `POST /api/booking/lock`. If `initData` is present, verify it (T-014); if `customerTgId` is present without `initData`, return 401; browser body is name + phone and no Telegram id. Transaction: release expired `HELD` for this item, insert `PENDING` order + `HELD` reservation. Map SQLSTATE `23P01` to 409. Do not use `FOR UPDATE` on the new row as the lock.
 - [ ] `T-012` `[FE]` `[US1]` Transactional catalog page, `ItemCard`, book page, `SlotGrid`. Conflict from 409 shown as "slot just taken". Note: marketing lander (Hero, 2-SKU pricing, Loom showcase) is served by `repos/undrllanding` (`projects/undreseller`).
-- [ ] `T-013` `[FE]` `[US2]` `TelegramProvider.tsx` + layout: theme, MainButton, haptic. File must not import or implement initData HMAC.
+- [ ] `T-013` `[FE]` `[US2]` `TelegramProvider.tsx` + layout: theme, MainButton, haptic, `disableVerticalSwipes()` (Bot API 7.7+), viewport stable height (`--tg-viewport-stable-height`), and safe area insets. File must not import or implement initData HMAC.
+- [ ] `T-036` `[FE]` `[SEO]` Next.js 15 async metadata (`generateMetadata` with `await params`), Schema.org JSON-LD (Product, Service, FAQPage) with XSS sanitization (`replace(/</g, '\\u003c')`), dynamic `app/sitemap.ts`, and crawler perimeter isolation `app/robots.ts`.
 
 ## Phase 4: Auth, inbox, jobs, logs
 
@@ -88,7 +89,8 @@ T-001 → T-014
 T-010 + T-014 → T-011
 T-011 → T-012
 T-001 → T-013
-T-004 + T-001 → T-015
+T-004 + T-005 → T-036
+T-001 + T-004 → T-015
 T-001 → T-016
 T-001 → T-017
 T-015 + T-016 + T-017 → T-018
@@ -109,7 +111,7 @@ T-012 + T-014 + T-015 + T-026 + T-029 → T-030
 T-015 + T-004 → T-031
 T-004 → T-032
 T-019 + T-023 + T-024 → T-033
-T-012 + T-011 + T-030 + T-026 → T-034
+T-012 + T-011 + T-030 + T-026 + T-036 → T-034
 T-033 + T-034 + T-032 → T-035
 ```
 
@@ -119,13 +121,13 @@ A task does not start until every predecessor in that graph is done. A lane is a
 
 | Lane | Tag | Sequence | Cross-lane joins |
 | --- | --- | --- | --- |
-| Foundation | `[SETUP]` `[DB]` | T-001 → T-002 → T-003 → T-004 → T-006, and T-001 → T-005 → T-006 | T-005 joins T-010 and T-021. T-004 joins almost every backend task. |
+| Foundation | `[SETUP]` `[DB]` | T-001 → T-002 → T-003 → T-004 → T-006, and T-001 → T-005 → T-006 | T-005 joins T-010, T-021 and T-036. T-004 joins almost every backend task. |
 | Admin | `[SEC]` `[BE]` | T-007 → T-008 → T-009 | T-007 after T-004. |
-| Booking UI | `[BE]` `[FE]` | T-010 → T-011 → T-012, plus T-013 after T-001 | T-011 also waits on T-014. |
+| Booking & SEO | `[BE]` `[FE]` | T-010 → T-011 → T-012, plus T-013 after T-001, plus T-036 after T-005 | T-011 also waits on T-014. |
 | Inbox | `[SEC]` `[BE]` `[OPS]` | T-014, T-015, T-016, T-017 in graph order, then T-018 → T-019 and T-020 → T-021 | T-019 and T-021 wait on T-015 + T-016 + T-017. T-028 fills the Stars dispatch T-019 left behind, after T-026. |
 | Knowledge | `[BE]` | T-022 → T-023 → T-024 → T-025 | T-024 also waits on T-015. |
 | Money | `[BE]` | T-026 → T-027, T-028, T-029, then T-030 | T-030 also waits on T-012, T-014, T-015. T-031 appends a function after T-015. |
-| Prove | `[OPS]` `[E2E]` `[DOC]` `[BE]` | T-032 after T-004; T-033 after T-019 + T-023 + T-024; T-034 after T-011 + T-012 + T-026 + T-030; T-035 last | Nothing in this lane starts a feature task. |
+| Prove | `[OPS]` `[E2E]` `[DOC]` `[BE]` | T-032 after T-004; T-033 after T-019 + T-023 + T-024; T-034 after T-011 + T-012 + T-030 + T-026 + T-036; T-035 last | Nothing in this lane starts a feature task. |
 
 ## Agent summary
 
@@ -135,7 +137,7 @@ A task does not start until every predecessor in that graph is done. A lane is a
 | `[DB]` | T-002, T-003, T-004, T-006 |
 | `[SEC]` | T-007, T-014, T-017 |
 | `[BE]` | T-008, T-009, T-010, T-011, T-015, T-018, T-019, T-020, T-021, T-022, T-023, T-024, T-025, T-026, T-027, T-028, T-029, T-030, T-031, T-032 |
-| `[FE]` | T-012, T-013 |
+| `[FE]` | T-012, T-013, T-036 |
 | `[OPS]` | T-016, T-033 |
 | `[E2E]` | T-034 |
 | `[DOC]` | T-035 |
@@ -147,36 +149,36 @@ A task does not start until every predecessor in that graph is done. A lane is a
 | Requirement | Tasks |
 | --- | --- |
 | FR-01 Admin CRUD | T-006, T-007, T-008 |
-| FR-02 Windows + minNoticeMin | T-010 |
+| FR-02 Windows | T-010 |
 | FR-03 Hold + exclusion | T-003, T-011 |
 | FR-04 Telegram | T-018, T-019, T-028 |
 | FR-05 initData | T-014, T-011, T-030 (not T-013) |
-| FR-06 WhatsApp signature + template | T-020, T-021 |
-| FR-07 24 h cooldown | T-021 |
-| FR-08 Ingest caps + tsvector | T-003, T-022, T-023 |
-| FR-09 FTS-only answer | T-024 |
+| FR-06 WhatsApp | T-020, T-021 |
+| FR-07 Cooldown | T-021 |
+| FR-08 Ingest | T-003, T-022, T-023 |
+| FR-09 FTS answer | T-024 |
 | FR-10 Escalation | T-009, T-024 |
-| FR-11 Stars, sync answer on the webhook | T-019, T-028, T-030 |
-| FR-12 NOWPayments 99% + sig | T-029 |
-| FR-13 PAID transaction + stock | T-026 |
-| FR-14 Durable jobs + inbox resend | T-015, T-027, T-031 |
+| FR-11 Stars | T-019, T-028, T-030 |
+| FR-12 NOWPayments | T-029 |
+| FR-13 PAID + stock | T-026 |
+| FR-14 Durable jobs | T-015, T-027, T-031 |
 | FR-15 Health | T-032 |
-| FR-16 Log denylist + three counters | T-016 |
+| FR-16 Log denylist | T-016 |
 | NFR-01 500 MB | T-033 |
 | NFR-02 Ack after enqueue | T-015, T-019, T-021 |
-| NFR-03 Secrets, limiter, admin fail-closed | T-007, T-017 |
+| NFR-03 Perimeter | T-007, T-017 |
 | NFR-04 Whitelabel split | T-005, T-008, T-035 |
-| NFR-05 RPO stated, not PITR | T-035 |
-| US1 | T-006, T-008, T-010, T-011, T-012 |
+| NFR-05 RPO stated | T-035 |
+| US1 | T-006, T-008, T-010, T-011, T-012, T-036 |
 | US2 | T-013, T-014, T-018, T-019 |
 | US3 | T-020, T-021 |
 | US4 | T-022, T-023, T-024, T-025 |
 | US5 | T-026, T-027, T-028, T-029, T-030 |
-| Day-14 / Demand Gate / v16.0 warning | T-035 |
+| Day-14 / Demand Gate | T-035 |
 | PII 30-day nulling | T-031 |
-| DSN split (`scripts/migrate.ts` only) | T-004 |
+| DSN split | T-004 |
 | Inbox resend sweep | T-015 |
 | Checkout route | T-030 |
-| Hours overlap + minNoticeMin | T-008, T-010 |
+| Hours overlap | T-008, T-010 |
 | Lockfile pins | T-001 |
 | Create-only down.sql | T-003 |
