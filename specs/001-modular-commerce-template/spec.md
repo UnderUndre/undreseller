@@ -95,7 +95,7 @@ The catalog and the booking page are the same Next.js routes a browser uses. Ins
 Postgres full-text only. No "or paste the whole file into the prompt" branch.
 
 - Input files: `content/knowledge.md` (required) and `content/knowledge.pdf` (optional).
-- Caps before parse: **10 MB**, **50 PDF pages**. Hard ceiling of **200 chunks** (~100,000 tokens) on total `KnowledgeChunk` rows. Over the cap, reindex fails the job and does not parse.
+- Caps before parse: **10 MB**, **50 PDF pages**. Hard ceiling of **200 chunks** (~100,000 tokens) on total `KnowledgeChunk` rows. **Architectural Note:** This 200 chunk ceiling is a deliberate design constraint of Sprint B to prevent WAL explosion, excessive VACUUM pressure, and lock contention in a single-container PostgreSQL instance. Expanding beyond 200 chunks is deferred to Phase 2 with external vector storage. Over the cap, reindex fails the job and does not parse.
 - Chunks: **500 tokens**, overlap **50**, split with `js-tiktoken` encoding `cl100k_base` (exact package version in T-001, no `latest`). Each row's `tsv` is `to_tsvector(ftsConfig, content)` in the same `INSERT`. No trigger. GIN index as in §6.
 - A question runs `plainto_tsquery` on the shop language (`shop.config.ts` → `ftsConfig`, default `simple`) with an SLA of `< 50ms`. Top **5** chunks, hard ceiling **8,000 tokens** of context.
 - Zero hits, or the model says it cannot answer from those chunks → the fixed escalation sentence and an `EscalationTicket`. No second retrieval strategy.
@@ -160,7 +160,7 @@ ALTER TABLE "SlotReservation"
 
 ### 2.7. Admin (FR-01 is real)
 
-Public visitors read the catalog. Writes require `Authorization: Bearer` equal to `ADMIN_TOKEN` (`timingSafeEqual`). Zero-downtime token rotation supports comma-separated dual tokens (`NEW_TOKEN,OLD_TOKEN`) in `ADMIN_TOKEN` during transition windows.
+Public visitors read the catalog. Writes require `Authorization: Bearer` equal to `ADMIN_TOKEN` (`timingSafeEqual`). Zero-downtime token rotation supports comma-separated dual tokens (`NEW_TOKEN,OLD_TOKEN`) in `ADMIN_TOKEN` during transition windows with a maximum 24-hour grace period for `OLD_TOKEN`. Usage of `OLD_TOKEN` during the transition emits a warning audit log `[OLD_ADMIN_TOKEN_USED]`.
 - **Admin Audit Trail:** Every request to `/api/admin/*` emits a structured log event `[ADMIN_ACTION] action=<path> method=<METHOD> targetId=<id> status=<STATUS>` via `logger.ts`. Tokens, passwords, and PII are never logged.
 
 | Lives in | Changes without image rebuild? |
@@ -186,13 +186,14 @@ v1 uses **Inngest Cloud**:
 - **Inbox sweep** (Inngest cron, every 1 minute; a 30 s cron is not expressible): rows with `status = PENDING` and `createdAt` older than **15 s** get one `inngest.send` with `id` equal to the inbox row id. On accept, nothing else (the function sets `SENT`). After **10** failed sends, set `FAILED` and alert `ADMIN_CHAT_ID` with the event id only. This is the path WhatsApp will not retry for us.
 - **Emergency Offline Drain:** In the event of an extended Inngest Cloud outage, an operator can execute `scripts/drain-inbox.ts` (`npm run inbox:drain`) on the host to process `PENDING` inbox events sequentially directly against the database, bypassing Inngest.
 - **Outbound Messenger Retries:** Outbound HTTP dispatches to Telegram Bot API and Meta Graph API use exponential backoff with jitter (initial 500ms, max 3 attempts) and respect HTTP 429 `Retry-After`. A 3rd failure marks the delivery failed and logs `[OUTBOUND_DISPATCH_FAIL]`.
-- **Deterministic Dual LLM Fallback:** If both primary `AI_MODEL` and fallback `AI_FALLBACK_MODEL` return errors or timeouts, the handler immediately logs `[AI_DUAL_FAILURE]`, creates an `EscalationTicket`, sends the escalation reply, and alerts `ADMIN_CHAT_ID` without waiting for the 8s wall timeout.
+- **Deterministic Dual LLM Fallback:** If primary `AI_MODEL` returns errors or timeouts (max 5s timeout), the engine immediately switches to fallback `AI_FALLBACK_MODEL` (max 5s timeout). If both fail, the handler immediately logs `[AI_DUAL_FAILURE]`, creates an `EscalationTicket`, sends the escalation reply, and alerts `ADMIN_CHAT_ID` without waiting for the 8s wall timeout.
 - **Stars exception, synchronous.** `pre_checkout_query` and `successful_payment` are **not** enqueued. `POST /api/bot/telegram/webhook` answers them in-process, before the HTTP response, by calling `lib/payments/stars.ts`. Telegram stops waiting after a few seconds; an off-box worker cannot meet that. These two updates do not insert `InboxEvent`. Idempotency is `PaymentEvent` (`successful_payment`) and a read of hold/stock (`pre_checkout_query`).
 - AI answers, NOWPayments invoice creation, reindex, hold expiry, PII purge, and the inbox sweep are functions. The HTTP handler does not await the LLM. T-027 and T-031 only **add** a function to `lib/jobs/inngest.ts`; they do not rewrite the client created in T-015.
 
-### 2.9. Process model
+### 2.9. Process model & Startup assertions
 
-v1 deploy is **exactly one** app replica. The in-memory limiter (`lru-cache`, 60 s window, 10 messages per `chat_id`/`phone`, max 10,000 keys) is valid only under that sentence. A second replica makes the limiter skippable; horizontal scale is a Phase 2 change that must replace it. Restart clears the window; that is accepted.
+v1 deploy is **exactly one** app replica. The in-memory limiter (`lru-cache`, 60 s window, 10 messages per `chat_id`/`phone`, max 10,000 keys) is valid only under that sentence. A startup assertion checks `process.env.REPLICA_COUNT === '1'` (or cluster single-instance inspection); if misconfigured, the application throws a hard startup failure (`ERR_INVALID_REPLICA_TOPOLOGY`). A second replica makes the limiter skippable; horizontal scale is a Phase 2 change that must replace it. Restart clears the window; that is accepted.
+- **ShopSettings Sanitization:** `ShopSettings.greeting` is constrained to a maximum of **500 characters**, sanitized of any HTML/script tags (allowing only plain text and Telegram markdown v2 subset) to prevent oversized payloads or XSS vectors.
 
 ### 2.10. Money, timezone, language
 
