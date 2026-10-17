@@ -392,16 +392,18 @@ model WeeklyHours {
 }
 
 model SlotReservation {
-  id            String             @id @default(uuid())
-  itemId        String
-  item          Item               @relation(fields: [itemId], references: [id])
-  orderId       String             @unique
-  order         Order              @relation(fields: [orderId], references: [id])
-  startTime     DateTime           @db.Timestamptz(3)
-  endTime       DateTime           @db.Timestamptz(3)
-  status        ReservationStatus
-  holdExpiresAt DateTime?          @db.Timestamptz(3)
-  createdAt     DateTime           @default(now())
+  id                     String             @id @default(uuid())
+  itemId                 String
+  item                   Item               @relation(fields: [itemId], references: [id])
+  orderId                String             @unique
+  order                  Order              @relation(fields: [orderId], references: [id])
+  startTime              DateTime           @db.Timestamptz(3)
+  endTime                DateTime           @db.Timestamptz(3)
+  status                 ReservationStatus
+  holdExpiresAt          DateTime?          @db.Timestamptz(3)
+  requiresOperatorAction Boolean            @default(false)
+  operatorActionReason   String?
+  createdAt              DateTime           @default(now())
 }
 
 model Order {
@@ -478,6 +480,8 @@ model InboxEvent {
   provider  String
   eventId   String
   status    InboxStatus @default(PENDING)
+  lockedAt  DateTime?   @db.Timestamptz(3)
+  lockedBy  String?
   createdAt DateTime    @default(now())
   @@unique([provider, eventId])
 }
