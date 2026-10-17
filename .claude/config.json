@@ -1,0 +1,8 @@
+{
+  "git": {
+    "auto_commit": false,
+    "require_branch": true,
+    "branch_prefix": "claude/",
+    "require_review": true
+  }
+}
