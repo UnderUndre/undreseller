@@ -40,7 +40,7 @@
 | `NFR-03` Perimeter | Yes | `T-007`, `T-017` | In-memory limiter (10 req / 60s), admin token fail-closed |
 | `NFR-04` Whitelabel split | Yes | `T-005`, `T-008`, `T-035` | Разделение git-конфига и настроек в базе |
 | `NFR-05` RPO stated | Yes | `T-035` | Честное документирование дампа хоста (Restic), отказ от ложного PITR |
-| `US1` (Catalog & Hold) | Yes | `T-006`, `T-008`, `T-010`, `T-011`, `T-012`, `T-034` | Полное покрытие |
+| `US1` (Catalog & Hold) | Yes | `T-006`, `T-008`, `T-010`, `T-011`, `T-012`, `T-034`, `T-036` | Полное покрытие + SEO/JSON-LD |
 | `US2` (Telegram TMA) | Yes | `T-013`, `T-014`, `T-018`, `T-019` | Полное покрытие |
 | `US3` (WhatsApp Template) | Yes | `T-020`, `T-021` | Полное покрытие |
 | `US4` (FTS AI Answer) | Yes | `T-022`, `T-023`, `T-024`, `T-025` | Полное покрытие, 5 юнит-фикстур |
@@ -85,7 +85,7 @@
 ## Metrics
 
 - **Total Requirements**: 26 (16 FR + 5 NFR + 5 US)
-- **Total Tasks**: 35
+- **Total Tasks**: 36
 - **Coverage %**: 100.0% (26/26)
 - **Ambiguity count**: 0
 - **Duplication count**: 0
