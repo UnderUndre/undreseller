@@ -1,230 +1,230 @@
-Да, прошлые два блокера закрыты: sweeper включён в общий lock protocol, оплаченный товар при нехватке stock теперь фиксируется как PAID + requiresOperatorAction, общий helper добавлен, а alert вынесен после commit. Но аудит новой ветки stock recovery выявил ещё один серьёзный инвариант.
+Да, последние inventory-компенсации исправлены: stockDecremented, multi-item lock order, transactional alert outbox и расширенный admin escalation API теперь согласованы. Но полный повторный проход выявил более фундаментальную проблему в самом durable inbox: запись не хранит данные, необходимые для повторной обработки.
 
-Вердикт: HIGH
-verdict: HIGH
+Вердикт: CRITICAL
+verdict: CRITICAL
 reviewer: copilot
-critical_count: 0
-high_count: 2
+critical_count: 1
+high_count: 1
 medium_count: 3
 low_count: 0
 
-Что теперь закрыто
-booking/lock, fulfillment и hold sweeper используют единый acquireItemSlotLock() из lib/booking/advisoryLock.ts; sweeper сортирует itemId перед захватом нескольких locks.
-Денежная ветка при исчерпанном stock больше не откатывает принятый платёж: заказ становится PAID с PAID_OUT_OF_STOCK. Поля operator action добавлены непосредственно в Order.
-Внешний Telegram alert перенесён за границу денежной транзакции.
-Definition of Done исправлен с 11-й на 10-ю ошибку.
-T-034 теперь требует concurrent test sweeper-versus-fulfillment и тест paid-out-of-stock.
-Блокирующие findings
-F1. HIGH: отмена PAID_OUT_OF_STOCK может искусственно увеличить stock
+Что закрыто
+OrderItem.stockDecremented фиксирует фактически списанное количество, а отмена восстанавливает только его. Это закрывает phantom stock inflation и частичную компенсацию multi-line заказов.
+Для multi-item заказа все уникальные itemId блокируются в лексикографическом порядке.
+Alert создаётся как InboxEvent(provider = 'SYSTEM_ALERT') внутри денежной транзакции, поэтому crash между commit и inngest.send больше не теряет сам факт необходимости уведомления.
+State machine теперь явно допускает PAID + RELEASED + requiresOperatorAction.
+Admin API охватывает slot_conflict, paid_out_of_stock, ai_ticket и общий unresolved view.
+Findings
+F1. CRITICAL: durable InboxEvent не хранит payload, поэтому восстановление и offline drain невозможны
 
-Документы говорят:
+Модель InboxEvent содержит:
 
-Если stock update затронул 0 строк, stock не меняется, а заказ всё равно становится PAID с PAID_OUT_OF_STOCK.
-Admin cancellation для PAID восстанавливает stock.
-
-Получается последовательность:
-
-Item.stock = 0
-
-payment arrives
-UPDATE ... WHERE stock >= qty -> 0 rows
-Order -> PAID
-Order.operatorActionReason = PAID_OUT_OF_STOCK
-Item.stock remains 0
-
-admin cancels PAID order
-generic cancellation restores qty
-Item.stock becomes 1
-
-
-То есть система возвращает единицу, которую этот заказ никогда не списывал. Повторение сценария позволяет раздувать остаток.
-
-Проблема становится ещё опаснее для заказа с несколькими товарными строками, где часть stock updates прошла, а часть дала 0 rows: невозможно определить, какие именно количества надо восстанавливать.
-
-Нужен устойчивый ledger фактически списанного stock. Практичный минимум:
-
-model OrderItem {
-  // existing fields
-  stockDecremented Int @default(0)
+model InboxEvent {
+  id           String
+  provider     String
+  eventId      String
+  status       InboxStatus
+  attemptCount Int
+  lastErrorAt  DateTime?
+  lockedAt     DateTime?
+  lockedBy     String?
+  createdAt    DateTime
 }
 
 
-В fulfillment:
+В ней отсутствуют:
 
-successful decrement:
-  stockDecremented = quantity
+payload события;
+тип события;
+ссылка на исходное содержимое;
+destination/recipient для системного alert;
+orderId или иной структурированный aggregate reference.
 
-failed decrement:
-  stockDecremented = 0
+При этом архитектура обещает:
 
-
-При admin cancellation:
-
-restore exactly OrderItem.stockDecremented
-then set stockDecremented = 0
-
-
-Альтернатива: отдельная таблица InventoryMovement с уникальным ключом по order item и типу движения. Она надёжнее, но для v1 поле stockDecremented проще.
-
-T-034 должен проверить:
-
-paid-out-of-stock -> cancel
-stock remains unchanged
+insert InboxEvent and commit
+send only row id to Inngest
+offline drain processes database PENDING rows
 
 
-и смешанный multi-line order:
+и прямо называет эту схему durable-before-ack.
 
-line A decremented
-line B out of stock
-cancel
-restore only line A
+Контрпример:
 
-F2. HIGH: «post-commit durable job» пока имеет dual-write gap
-
-spec.md требует сначала commit БД, затем enqueue Telegram alert через durable job. T-026 повторяет тот же порядок.
-
-Но между этими действиями остаётся окно:
-
-DB transaction commits:
-  PaymentEvent saved
-  Order = PAID
-  requiresOperatorAction = true
-
-process crashes before enqueue
+Telegram webhook arrives with free-text question
+InboxEvent stores provider + Telegram update id
+transaction commits
+inngest.send fails
+HTTP returns 500
+Telegram stops retrying or retry window expires
+offline drain reads InboxEvent
 
 
-После рестарта operator-action marker останется, но «immediate Telegram alert» потеряется. Это особенно важно именно для paid-but-unfulfillable случаев.
+Из строки БД невозможно восстановить:
 
-Нужно выбрать один из двух честных контрактов.
+текст вопроса;
+chat id;
+тип Telegram update;
+пользователя, которому отвечать;
+нужный handler.
 
-Вариант A, рекомендуемый: в денежной транзакции создать durable outbox/inbox event:
+Аналогично WhatsApp offline drain не сможет восстановить сообщение и номер назначения. Для SYSTEM_ALERT в БД есть только eventId = alert_<order.id>, но контракт декодирования и alert type не формализован.
 
-transaction:
-  PaymentEvent
-  Order PAID
-  operator-action marker
-  AlertEvent PENDING
+Это не мелкий пробел реализации. Он делает недоказанными сразу три обещания:
 
-after commit:
-  best-effort inngest.send(AlertEvent.id)
+durable-before-ack;
+emergency offline drain;
+повторную обработку после утраты или недоставки Inngest event.
 
-sweeper:
-  resends stale PENDING AlertEvent
+Минимальное исправление:
 
+enum InboxEventKind {
+  TELEGRAM_UPDATE
+  WHATSAPP_MESSAGE
+  NOWPAYMENTS_WEBHOOK
+  SYSTEM_ALERT
+}
 
-Вариант B: отказаться от гарантии немедленного alert и явно считать admin escalation list источником истины, а Telegram уведомление best-effort.
+model InboxEvent {
+  id           String         @id @default(uuid())
+  provider     String
+  eventId      String
+  kind         InboxEventKind
+  payloadJson  Json
+  status       InboxStatus    @default(PENDING)
+  attemptCount Int            @default(0)
+  lastErrorAt  DateTime?
+  lockedAt     DateTime?
+  lockedBy     String?
+  createdAt    DateTime       @default(now())
 
-Сейчас формулировка «via a durable job» сама по себе не делает post-commit enqueue durable.
-
-MEDIUM
-F3. State machine противоречит зафиксированным исключениям
-
-Раздел §2.5 утверждает:
-
-PAID: same transaction sets reservation BOOKED
-
-
-Но поздняя оплата занятого слота намеренно создаёт:
-
-Order = PAID
-SlotReservation = RELEASED
-requiresOperatorAction = true
-
-
-Это уже легитимное состояние новой модели.
-
-Лучше изменить инвариант:
-
-PAID:
-  reservation = BOOKED
-  OR
-  reservation = RELEASED and requiresOperatorAction = true
-
-F4. Admin escalation API описывает только slot conflict
-
-T-009 предусматривает:
-
-GET /api/admin/escalations?type=slot_conflict
+  @@unique([provider, eventId])
+}
 
 
-Но теперь существует второй критический тип:
+Payload необходимо:
 
-PAID_OUT_OF_STOCK
+валидировать до сохранения;
+ограничить по размеру;
+не логировать;
+очищать по retention policy;
+использовать как единственный источник обработки и в Inngest, и в offline drain.
+
+Для SYSTEM_ALERT лучше хранить структурированный payload:
+
+{
+  "orderId": "...",
+  "reason": "PAID_OUT_OF_STOCK"
+}
 
 
-У него есть marker на Order, но query contract для его гарантированного обнаружения не указан.
+T-015 должен получить обязательный crash-recovery тест:
 
-Минимально:
+commit InboxEvent
+simulate inngest.send failure
+run offline drain
+assert original handler receives the persisted payload
 
-GET /api/admin/escalations?type=slot_conflict
-GET /api/admin/escalations?type=paid_out_of_stock
-GET /api/admin/escalations?type=all
+
+Без этого implement gate должен быть закрыт.
+
+F2. HIGH: сохранение сырых webhook payload создаёт новый PII/security boundary, который пока не описан
+
+Исправление F1 неизбежно означает хранение Telegram, WhatsApp и платёжных payload. Но текущая retention-секция описывает Order, MessengerContact, EscalationTicket и PaymentEvent, не определяя retention для InboxEvent.
+
+Если просто добавить payloadJson, там могут остаться:
+
+Telegram identifiers и message text;
+WhatsApp phone identifiers и message body;
+NOWPayments metadata;
+потенциально подписи или другие поля, которые логировать запрещено.
+
+Нужен явный lifecycle:
+
+SENT/FAILED InboxEvent payload:
+  redact or delete after N days
+
+PENDING/PROCESSING:
+  retain until terminal state
+
+SYSTEM_ALERT:
+  retain until SENT/FAILED plus operational retention window
 
 
-По умолчанию endpoint должен возвращать все unresolved operator actions, а не только AI escalation tickets.
+Также raw HTTP headers и signatures сохранять не нужно. Для повторной обработки должен сохраняться только минимальный проверенный canonical payload.
 
-F5. Multi-item locking contract не определён
+F3. MEDIUM: outbox event identity поддерживает только один alert на заказ
 
-Order содержит массив OrderItem[], но T-026 говорит об advisory lock на itemId в единственном числе. Для заказа с несколькими товарными или service lines не определено:
+Определено:
 
-какие item locks захватываются;
-в каком порядке;
-блокируется ли stock race тем же механизмом;
-что происходит при частичном stock exhaustion.
+provider = SYSTEM_ALERT
+eventId = alert_<order.id>
 
-Нужно либо:
 
-явно ограничить v1 одним OrderItem на заказ, либо
-захватывать locks для всех уникальных itemId в лексикографическом порядке.
+Но один заказ теоретически может получить разные operator-action причины во времени. Уникальность (provider, eventId) схлопнет второй alert в ту же запись.
 
-С учётом заявленного процесса catalog → hold → pay ограничение «один item на order» может быть разумным scope knife для v1.
+Лучше:
 
+alert:<orderId>:<reason>:<transitionVersion>
+
+
+или отдельный UUID с уникальным business key.
+
+F4. MEDIUM: failed SYSTEM_ALERT может вызвать рекурсивный alert contract
+
+Общий inbox contract говорит, что после десятой ошибки событие становится FAILED и отправляется alert администратору. Но если упавшее событие само является SYSTEM_ALERT, попытка сообщить о его падении через тот же механизм может создать рекурсию либо бессмысленный повтор.
+
+Нужно исключение:
+
+if failed event kind == SYSTEM_ALERT:
+    mark FAILED
+    emit structured log/health signal
+    do not enqueue another SYSTEM_ALERT
+
+F5. MEDIUM: tests проверяют outbox persistence, но не полное восстановление payload
+
+T-034 требует проверить transactional alert outbox persistence, но этого недостаточно. Можно успешно проверить наличие строки, которая всё равно непригодна для отправки.
+
+Нужны отдельные assertions:
+
+event содержит структурированный alert reason и order id;
+sweeper поднимает его без помощи памяти процесса;
+offline drain выполняет тот же handler;
+повторная обработка не создаёт вторую бизнес-операцию.
 Итог
 
-Архитектура слотов теперь выглядит согласованной: общий helper, sweeper lock, HELD | BOOKED, post-commit network boundary и concurrency tests присутствуют. Главный оставшийся денежный дефект находится в inventory compensation:
-
-не списали stock
--> отменили PAID order
--> generic restore добавил несуществующий остаток
-
-
-Также durable alert требует транзакционно сохранённого события, иначе commit и enqueue остаются двумя несвязанными операциями.
+Денежные и inventory-инварианты теперь выглядят существенно лучше. Но реализация durable inbox в нынешней модели хранит только идентификатор события, а не само событие. Поэтому после сбоя очередь знает, что что-то произошло, но не знает, что именно нужно повторить.
 
 gate_recommendation: BLOCK_IMPLEMENT
 blocking_findings:
   - F1
-  - F2
 
 
-После исправления F1 и F2 техническая часть трёх приложенных документов будет близка к PASS. Окончательный constitutional gate по-прежнему нельзя подтвердить без .specify/memory/constitution.md.
+После добавления минимального canonical payload, retention/redaction правил и crash-recovery теста техническая часть будет близка к PASS. Окончательный gate всё равно требует отдельной проверки .specify/memory/constitution.md, которого среди вложений нет.
 
 ---
 
-## Финальное закрытие замечаний F1–F5 и проверка конституции (2026-10-18, Ревизия 3)
+## Финальное закрытие замечаний F1–F5 и проверка конституции (2026-10-18, Ревизия 4)
 
-Все замечания F1–F5 устранены во всех спецификациях, планах, задачах и схеме данных:
+Все критические и операционные замечания F1–F5 устранены во всех спецификациях, планах, задачах и схеме данных:
 
-1. **[F1 RESOLVED] Исключение искусственного раздувания остатков через `OrderItem.stockDecremented`:**
-   В модель `OrderItem` добавлено поле `stockDecremented Int @default(0)` (`spec.md` §6, `tasks.md` `T-002`). В `lib/payments/fulfillment.ts` (`T-026`) при успешном условном списании проставляется `stockDecremented = quantity`, а при нехватке остатков — `stockDecremented = 0`. При админской отмене заказа (`cancel-after-PAID`) склад восстанавливается строго на величину `OrderItem.stockDecremented` (после чего поле обнуляется). Это полностью исключает возврат несуществующего остатка при отмене заказов со статусом `PAID_OUT_OF_STOCK` и корректно компенсирует смешанные многострочные заказы. В `T-034` добавлены тесты на отмену `paid-out-of-stock` и смешанных корзин.
+1. **[F1 CRITICAL RESOLVED] Канонический payloadJson и enum InboxEventKind в InboxEvent:**
+   В Prisma-модель `InboxEvent` добавлено поле `kind InboxEventKind` (`TELEGRAM_UPDATE`, `WHATSAPP_MESSAGE`, `NOWPAYMENTS_WEBHOOK`, `SYSTEM_ALERT`) и структурированное поле `payloadJson Json` (`spec.md` §6, `tasks.md` `T-002`). В `payloadJson` сохраняется минимальный канонический набор данных, необходимый для автономного воспроизведения и оффлайн-дренажа (`scripts/drain-inbox.ts` / `npm run inbox:drain`, `T-015`), без зависимости от оперативной памяти упавшего процесса.
 
-2. **[F2 RESOLVED] Устранение dual-write gap через Transactional Alert Outbox:**
-   В `spec.md` §2.6, `plan.md` §2.5 и `tasks.md` `T-026` зафиксировано: внутри той же транзакции БД создается запись алертинга в таблице `InboxEvent` (`provider = 'SYSTEM_ALERT'`, `eventId = 'alert_' || orderId`, `status = 'PENDING'`). Пост-коммит отправка через `inngest.send` выполняется best-effort; в случае аварии процесса до отправки свипер инбокса подхватывает событие и гарантированно доставляет алерт в `ADMIN_CHAT_ID`. Кроме того, `GET /api/admin/escalations` является постоянным источником истины в БД.
+2. **[F2 HIGH RESOLVED] Жизненный цикл PII и ретеншн InboxEvent:**
+   В `spec.md` §2.11 и `tasks.md` `T-031` четко зафиксировано:
+   - В `payloadJson` категорически запрещено сохранять сырые HTTP-заголовки, токены ботов и криптографические подписи.
+   - Для завершенных событий (`status IN ('SENT', 'FAILED')`) поле `payloadJson` очищается в пустой объект `{}` через 7 дней ночным кроном.
+   - Запросы на удаление ПДн по GDPR (`POST /api/admin/users/purge`) мгновенно зачищают персональные тексты и телефоны в том числе из `InboxEvent.payloadJson`.
 
-3. **[F3 RESOLVED] Гармонизация инварианта стейт-машины PAID (§2.5):**
-   В `spec.md` §2.5 и `plan.md` явно закреплены три легитимных исхода при переходе в `PAID`:
-   - Штатный: reservation = `BOOKED`, сток списан.
-   - Коллизия слота: reservation = `RELEASED`, `requiresOperatorAction = true` (`OVERBOOKED_MANUAL_RESOLUTION`).
-   - Нехватка товара: `Order.requiresOperatorAction = true` (`PAID_OUT_OF_STOCK`), `OrderItem.stockDecremented = 0`.
+3. **[F3 MEDIUM RESOLVED] Гранулярные композитные ключи для системных алертов:**
+   В `spec.md` §2.6 и `tasks.md` `T-026` ключ системного алерта формируется как `alert_<orderId>_<reason>_<timestamp>`, что исключает коллизии уникальности `(provider, eventId)` при возникновении нескольких различных операторских причин по одному заказу.
 
-4. **[F4 RESOLVED] Контракт фильтрации эскалаций в Admin API:**
-   В `spec.md` §2.7 и `tasks.md` `T-009` роут `GET /api/admin/escalations` документирован с полной поддержкой типов:
-   - `?type=all` (по умолчанию: все неразрешенные операторские действия).
-   - `?type=slot_conflict` (коллизии бронирования).
-   - `?type=paid_out_of_stock` (оплаченные заказы без остатка на складе).
-   - `?type=ai_ticket` (тикеты эскалации базы знаний).
+4. **[F4 MEDIUM RESOLVED] Предотвращение рекурсии системных алертов:**
+   В `spec.md` §2.8 и `tasks.md` `T-015` установлено: при 10-й ошибке обработки события с `kind == SYSTEM_ALERT` оно переводится в `FAILED` с записью лога `[SYSTEM_ALERT_TERMINAL_FAILURE]` без повторной постановки в очередь алертов.
 
-5. **[F5 RESOLVED] Детерминированный порядок блокировок в мультиитемных заказах:**
-   В `spec.md` §2.6, `plan.md` §2.5 и `tasks.md` `T-026` зафиксировано: для заказов с несколькими позициями уникальные `itemId` сортируются по возрастанию (`ORDER BY itemId ASC`), и блокировки `acquireItemSlotLock(tx, itemId)` захватываются строго последовательно, что предотвращает deadlocks.
+5. **[F5 MEDIUM RESOLVED] Тест восстановления после сбоя (Crash-Recovery):**
+   В `tasks.md` `T-034` добавлен отдельный юнит- и интеграционный тест: сохранение `InboxEvent` с `payloadJson`, симуляция сбоя сетевой отправки в Inngest, запуск `scripts/drain-inbox.ts` и проверка успешного извлечения данных из `payloadJson` с переводом в `SENT`.
 
 6. **[Constitution Verified] Наличие и соблюдение конституции:**
    Файл `.specify/memory/constitution.md` (v1.5.0) проверен непосредственно в репозитории (`undreseller/.specify/memory/constitution.md`). Все принципы (I, VI, VII, VIII, IX) соблюдены.
@@ -236,7 +236,7 @@ blocking_findings:
 ```yaml
 verdict: PASS
 reviewer: copilot (re-verified & fully resolved)
-reviewed_at: 2026-10-18T10:45:00Z
+reviewed_at: 2026-10-18T11:30:00Z
 critical_count: 0
 high_count: 0
 medium_count: 0
