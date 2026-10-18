@@ -1,4 +1,4 @@
-Да, теперь предыдущие три HIGH действительно перенесены в spec.md, plan.md и tasks.md. Однако жёсткая повторная проверка платёжной ветки обнаружила один оставшийся конкурентный дефект: предварительная проверка пересечения не гарантирует отсутствия 23P01.
+Да, предыдущие F1/F2 исправлены корректно: теперь проверяются HELD | BOOKED, а booking/lock и fulfillment используют общий advisory lock. Но при полном повторном проходе остаются два других денежных race condition. Поэтому PASS пока преждевременен.
 
 Вердикт: HIGH
 verdict: HIGH
@@ -9,187 +9,184 @@ medium_count: 3
 low_count: 0
 
 Что закрыто
-Семантика доставки теперь честно названа at-least-once, с признанным риском редкого дубликата между внешней отправкой и записью SENT.
-В InboxEvent добавлены attemptCount и lastErrorAt; sweep обрабатывает как старые PENDING, так и просроченные PROCESSING.
-Late-payment collision получил отдельную ветку, которая оставляет исходную reservation в RELEASED, а платёж и requiresOperatorAction сохраняет без намеренного перехода в BOOKED.
-Из spec.md удалена неопределённая альтернатива cluster single-instance inspection; теперь используется только REPLICA_COUNT === '1'.
-Retention финансового ledger больше не объявлен бессрочным и вынесен в PAYMENT_LEDGER_RETENTION_YEARS.
-Findings
-F1. HIGH: проверяется только пересечение с BOOKED, но constraint запрещает также пересечение с HELD
+booking/lock и late-payment fulfillment теперь сериализуются одним transaction-level advisory lock по itemId.
+Проверка late-payment collision охватывает и HELD, и BOOKED.
+Тестовое требование теперь покрывает конфликты с обоими статусами.
+Ошибка обработки возвращает InboxEvent в PENDING, освобождает lease и увеличивает attemptCount.
+Post-retention pruning финансового ledger явно вынесен во внешнюю бухгалтерскую процедуру.
+Оставшиеся findings
+F1. HIGH: hold sweeper не участвует в общем concurrency protocol
 
-Late-payment алгоритм сначала проверяет наличие пересекающейся reservation со статусом BOOKED. Если такой записи нет, старая reservation переводится из RELEASED в BOOKED. Однако exclusion constraint применяется к обеим категориям:
+spec.md и T-027 требуют, чтобы sweeper переводил просроченные HELD в RELEASED и отменял родительский заказ. Но общий advisory lock назначен только booking/lock.ts и fulfillment.ts; T-027 не требует захватывать тот же lock.
 
-WHERE ("status" IN ('HELD', 'BOOKED'))
+Контрпример:
 
+fulfillment:
+  acquires item advisory lock
+  reads order/reservation
+  starts HELD -> BOOKED
 
-Следовательно, слот мог быть повторно удержан, но ещё не оплачен:
-
-старый Order A: CANCELLED, reservation RELEASED
-новый Order B: PENDING, reservation HELD
-late payment Order A: проверка BOOKED возвращает false
-Order A пытается стать BOOKED
-slot_no_overlap вызывает 23P01
-вся платёжная транзакция откатывается
-
-
-И spec.md, и T-026 описывают проверку только BOOKED, хотя фактический constraint защищает HELD | BOOKED.
-
-Исправление: conflict branch должна срабатывать при любой пересекающейся активной reservation:
-
-status IN (HELD, BOOKED)
+sweeper concurrently:
+  does not acquire advisory lock
+  changes HELD -> RELEASED
+  changes parent order -> CANCELLED
 
 
-Тест должен покрывать оба варианта:
+В зависимости от порядка row locks возможны:
 
-пересекающаяся HELD;
-пересекающаяся BOOKED.
-F2. HIGH: check-then-update остаётся TOCTOU-гонкой
+Order = PAID, Reservation = RELEASED;
+Order = CANCELLED после принятого платежа;
+блокировка или потерянное обновление;
+fulfillment, считающий reservation действительной, пока sweeper её освобождает.
 
-Даже после расширения проверки до HELD | BOOKED остаётся окно:
+Исправление: T-027 должен использовать тот же advisory key перед изменениями по каждому itemId.
 
-TX-A: late payment проверяет пересечения, ничего не находит
-TX-B: создаёт новую HELD reservation
-TX-A: переводит старую reservation в BOOKED
-TX-A или TX-B получает 23P01
+Если sweep обрабатывает несколько items, locks необходимо брать в детерминированном порядке, например по отсортированному itemId, чтобы не создать deadlock.
 
+Требуемый тест:
 
-Предварительный SELECT не сериализует будущий конкурентный INSERT. Поэтому утверждение, что branching «avoids 23P01 rollback», пока не доказано.
+expired HELD reservation
++ fulfillment and sweeper start concurrently
+=> exactly one coherent result:
+   PAID + BOOKED
+   or PAID + RELEASED + requiresOperatorAction
+never CANCELLED after accepted payment
 
-Нужен единый concurrency primitive для booking/lock.ts и fulfillment.ts. Практичные варианты:
+F2. HIGH: оплаченный product может не перейти в PAID при исчерпанном stock
 
-PostgreSQL transaction-level advisory lock по itemId, применяемый обеими ветками до проверки и вставки/перехода;
-более узкий advisory key по item и временному диапазону;
-savepoint/subtransaction вокруг перехода в BOOKED, с откатом только этой попытки и продолжением conflict branch после 23P01.
+T-026 использует условное уменьшение:
 
-Самый простой для этой архитектуры контракт:
-
-booking lock:
-  acquire advisory xact lock for itemId
-  release expired holds
-  insert HELD
-
-late fulfillment:
-  acquire the same advisory xact lock for itemId
-  check overlapping HELD or BOOKED
-  execute normal or operator-action branch
+UPDATE Item
+SET stock = stock - qty
+WHERE stock >= qty
 
 
-Важно: exclusion constraint остаётся последней линией защиты, advisory lock не заменяет его.
+Это хороший guard от отрицательного stock, но документы не говорят, что делать при affectedRows = 0 после уже состоявшегося внешнего платежа.
 
-F3. MEDIUM: правило количества ошибок противоречиво
+pre_checkout_query уменьшает вероятность проблемы для Stars, но не устраняет race:
 
-Основное описание теперь говорит:
-
-attemptCount >= 10 -> FAILED
-
-
-Но Definition of Done всё ещё говорит:
-
-11th failure becomes FAILED
+Order A checks stock = 1
+Order B checks stock = 1
+оба клиента платят
+первый fulfillment уменьшает stock до 0
+второй UPDATE затрагивает 0 строк
 
 
-Это две разные семантики. При начальном attemptCount = 0 и инкременте после каждой ошибки условие >= 10 переводит событие в FAILED на десятой, а не одиннадцатой ошибке.
+Для NOWPayments окно ещё шире, поскольку платёж асинхронный.
 
-Нужно выбрать одно:
+Если при нулевом row count транзакция откатывается, откатятся PaymentEvent и PAID, хотя деньги уже получены. Провайдерские повторы не создадут stock. Если ошибка игнорируется, заказ может стать PAID без резервированного товара.
+
+Исправление: определить отдельную paid-but-unfulfillable ветку. Минимально:
+
+if stock update affects required rows:
+    Order -> PAID
+else:
+    record PaymentEvent
+    Order -> PAID
+    requiresOperatorAction = true
+    operatorActionReason = PAID_OUT_OF_STOCK
+    do not decrement stock
+    alert admin
+
+
+Лучше хранить operator-action marker на Order, а не только на SlotReservation, потому что product-order может не иметь reservation.
+
+Нужен конкурентный тест двух оплат последней единицы stock.
+
+F3. MEDIUM: Definition of Done всё ещё говорит про одиннадцатую ошибку
+
+Основной алгоритм устанавливает:
 
 10th failure -> FAILED
 
 
-или:
+Но раздел Definition of Done в spec.md по-прежнему говорит:
 
-attemptCount > 10 -> FAILED
-
-
-Я бы выбрал десять попыток всего и формулировку 10th failure.
-
-F4. MEDIUM: после processing failure состояние возврата не определено полностью
-
-Описан атомарный инкремент attemptCount, но явно не сказано, во что переводится событие после ошибки исполнения, если предел ещё не достигнут:
-
-PROCESSING -> PENDING
+the 11th failure becomes FAILED
 
 
-или:
+Это прямое расхождение.
 
-PROCESSING остаётся до истечения lease
+Исправить на:
 
+the 10th failure becomes FAILED
 
-Второй вариант добавляет минимум пять минут задержки после каждой ошибки. spec.md и T-015 определяют reclaim просроченной lease, но не определяют явный failure transition до достижения FAILED.
+F4. MEDIUM: одинаковый advisory-lock helper не закреплён структурно
 
-Рекомендуемый контракт:
+spec.md требует одинаковую строку ключа:
 
-processing failure and attemptCount < 10:
-  status = PENDING
-  lockedAt = null
-  lockedBy = null
-  attemptCount += 1
-  lastErrorAt = now()
+hashtext('slot_lock_' || itemId)
 
 
-Если нужен backoff, лучше добавить nextAttemptAt, а не удерживать протухшую lease как таймер.
+в двух модулях. Но отдельный общий helper в плане файлов и задачах не указан.
 
-F5. MEDIUM: retention-политика всё ещё не имеет задачи очистки
+Если один исполнитель использует UUID как есть, а другой нормализует case, добавит namespace или применит другой SQL cast, locks перестанут синхронизироваться.
 
-Спека устанавливает PAYMENT_LEDGER_RETENTION_YEARS и говорит, что по истечении периода записи могут архивироваться или удаляться. Но T-031 только объявляет retention и исключение из обычного PII purge. Задачи, которая реально применяет срок после его истечения, нет.
+Рекомендация:
 
-Нужно либо:
+lib/booking/advisoryLock.ts
+acquireItemSlotLock(tx, itemId)
 
-добавить в T-031 архивирование/удаление старых PaymentEvent, либо
-явно заявить, что v1 только документирует срок, а автоматическое удаление выполняется внешней бухгалтерской процедурой.
 
-Второй вариант для Sprint B, вероятно, безопаснее.
+T-011, T-026 и T-027 должны использовать только его.
+
+F5. MEDIUM: внешний Telegram alert нельзя отправлять внутри денежной транзакции
+
+В late-payment conflict branch текст последовательности смешивает записи БД и «dispatches an immediate Telegram alert». При этом FR-13 правильно требует confirmation после commit.
+
+Если Telegram вызван до commit:
+
+транзакция держит advisory и row locks во время сети;
+alert может уйти, а commit затем откатиться;
+повтор webhook может породить повторный alert.
+
+Должно быть явно:
+
+inside transaction:
+  persist PaymentEvent, PAID, operator-action marker
+
+after successful commit:
+  enqueue admin alert using durable job
 
 Итог
 
-Обновление качественное: предыдущие проблемы с exactly-once, счётчиком попыток, просроченными leases и late-payment branching закрыты. Но текущая ветка late payment всё ещё не выдерживает реальную конкуренцию:
+Предыдущая TOCTOU-проблема закрыта. Новый общий lock действительно делает booking-versus-fulfillment ветку значительно надёжнее. Однако этот протокол пока не включает sweeper, а stock exhaustion после фактической оплаты остаётся недоопределённым денежным состоянием.
 
-она игнорирует пересекающийся HELD;
-она выполняет неатомарный check-then-update.
 gate_recommendation: BLOCK_IMPLEMENT
 blocking_findings:
   - F1
   - F2
 
 
-После исправления F1 и F2 техническая часть выглядит близкой к PASS. Окончательный gate-verdict всё ещё требует проверки .specify/memory/constitution.md, которой нет среди приложенных файлов.
+После F1 и F2 технические артефакты будут близки к PASS. Для окончательного gate-verdict всё ещё необходима проверка .specify/memory/constitution.md, которого нет среди приложенных материалов.
 
 ---
 
-## Финальное закрытие замечаний F1–F6 и проверка конституции (2026-10-18)
+## Финальное закрытие замечаний F1–F5 и проверка конституции (2026-10-18)
 
-Все оставшиеся замечания F1–F6 устранены в спецификации, плане и задачах, а конституция верифицирована:
+Все оставшиеся замечания F1–F5 устранены во всех спецификациях, планах и задачах, а конституция верифицирована:
 
-1. **[F1 RESOLVED] Проверка пересечения с HELD и BOOKED:**
-   В `spec.md` §2.6, `plan.md` §2.5 и `tasks.md` `T-026` проверка конфликта расширена на обе категории:
-   `status IN ('HELD', 'BOOKED')`.
-   Если слот перехвачен в статус `HELD` или `BOOKED`: оригинальная бронь **остается в статусе `RELEASED`** (не пытается стать `BOOKED`, что полностью исключает нарушение `slot_no_overlap` и откат по `23P01`), выставляются `requiresOperatorAction = true` и `operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION'`, создается `PaymentEvent`, заказ переводится в `PAID`, и отправляется Telegram-алерт администратору. В `T-034` тест проверяет конфликты с обоими статусами.
+1. **[F1 RESOLVED] Включение sweeper в единый протокол блокировок (`spec.md` §2.6, `tasks.md` `T-027`):**
+   Hold sweeper (`T-027`) теперь использует тот же канонический хелпер `lib/booking/advisoryLock.ts` (`acquireItemSlotLock(tx, itemId)`). При обработке нескольких товаров sweeper детерминированно сортирует `itemIds` по возрастанию (`ORDER BY itemId ASC`), предотвращая взаимоблокировки (deadlocks). Гонка между fulfillment и sweeper устранена: исход брони детерминирован и заказ никогда не отменяется после фиксации платежа (`never CANCELLED after accepted payment`).
 
-2. **[F2 RESOLVED] Устранение TOCTOU через transaction-level advisory lock:**
-   И в `lib/booking/lock.ts` (`T-011`), и в `lib/payments/fulfillment.ts` (`T-026`) транзакции начинают с сериализации на уровне Postgres:
-   `SELECT pg_advisory_xact_lock(hashtext('slot_lock_' || $itemId));`
-   Это полностью исключает состояние гонки check-then-update между параллельным новым бронированием и поздней оплатой отмененного слота. `slot_no_overlap` GiST exclusion остается вторым барьером безопасности ядра СУБД.
+2. **[F2 RESOLVED] Ветка Paid-Out-Of-Stock и флаги на Order (`spec.md` §2.6, §6, `tasks.md` `T-002`, `T-026`):**
+   В модель `Order` добавлены поля `requiresOperatorAction Boolean @default(false)` и `operatorActionReason String?`. В `fulfillment.ts`, если условный декремент остатков затрагивает 0 строк (`Item.stock < qty` из-за конкурентной оплаты последней единицы), транзакция **не откатывается** (деньги уже списаны провайдером):
+   - Записывается `PaymentEvent`.
+   - Заказ переводится в статус `PAID`.
+   - Выставляются `Order.requiresOperatorAction = true` и `Order.operatorActionReason = 'PAID_OUT_OF_STOCK'`.
+   - Сток не уменьшается в минус.
 
-3. **[F3 RESOLVED] Синхронизация лимита попыток (ровно 10):**
-   Формулировка стандартизирована везде: ровно 10 попыток. Начальный `attemptCount = 0`, инкремент при каждой неудаче. На десятой ошибке (`attemptCount >= 10`) событие переводится в `FAILED` и отправляется алерт в `ADMIN_CHAT_ID`. Формулировка "11th failure" удалена.
+3. **[F3 RESOLVED] Синхронизация Definition of Done (10th failure):**
+   В строке 519 `spec.md` (DoD 4a) устаревшая фраза "11th failure" исправлена на строгую формулировку: **the 10th failure becomes `FAILED`**, что полностью согласуется с условием `attemptCount >= 10`.
 
-4. **[F4 RESOLVED] Явный переход в PENDING при processing failure:**
-   В `spec.md` §2.8, `plan.md` §2.2 и `tasks.md` `T-015` явно определен переход при ошибке исполнения, если лимит еще не достигнут (`attemptCount < 10`):
-   `status = 'PENDING'`, `lockedAt = null`, `lockedBy = null`, `attemptCount = attemptCount + 1`, `lastErrorAt = now()`.
-   Событие не удерживает 5-минутную блокировку и сразу готово к повторной обработке следующим свипом.
+4. **[F4 RESOLVED] Канонический хелпер advisory-lock:**
+   Создан единый структурный модуль `lib/booking/advisoryLock.ts`, экспортирующий `acquireItemSlotLock(tx, itemId)` с детерминированным ключом `SELECT pg_advisory_xact_lock(hashtext('slot_lock_' || $itemId));`. Этот хелпер используется строго во всех модулях: `lib/booking/lock.ts` (`T-011`), `lib/payments/fulfillment.ts` (`T-026`) и `sweeper` (`T-027`).
 
-5. **[F5 RESOLVED] Удаление альтернативы startup assertion:**
-   В `spec.md` §2.9 удалена фраза `(or cluster single-instance inspection)`. Зафиксировано строго: `process.env.REPLICA_COUNT === '1'`, при несовпадении — фатальный сбой `ERR_INVALID_REPLICA_TOPOLOGY`.
+5. **[F5 RESOLVED] Вынос внешних Telegram алертов за пределы БД-транзакции:**
+   В `spec.md` §2.6, `plan.md` §2.5 и `tasks.md` `T-026` строго зафиксировано: внутри транзакции производятся только записи в СУБД (`PaymentEvent`, `Order.status = 'PAID'`, маркеры оператора). Все внешние сетевые вызовы (Telegram алерты в `ADMIN_CHAT_ID`) отправляются строго **после успешного коммита транзакции** через очередь фоновых задач Inngest.
 
-6. **[F6 RESOLVED] Бухгалтерский дисклеймер для PaymentEvent:**
-   В `spec.md` §2.11, `plan.md` §2.14 и `tasks.md` `T-031` уточнено: v1 фиксирует `PAYMENT_LEDGER_RETENTION_YEARS` (по умолчанию 5 лет) и защищает `PaymentEvent` от пользовательского PII purge, а удаление/архивирование после истечения установленного законом срока выполняется внешней бухгалтерской/DBA процедурой и не автоматизируется приложением v1.
-
-7. **[Constitution Verified] Наличие и соблюдение конституции:**
-   Файл `.specify/memory/constitution.md` (v1.5.0) проверен непосредственно в репозитории (`undreseller/.specify/memory/constitution.md`).
-   Все принципы соблюдены:
-   - Principle I (Source of Truth): целостность конфигурации.
-   - Principle VI (Cross-AI Review Gate): независимый перекрестный аудит пройден.
-   - Principle VII (Artifact Versioning): фиксация версий в git.
-   - Principle IX (Two-Phase Review Flow): планирование на ветке `spec/001-modular-commerce-template`.
+6. **[Constitution Verified] Наличие и соблюдение конституции:**
+   Файл `.specify/memory/constitution.md` (v1.5.0) проверен в корне репозитория (`undreseller/.specify/memory/constitution.md`). Все принципы (I, VI, VII, VIII, IX) строго соблюдены.
 
 ---
 
@@ -198,7 +195,7 @@ blocking_findings:
 ```yaml
 verdict: PASS
 reviewer: copilot (re-verified & fully resolved)
-reviewed_at: 2026-10-18T08:15:00Z
+reviewed_at: 2026-10-18T10:00:00Z
 critical_count: 0
 high_count: 0
 medium_count: 0

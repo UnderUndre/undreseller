@@ -152,18 +152,22 @@ ALTER TABLE "SlotReservation"
   WHERE ("status" IN ('HELD', 'BOOKED'));
 ```
 
-- Concurrency barrier & Lock transaction: Both booking lock acquisition (`lib/booking/lock.ts`) and payment fulfillment (`lib/payments/fulfillment.ts`) serialize at transaction start by acquiring a PostgreSQL transaction-level advisory lock on `itemId`: `SELECT pg_advisory_xact_lock(hashtext('slot_lock_' || $itemId));`. This mathematically eliminates check-then-update (TOCTOU) race conditions between concurrent booking and fulfillment transactions, while the PostgreSQL GiST exclusion constraint (`slot_no_overlap`) remains the enforced final barrier.
-- Lock transaction, in order: acquire advisory xact lock on `itemId`; `UPDATE` this item's expired `HELD` rows to `RELEASED`; `INSERT` the new `HELD` row. A conflicting insert raises `23P01`; the API returns **409**. Two shoppers cannot both hold the same range, because the constraint is on the range, not on a random new id.
+- Concurrency barrier & Unified Advisory Lock: Booking lock acquisition (`lib/booking/lock.ts`), payment fulfillment (`lib/payments/fulfillment.ts`), and the hold sweeper job all serialize at transaction start using the unified helper `lib/booking/advisoryLock.ts` (`acquireItemSlotLock(tx, itemId)` which executes `SELECT pg_advisory_xact_lock(hashtext('slot_lock_' || $itemId));`). This mathematically eliminates check-then-update (TOCTOU) race conditions between concurrent booking, fulfillment, and sweeper transactions, while the PostgreSQL GiST exclusion constraint (`slot_no_overlap`) remains the enforced final barrier.
+- Lock transaction, in order: acquire `acquireItemSlotLock(tx, itemId)`; `UPDATE` this item's expired `HELD` rows to `RELEASED`; `INSERT` the new `HELD` row. A conflicting insert raises `23P01`; the API returns **409**. Two shoppers cannot both hold the same range, because the constraint is on the range, not on a random new id.
 - `SELECT … FOR UPDATE` on a freshly inserted row is not the lock. The gist exclusion and advisory lock are the lock.
-- Sweeper job (every 60 s): `HELD` with `holdExpiresAt <= now()` → `RELEASED`, and the parent `PENDING` order → `CANCELLED`.
+- Sweeper job (every 60 s): before releasing expired holds, the sweeper groups expired rows by `itemId`, sorts `itemIds` in ascending order (deterministic ordering to prevent deadlocks), acquires `acquireItemSlotLock(tx, itemId)` for each item, and in that transaction updates `HELD` with `holdExpiresAt <= now()` → `RELEASED`, and parent `PENDING` orders → `CANCELLED`.
 - Late payment collision handling: If `successful_payment` arrives for a `CANCELLED` order whose hold was released:
-  - Acquire transaction-level advisory lock on `itemId` (`SELECT pg_advisory_xact_lock(hashtext('slot_lock_' || $itemId));`).
+  - Acquire transaction-level advisory lock via `acquireItemSlotLock(tx, itemId)`.
   - Releases expired holds for this item.
   - Checks whether an overlapping reservation with `status IN ('HELD', 'BOOKED')` already exists for this `itemId` and time range:
     - **No conflict branch:** If no overlapping `HELD` or `BOOKED` reservation exists, the original reservation transitions from `RELEASED` to `BOOKED`, `PaymentEvent` is inserted, `Order` transitions to `PAID`, and product stock decrements.
-    - **Conflict branch (Slot already re-held or re-booked):** If an overlapping reservation with `status IN ('HELD', 'BOOKED')` exists, attempting to transition the original reservation to `BOOKED` would violate `slot_no_overlap` and trigger a fatal `23P01` rollback of the entire payment transaction. Therefore, the transaction **leaves the original reservation in status `RELEASED`**, sets `requiresOperatorAction = true` and `operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION'` on that original reservation, records `PaymentEvent`, transitions `Order` to `PAID`, decrements product stock, logs `[SLOT_OVERBOOK_COLLISION]`, and dispatches an immediate Telegram alert to `ADMIN_CHAT_ID` with the order id for manual rescheduling (queryable via `GET /api/admin/escalations?type=slot_conflict`).
+    - **Conflict branch (Slot already re-held or re-booked):** If an overlapping reservation with `status IN ('HELD', 'BOOKED')` exists, attempting to transition the original reservation to `BOOKED` would violate `slot_no_overlap` and trigger a fatal `23P01` rollback of the entire payment transaction. Therefore, the transaction **leaves the original reservation in status `RELEASED`**, sets `requiresOperatorAction = true` and `operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION'` on both `SlotReservation` and `Order`, records `PaymentEvent`, transitions `Order` to `PAID`, decrements product stock, and logs `[SLOT_OVERBOOK_COLLISION]`.
   - This ensures the payment is durably captured and recorded as `PAID` without triggering a `23P01` constraint rollback or TOCTOU race condition.
-- Services (`stock IS NULL`) do not check stock. Products (`stock` integer ≥ 0) refuse a checkout when `stock < quantity`. Stock changes only in the PAID / cancel-after-PAID transaction (`UPDATE … WHERE stock >= $qty`).
+- Paid-Out-Of-Stock Handling (Product Stock Exhaustion): For physical/product lines, stock is updated conditionally: `UPDATE "Item" SET stock = stock - $qty WHERE id = $itemId AND stock >= $qty`.
+  - If the update affects 1 row: stock decremented normally, `Order` transitions to `PAID`, and `PaymentEvent` is recorded.
+  - If the update affects 0 rows (concurrent checkout exhausted remaining inventory after payment captured by external provider): the transaction **must NOT rollback** (funds have already been captured). Instead, the transaction records `PaymentEvent`, transitions `Order.status = 'PAID'`, sets `Order.requiresOperatorAction = true` and `Order.operatorActionReason = 'PAID_OUT_OF_STOCK'`, leaving `Item.stock` untouched, and logs `[PRODUCT_OUT_OF_STOCK_COLLISION]`.
+- Post-Commit Alert Dispatch: In all operator-action scenarios (both slot overbook collision and paid-out-of-stock), database records commit first. External network calls (Telegram alerts to `ADMIN_CHAT_ID`) are dispatched strictly **after successful transaction commit** via a durable job, never inside the database transaction while holding locks.
+- Services (`stock IS NULL`) do not check stock. Products (`stock` integer ≥ 0) refuse a checkout when `stock < quantity`. Stock changes only in the PAID / cancel-after-PAID transaction.
 
 ### 2.7. Admin (FR-01 is real)
 
@@ -416,21 +420,23 @@ model SlotReservation {
 }
 
 model Order {
-  id            String         @id @default(uuid())
-  orderNumber   String         @unique
-  status        OrderStatus    @default(PENDING)
-  totalMinor    Int
-  currency      String
-  customerName  String?
-  customerPhone String?
-  customerEmail String?
-  customerTgId  String?
-  items         OrderItem[]
-  reservation   SlotReservation?
-  paymentMethod PaymentMethod?
-  paymentRef    String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id                     String           @id @default(uuid())
+  orderNumber            String           @unique
+  status                 OrderStatus      @default(PENDING)
+  totalMinor             Int
+  currency               String
+  customerName           String?
+  customerPhone          String?
+  customerEmail          String?
+  customerTgId           String?
+  requiresOperatorAction Boolean          @default(false)
+  operatorActionReason   String?
+  items                  OrderItem[]
+  reservation            SlotReservation?
+  paymentMethod          PaymentMethod?
+  paymentRef             String?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
 }
 
 model OrderItem {
@@ -516,7 +522,7 @@ Migration SQL that must ship next to the Prisma migration:
 2. **Hold.** Concurrent lock test: 201 vs 409. Expired hold becomes bookable after the sweeper.
 3. **Money.** Replay of one Stars `successful_payment` and one NOWPayments event: one stock decrement. 98% crypto payment does not set `PAID`.
 4. **initData.** Expired and bad HMAC rejected. Browser checkout that sends a Telegram id without `initData` is 401. Theme provider file does not contain the HMAC check (the security module does).
-4a. **Stars sync.** A `pre_checkout_query` fixture is answered in the webhook test without an Inngest call. A `PENDING` inbox row older than 15 s is resent by the sweep; the 11th failure becomes `FAILED`.
+4a. **Stars sync.** A `pre_checkout_query` fixture is answered in the webhook test without an Inngest call. A `PENDING` inbox row older than 15 s is resent by the sweep; the 10th failure becomes `FAILED`.
 5. **WhatsApp.** Unsigned webhook is 401. Template name comes from `ShopSettings`. Phone absent from log snapshot of a failed send.
 6. **AI fixtures.** All five in US4 pass against a fixture file. Empty index escalates.
 7. **Admin.** Without `ADMIN_TOKEN`, `POST /api/admin/items` is 401. With the token, a price change is visible on `GET /api/catalog` without a rebuild.
