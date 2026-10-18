@@ -155,7 +155,11 @@ ALTER TABLE "SlotReservation"
 - Lock transaction, in order: `UPDATE` this item's expired `HELD` rows to `RELEASED`; `INSERT` the new `HELD` row. A conflicting insert raises `23P01`; the API returns **409**. Two shoppers cannot both hold the same range, because the constraint is on the range, not on a random new id.
 - `SELECT … FOR UPDATE` on a freshly inserted row is not the lock. The gist exclusion is the lock.
 - Sweeper job (every 60 s): `HELD` with `holdExpiresAt <= now()` → `RELEASED`, and the parent `PENDING` order → `CANCELLED`.
-- Late payment collision: If `successful_payment` arrives for a `CANCELLED` order whose hold was released, `PaymentEvent` idempotency records payment, order moves to `PAID`, and stock decrements. If the underlying slot range was re-booked by a concurrent customer in the interim, the reservation transition logs `[SLOT_OVERBOOK_COLLISION]`, sets `SlotReservation.requiresOperatorAction = true` and `SlotReservation.operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION'` (queryable via `GET /api/admin/escalations?type=slot_conflict`), and dispatches an immediate Telegram alert to `ADMIN_CHAT_ID` with the order id for manual rescheduling.
+- Late payment collision handling: If `successful_payment` arrives for a `CANCELLED` order whose hold was released:
+  - The transaction first checks whether an overlapping reservation with `status = 'BOOKED'` already exists for this `itemId` and time range:
+    - **No conflict branch:** If no overlapping `BOOKED` reservation exists, the original reservation transitions from `RELEASED` to `BOOKED`, `PaymentEvent` is inserted, `Order` transitions to `PAID`, and product stock decrements.
+    - **Conflict branch (Slot already re-booked):** If an overlapping `BOOKED` reservation exists, attempting to transition the original reservation to `BOOKED` would violate `slot_no_overlap` and trigger a fatal `23P01` rollback of the entire payment transaction. Therefore, the transaction **leaves the original reservation in status `RELEASED`**, sets `requiresOperatorAction = true` and `operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION'` on that original reservation, records `PaymentEvent`, transitions `Order` to `PAID`, decrements product stock, logs `[SLOT_OVERBOOK_COLLISION]`, and dispatches an immediate Telegram alert to `ADMIN_CHAT_ID` with the order id for manual rescheduling (queryable via `GET /api/admin/escalations?type=slot_conflict`).
+  - This ensures the payment is durably captured and recorded as `PAID` without triggering a `23P01` constraint rollback.
 - Services (`stock IS NULL`) do not check stock. Products (`stock` integer ≥ 0) refuse a checkout when `stock < quantity`. Stock changes only in the PAID / cancel-after-PAID transaction (`UPDATE … WHERE stock >= $qty`).
 
 ### 2.7. Admin (FR-01 is real)
@@ -183,8 +187,8 @@ v1 uses **Inngest Cloud**:
 - Route: `app/api/inngest/route.ts`.
 - Inngest Cloud stores the queue and calls `app/api/inngest` on this app. Function code runs **in this container**. There is no second worker process. A claim that the worker is off-box is false.
 - **Async webhook path** (Telegram messages, WhatsApp, NOWPayments): insert `InboxEvent` (`@@unique([provider, eventId])`) and commit. If the unique insert conflicts, return **200** (duplicate delivery). If it inserts, call `inngest.send`. Return **200 only after `inngest.send` accepts**. If send throws, return **500** so the provider retries. The row stays `PENDING`.
-- **Inbox sweep** (Inngest cron, every 1 minute; a 30 s cron is not expressible): rows with `status = PENDING` and `createdAt` older than **15 s** get one `inngest.send` with `id` equal to the inbox row id. On accept, nothing else (the function sets `SENT`). After **10** failed sends, set `FAILED` and alert `ADMIN_CHAT_ID` with the event id only. This is the path WhatsApp will not retry for us.
-- **Atomic Claim/Lease & Emergency Offline Drain:** To guarantee exactly-once execution and prevent race conditions between Inngest Cloud workers and emergency manual draining, `InboxEvent` implements an atomic lease state machine: `PENDING → PROCESSING → SENT`. Both Inngest job handlers and the offline drain tool (`scripts/drain-inbox.ts` / `npm run inbox:drain`) must atomically acquire a lease before side-effect execution via `UPDATE "InboxEvent" SET status = 'PROCESSING', "lockedAt" = now(), "lockedBy" = $workerId WHERE id = $id AND (status = 'PENDING' OR (status = 'PROCESSING' AND "lockedAt" < now() - interval '5 minutes'))`. If update count is 0, the event is skipped. On successful side-effect dispatch, status is set to `SENT`.
+- **Inbox sweep** (Inngest cron, every 1 minute; a 30 s cron is not expressible): scans for events requiring dispatch: `(status = 'PENDING' AND "createdAt" <= now() - interval '15 seconds') OR (status = 'PROCESSING' AND "lockedAt" <= now() - interval '5 minutes')`. For each matching row, attempts `inngest.send` with `id` equal to the inbox row id. Upon failure, `attemptCount` is atomically incremented (`attemptCount = attemptCount + 1`) and `lastErrorAt = now()`. When `attemptCount >= 10`, the event status is set to `FAILED` and an alert is sent to `ADMIN_CHAT_ID` with the event id. This handles WhatsApp and delayed Inngest executions.
+- **At-Least-Once Claim/Lease & Emergency Offline Drain:** Delivery semantics are at-least-once with single active lease and duplicate suppression where supported by provider. `PaymentEvent` idempotency completely protects payment execution. For external messenger dispatches (Telegram/WhatsApp replies), there is an accepted residual risk of rare duplicate delivery if a worker process crashes after sending but before committing `status = 'SENT'`. Both Inngest job handlers and the offline drain tool (`scripts/drain-inbox.ts` / `npm run inbox:drain`) must atomically acquire a lease before side-effect execution via `UPDATE "InboxEvent" SET status = 'PROCESSING', "lockedAt" = now(), "lockedBy" = $workerId WHERE id = $id AND (status = 'PENDING' OR (status = 'PROCESSING' AND "lockedAt" < now() - interval '5 minutes'))`. If update count is 0, the event is skipped. On successful side-effect dispatch, status is set to `SENT`.
 - **Outbound Messenger Retries:** Outbound HTTP dispatches to Telegram Bot API and Meta Graph API use exponential backoff with jitter (initial 500ms, max 3 attempts) and respect HTTP 429 `Retry-After`. A 3rd failure marks the delivery failed and logs `[OUTBOUND_DISPATCH_FAIL]`.
 - **Deterministic Dual LLM Fallback & Latency Budget:** Overall outer wall-time budget is strictly **8 seconds**. Primary `AI_MODEL` timeout is capped at **4 seconds**. If primary fails or times out, fallback `AI_FALLBACK_MODEL` receives the remaining wall-time (capped at maximum **3 seconds**). If both fail, the handler immediately logs `[AI_DUAL_FAILURE]`, creates an `EscalationTicket`, sends the escalation reply, and alerts `ADMIN_CHAT_ID` without hanging.
 - **Stars exception, synchronous.** `pre_checkout_query` and `successful_payment` are **not** enqueued. `POST /api/bot/telegram/webhook` answers them in-process, before the HTTP response, by calling `lib/payments/stars.ts`. Telegram stops waiting after a few seconds; an off-box worker cannot meet that. These two updates do not insert `InboxEvent`. Idempotency is `PaymentEvent` (`successful_payment`) and a read of hold/stock (`pre_checkout_query`).
@@ -192,7 +196,7 @@ v1 uses **Inngest Cloud**:
 
 ### 2.9. Process model & Startup assertions
 
-v1 deploy is **exactly one** app replica. The in-memory limiter (`lru-cache`, 60 s window, 10 messages per `chat_id`/`phone`, max 10,000 keys) is valid only under that sentence. A startup assertion checks `process.env.REPLICA_COUNT === '1'` (or cluster single-instance inspection); if misconfigured, the application throws a hard startup failure (`ERR_INVALID_REPLICA_TOPOLOGY`). A second replica makes the limiter skippable; horizontal scale is a Phase 2 change that must replace it. Restart clears the window; that is accepted.
+v1 deploy is **exactly one** app replica. The in-memory limiter (`lru-cache`, 60 s window, 10 messages per `chat_id`/`phone`, max 10,000 keys) is valid only under that sentence. A startup assertion checks `process.env.REPLICA_COUNT === '1'`; if unset or misconfigured, the application throws a hard startup failure (`ERR_INVALID_REPLICA_TOPOLOGY`). A second replica makes the limiter skippable; horizontal scale is a Phase 2 change that must replace it. Restart clears the window; that is accepted.
 - **ShopSettings Sanitization:** `ShopSettings.greeting` is constrained to a maximum of **500 characters**, sanitized of any HTML/script tags (allowing only plain text and Telegram markdown v2 subset) to prevent oversized payloads or XSS vectors.
 
 ### 2.10. Money, timezone, language
@@ -211,7 +215,7 @@ v1 deploy is **exactly one** app replica. The in-memory limiter (`lru-cache`, 60
 - Nightly job: for orders in `CANCELLED` or `FULFILLED` whose `updatedAt` is older than **30 days**, set `customerPhone`, `customerEmail`, and `customerName` to null. `customerTgId` is kept as a support key for up to **90 days**, after which it is also nulled by the nightly job.
 - User erasure: `POST /api/admin/users/purge` accepts `{ customerTgId }` or `{ phone }` and immediately nulls personal data across both `MessengerContact` and associated `Order` records upon user erasure request.
 - `EscalationTicket.queryText` is customer content. Same 30-day nulling.
-- **GDPR Legal Basis & Financial Ledger Classification:** `PaymentEvent` records (`provider`, `providerRef`, `amountMinor`, `currency`) are classified as an immutable financial accounting ledger under GDPR Article 6(1)(c) (compliance with legal and tax obligations). They are retained indefinitely and are strictly exempt from user PII erasure or automated 30-day nulling. `Order` records are processed under Article 6(1)(b) (contract performance); `MessengerContact` and `EscalationTicket` are processed under Article 6(1)(f) (legitimate interest for support and spam prevention).
+- **GDPR Legal Basis & Financial Ledger Retention:** `PaymentEvent` records (`provider`, `providerRef`, `amountMinor`, `currency`) are classified as an immutable financial accounting ledger under GDPR Article 6(1)(c) (compliance with legal and tax obligations). Retention is determined by the applicable statutory accounting and tax law of the client deployment jurisdiction (configured via `PAYMENT_LEDGER_RETENTION_YEARS` env var, default 5 years). PaymentEvent records are excluded from ordinary user PII purges strictly for this legally required retention period, after which they may be archived or purged. `Order` records are processed under Article 6(1)(b) (contract performance); `MessengerContact` and `EscalationTicket` are processed under Article 6(1)(f) (legitimate interest for support and spam prevention).
 
 ### 2.12. Schema lifecycle
 
@@ -326,7 +330,7 @@ From a `PENDING` order the visitor pays in Stars or via a NOWPayments invoice. O
 
 ### 4.5. Cross-cutting
 
-- **FR-14 Jobs.** Inngest functions for greeting send, template send, AI answer, invoice create, reindex, hold sweep, PII purge (30d orders, 90d customerTgId), and inbox resend sweep (§2.8). Outbound retries with exponential backoff and emergency offline drain via `scripts/drain-inbox.ts`.
+- **FR-14 Jobs & Inbox Lease.** Inngest functions for greeting send, template send, AI answer, invoice create, reindex, hold sweep, PII purge (30d orders, 90d customerTgId), and inbox resend sweep (§2.8). Atomic claim/lease (`InboxStatus.PROCESSING`, `lockedAt`, `lockedBy`) with `attemptCount` tracking and emergency offline drain via `scripts/drain-inbox.ts`.
 - **FR-15 Health.** `GET /api/health`.
 - **FR-16 Log denylist.** §2.11, enforced by the logger API (a single `log(event, fields)` that strips the denylist keys).
 
@@ -478,13 +482,15 @@ model KnowledgeChunk {
 }
 
 model InboxEvent {
-  id        String      @id @default(uuid())
-  provider  String
-  eventId   String
-  status    InboxStatus @default(PENDING)
-  lockedAt  DateTime?   @db.Timestamptz(3)
-  lockedBy  String?
-  createdAt DateTime    @default(now())
+  id           String      @id @default(uuid())
+  provider     String
+  eventId      String
+  status       InboxStatus @default(PENDING)
+  attemptCount Int         @default(0)
+  lastErrorAt  DateTime?   @db.Timestamptz(3)
+  lockedAt     DateTime?   @db.Timestamptz(3)
+  lockedBy     String?
+  createdAt    DateTime    @default(now())
   @@unique([provider, eventId])
 }
 ```
