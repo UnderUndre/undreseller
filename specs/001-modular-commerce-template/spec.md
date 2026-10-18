@@ -126,9 +126,14 @@ PENDING  --webhook accepted-->  PAID  --admin-->  FULFILLED
 ```
 
 - `PENDING`: reservation is `HELD`, stock **not** decremented.
-- `PAID`: same transaction sets reservation `BOOKED`, decrements `Item.stock` for `PRODUCT` lines, inserts `PaymentEvent`.
+- `PAID`: same transaction records `PaymentEvent` and:
+  - For normal reservations: sets reservation `BOOKED`.
+  - For late-payment slot conflicts: leaves reservation `RELEASED`, sets `SlotReservation.requiresOperatorAction = true` and `Order.requiresOperatorAction = true` (`operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION'`).
+  - For products: decrements `Item.stock` conditionally (`WHERE stock >= qty`) and records `OrderItem.stockDecremented = quantity`. If stock is exhausted (update affects 0 rows), sets `Order.requiresOperatorAction = true`, `Order.operatorActionReason = 'PAID_OUT_OF_STOCK'`, and records `OrderItem.stockDecremented = 0`.
 - `CANCELLED` from `PENDING`: reservation `RELEASED`, stock unchanged.
-- `CANCELLED` from `PAID` (admin only): reservation `RELEASED`, stock restored.
+- `CANCELLED` from `PAID` (admin only): reservation `RELEASED`, stock restored strictly by `OrderItem.stockDecremented`:
+  `UPDATE "Item" SET stock = stock + orderItem.stockDecremented WHERE id = orderItem.itemId`
+  (then `orderItem.stockDecremented = 0`), preventing phantom stock inflation for out-of-stock orders.
 - `FULFILLED`: admin marks the service done. No payment effect.
 - Second webhook with the same `(provider, providerRef)` returns **200** and does not decrement again (`PaymentEvent` unique).
 
@@ -164,15 +169,21 @@ ALTER TABLE "SlotReservation"
     - **Conflict branch (Slot already re-held or re-booked):** If an overlapping reservation with `status IN ('HELD', 'BOOKED')` exists, attempting to transition the original reservation to `BOOKED` would violate `slot_no_overlap` and trigger a fatal `23P01` rollback of the entire payment transaction. Therefore, the transaction **leaves the original reservation in status `RELEASED`**, sets `requiresOperatorAction = true` and `operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION'` on both `SlotReservation` and `Order`, records `PaymentEvent`, transitions `Order` to `PAID`, decrements product stock, and logs `[SLOT_OVERBOOK_COLLISION]`.
   - This ensures the payment is durably captured and recorded as `PAID` without triggering a `23P01` constraint rollback or TOCTOU race condition.
 - Paid-Out-Of-Stock Handling (Product Stock Exhaustion): For physical/product lines, stock is updated conditionally: `UPDATE "Item" SET stock = stock - $qty WHERE id = $itemId AND stock >= $qty`.
-  - If the update affects 1 row: stock decremented normally, `Order` transitions to `PAID`, and `PaymentEvent` is recorded.
-  - If the update affects 0 rows (concurrent checkout exhausted remaining inventory after payment captured by external provider): the transaction **must NOT rollback** (funds have already been captured). Instead, the transaction records `PaymentEvent`, transitions `Order.status = 'PAID'`, sets `Order.requiresOperatorAction = true` and `Order.operatorActionReason = 'PAID_OUT_OF_STOCK'`, leaving `Item.stock` untouched, and logs `[PRODUCT_OUT_OF_STOCK_COLLISION]`.
-- Post-Commit Alert Dispatch: In all operator-action scenarios (both slot overbook collision and paid-out-of-stock), database records commit first. External network calls (Telegram alerts to `ADMIN_CHAT_ID`) are dispatched strictly **after successful transaction commit** via a durable job, never inside the database transaction while holding locks.
+  - If the update affects 1 row: stock decremented normally, `OrderItem.stockDecremented = $qty`, `Order` transitions to `PAID`, and `PaymentEvent` is recorded.
+  - If the update affects 0 rows (concurrent checkout exhausted remaining inventory after payment captured by external provider): the transaction **must NOT rollback** (funds have already been captured). Instead, the transaction records `PaymentEvent`, transitions `Order.status = 'PAID'`, sets `Order.requiresOperatorAction = true` and `Order.operatorActionReason = 'PAID_OUT_OF_STOCK'`, sets `OrderItem.stockDecremented = 0`, leaving `Item.stock` untouched, and logs `[PRODUCT_OUT_OF_STOCK_COLLISION]`.
+- Multi-Item Lock Acquisition Order: In orders containing multiple items or reservations, all unique `itemId`s from `OrderItem` and `SlotReservation` are extracted, sorted in ascending lexicographical order (`ORDER BY itemId ASC`), and sequentially locked via `acquireItemSlotLock(tx, itemId)` to eliminate deadlocks across multi-line transactions.
+- Transactional Alert Outbox: To eliminate the dual-write gap between database transaction commit and external alert dispatch, the transaction inserts an alert record into `InboxEvent` (`provider = 'SYSTEM_ALERT'`, `eventId = 'alert_' || order.id`, `status = 'PENDING'`). Post-commit `inngest.send` is executed best-effort; if the process crashes before dispatch, the 1-minute inbox sweeper picks up the pending alert and delivers it to `ADMIN_CHAT_ID`. External network calls to Telegram are strictly executed **after successful transaction commit** via this durable outbox, never inside the database transaction while holding locks.
 - Services (`stock IS NULL`) do not check stock. Products (`stock` integer ≥ 0) refuse a checkout when `stock < quantity`. Stock changes only in the PAID / cancel-after-PAID transaction.
 
 ### 2.7. Admin (FR-01 is real)
 
 Public visitors read the catalog. Writes require `Authorization: Bearer` equal to `ADMIN_TOKEN` (`timingSafeEqual`). Zero-downtime token rotation supports comma-separated dual tokens (`NEW_TOKEN,OLD_TOKEN`) in `ADMIN_TOKEN` during transition windows, bounded by `ADMIN_OLD_TOKEN_EXPIRES_AT` (ISO timestamp, max 24-hour grace period from rotation start). Usage of `OLD_TOKEN` emits a warning audit log `[OLD_ADMIN_TOKEN_USED]`; if `now() > ADMIN_OLD_TOKEN_EXPIRES_AT`, `OLD_TOKEN` is rejected with 401.
 - **Admin Audit Trail:** Every request to `/api/admin/*` emits a structured log event `[ADMIN_ACTION] action=<path> method=<METHOD> targetId=<id> status=<STATUS>` via `logger.ts`. Tokens, passwords, and PII are never logged.
+- **Admin Escalations API:** `GET /api/admin/escalations` acts as the durable source of truth and supports query filtering:
+  - `?type=all` (default): returns all unresolved operator actions across tickets and orders (`EscalationTicket.isResolved = false` OR `Order.requiresOperatorAction = true` OR `SlotReservation.requiresOperatorAction = true`).
+  - `?type=slot_conflict`: orders/reservations with `operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION'`.
+  - `?type=paid_out_of_stock`: orders with `operatorActionReason = 'PAID_OUT_OF_STOCK'`.
+  - `?type=ai_ticket`: unresolved tickets from AI knowledge fallback.
 
 | Lives in | Changes without image rebuild? |
 | --- | --- |
@@ -440,13 +451,14 @@ model Order {
 }
 
 model OrderItem {
-  id         String  @id @default(uuid())
-  orderId    String
-  order      Order   @relation(fields: [orderId], references: [id])
-  itemId     String
-  item       Item    @relation(fields: [itemId], references: [id])
-  quantity   Int
-  priceMinor Int
+  id               String  @id @default(uuid())
+  orderId          String
+  order            Order   @relation(fields: [orderId], references: [id])
+  itemId           String
+  item             Item    @relation(fields: [itemId], references: [id])
+  quantity         Int
+  priceMinor       Int
+  stockDecremented Int     @default(0)
 }
 
 model PaymentEvent {
