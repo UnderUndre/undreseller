@@ -3,7 +3,7 @@
 **Feature Branch / Directory**: `specs/001-modular-commerce-template`  
 **Repository**: `UnderUndre/undreseller` (https://github.com/UnderUndre/undreseller). Greenfield, created 2026-10-11, MIT. Not the legacy BoxyHQ `saas-starter-kit` fork.  
 **Created**: 2026-10-11  
-**Revised**: 2026-10-13 — slug renamed from `003` to `001` in this repo. Prior reviews (`zcode` CRITICAL, `analyze` HIGH, `copilot` CRITICAL) still name `003` and are not re-approved.  
+**Revised**: 2026-10-18 — slug is `specs/001-modular-commerce-template` in `UnderUndre/undreseller`. Full two-phase review and constitutional quality gates aligned.  
 **Status**: Revised (pending re-review)  
 **Standard Compliance**: ISO/IEC/IEEE 29148:2018 (Requirements Engineering) & NIST SP 800-218 SSDF (Secure Software Development)  
 **Commercial source of truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v18.3** and `undreplans/ROADMAP.md` **v2.4** (sibling repo, not this tree).  
@@ -57,6 +57,40 @@ Next.js 15 + Prisma + Postgres              Medusa monorepo
 Stars + NOWPayments                         frozen through Phase A
 one app container; RSS measured             Redis + Meili + Medusa workers
 ```
+
+### 1.3.1. Application foundation and authentication decision
+
+v1 remains a purpose-built Next.js application over the domain model defined in §6. It MUST NOT fork or adopt a general-purpose commerce or SaaS platform as its application foundation.
+
+The following are explicitly rejected as v1 foundations:
+
+- Medusa, Saleor, or another standalone commerce backend;
+- Payload Ecommerce or another CMS-owned commerce data model;
+- a SaaS starter containing teams, subscriptions, Stripe billing, tenant membership, or customer-account flows;
+- the legacy BoxyHQ-based repository.
+
+Reason: those foundations introduce customer identity, carts, payment rails, administration models, services, and deployment topology outside the closed Sprint B scope. Reusing a platform solely to obtain authentication would increase the integration and audit surface without replacing the custom booking, Telegram Stars, NOWPayments, inbox/outbox, or inventory invariants.
+
+v1 authentication remains intentionally limited:
+
+- public visitors do not have accounts;
+- there is no customer registration, login, password storage, profile, team, or organization model;
+- one operator authenticates admin requests using the rotating `ADMIN_TOKEN` mechanism defined in §2.7;
+- `ADMIN_TOKEN` is a machine/operator credential, not a customer identity system.
+
+The application MUST use maintained libraries for cryptographic primitives, signature verification, schema validation, and constant-time comparison. It MUST NOT implement password hashing, OAuth, WebAuthn, session-cookie cryptography, or password recovery from scratch.
+
+A transition to session-based admin authentication is a Phase 2 scope change. Its trigger is any of:
+
+1. more than one human administrator;
+2. a requirement for individual actor attribution;
+3. per-admin revocation;
+4. password recovery, MFA, passkeys, or OAuth;
+5. role-based authorization beyond the single admin role.
+
+When triggered, the preferred evaluation target is a maintained authentication library (such as Better Auth) integrated into the existing Next.js application. The commerce domain model remains authoritative and MUST NOT be replaced merely to add login.
+
+Adding session-based authentication requires a new planning update under Constitution Principle IX. It is not implementation drift permitted inside v1.
 
 ### 1.4. Glossary & Domain Terminology
 
@@ -178,6 +212,11 @@ ALTER TABLE "SlotReservation"
 ### 2.7. Admin (FR-01 is real)
 
 Public visitors read the catalog. Writes require `Authorization: Bearer` equal to `ADMIN_TOKEN` (`timingSafeEqual`). Zero-downtime token rotation supports comma-separated dual tokens (`NEW_TOKEN,OLD_TOKEN`) in `ADMIN_TOKEN` during transition windows, bounded by `ADMIN_OLD_TOKEN_EXPIRES_AT` (ISO timestamp, max 24-hour grace period from rotation start). Usage of `OLD_TOKEN` emits a warning audit log `[OLD_ADMIN_TOKEN_USED]`; if `now() > ADMIN_OLD_TOKEN_EXPIRES_AT`, `OLD_TOKEN` is rejected with 401.
+
+- **Authentication boundary:** `ADMIN_TOKEN` is the complete v1 admin authentication mechanism. There is no login page, password database, customer account, session table, OAuth provider, organization, or RBAC hierarchy in v1.
+- **Authorization boundary:** every `/api/admin/*` route requires the same admin authorization check. Public catalog, booking, checkout, and provider webhooks MUST NOT accept `ADMIN_TOKEN` as customer identity.
+- **Rotation boundary:** the old token is accepted only until `ADMIN_OLD_TOKEN_EXPIRES_AT` and its use is audited as specified below.
+- **No hidden auth growth:** adding a second human administrator is not handled by sharing `ADMIN_TOKEN`. It triggers the Phase 2 session-auth decision in §1.3.1.
 - **Admin Audit Trail:** Every request to `/api/admin/*` emits a structured log event `[ADMIN_ACTION] action=<path> method=<METHOD> targetId=<id> status=<STATUS>` via `logger.ts`. Tokens, passwords, and PII are never logged.
 - **Admin Escalations API:** `GET /api/admin/escalations` acts as the durable source of truth and supports query filtering:
   - `?type=all` (default): returns all unresolved operator actions across tickets and orders (`EscalationTicket.isResolved = false` OR `Order.requiresOperatorAction = true` OR `SlotReservation.requiresOperatorAction = true`).
@@ -204,12 +243,39 @@ v1 uses **Inngest Cloud**:
 
 - Route: `app/api/inngest/route.ts`.
 - Inngest Cloud stores the queue and calls `app/api/inngest` on this app. Function code runs **in this container**. There is no second worker process. A claim that the worker is off-box is false.
-- **Async webhook path** (Telegram messages, WhatsApp, NOWPayments): insert `InboxEvent` (`@@unique([provider, eventId])`) with its corresponding `kind` (`TELEGRAM_UPDATE`, `WHATSAPP_MESSAGE`, `NOWPAYMENTS_WEBHOOK`, `SYSTEM_ALERT`) and canonical `payloadJson` (validated minimal data required for replay: chat ID, message text, payment metadata, order ID), and commit. If the unique insert conflicts, return **200** (duplicate delivery). If it inserts, call `inngest.send`. Return **200 only after `inngest.send` accepts**. If send throws, return **500** so the provider retries. The row stays `PENDING`.
-- **Inbox sweep & Lease Recovery** (Inngest cron, every 1 minute; a 30 s cron is not expressible): scans for events requiring dispatch: `(status = 'PENDING' AND "createdAt" <= now() - interval '15 seconds') OR (status = 'PROCESSING' AND "lockedAt" <= now() - interval '5 minutes')`. For each matching row, attempts `inngest.send` with `id` equal to the inbox row id. Upon failure, `attemptCount` is atomically incremented (`attemptCount = attemptCount + 1`) and `lastErrorAt = now()`. On the 10th failure (`attemptCount >= 10`), the event status is set to `FAILED` and an alert is sent to `ADMIN_CHAT_ID` with the event id (unless `kind == SYSTEM_ALERT`, which logs `[SYSTEM_ALERT_TERMINAL_FAILURE]` and does NOT re-enqueue to prevent recursive alert loops).
-- **At-Least-Once Claim/Lease & Emergency Offline Drain:** Delivery semantics are at-least-once with single active lease and duplicate suppression where supported by provider. `PaymentEvent` idempotency completely protects payment execution. For external messenger dispatches (Telegram/WhatsApp replies), there is an accepted residual risk of rare duplicate delivery if a worker process crashes after sending but before committing `status = 'SENT'`. Both Inngest job handlers and the offline drain tool (`scripts/drain-inbox.ts` / `npm run inbox:drain`) must atomically acquire a lease before side-effect execution via `UPDATE "InboxEvent" SET status = 'PROCESSING', "lockedAt" = now(), "lockedBy" = $workerId WHERE id = $id AND (status = 'PENDING' OR (status = 'PROCESSING' AND "lockedAt" < now() - interval '5 minutes'))`. If update count is 0, the event is skipped. Both Inngest workers and `scripts/drain-inbox.ts` reconstruct and execute handlers purely from `InboxEvent.payloadJson`. On successful side-effect dispatch, status is set to `SENT`. Upon processing failure when `attemptCount < 10`: the event immediately transitions back to `status = 'PENDING'`, with `lockedAt = null`, `lockedBy = null`, `attemptCount = attemptCount + 1`, and `lastErrorAt = now()`. This avoids stalling for 5 minutes and enables immediate retry on the next sweep tick. On the 10th failure (`attemptCount >= 10`), the event status is set to `FAILED` and an alert is sent to `ADMIN_CHAT_ID`.
+- **Async webhook path** (Telegram messages, WhatsApp, NOWPayments): enforces a strict raw request body cap of **64 KB** before JSON parsing (rejecting oversized payloads immediately with HTTP 413). Inserts `InboxEvent` (`@@unique([provider, eventId])`) with its corresponding `kind` (`TELEGRAM_UPDATE`, `WHATSAPP_MESSAGE`, `NOWPAYMENTS_WEBHOOK`, `SYSTEM_ALERT`) and validated canonical `payloadJson` (strictly capped at maximum **16 KB** after validation). Canonical payloads are validated via versioned Zod schemas (`version: 1`):
+  - `TELEGRAM_UPDATE`: `{ version: 1, kind: 'TELEGRAM_UPDATE', chatId: string, updateType: string, text?: string }` (message `text` truncated/capped at 2,000 chars)
+  - `WHATSAPP_MESSAGE`: `{ version: 1, kind: 'WHATSAPP_MESSAGE', messageId: string, phone: string, text?: string }` (`text` truncated/capped at 2,000 chars)
+  - `NOWPAYMENTS_WEBHOOK`: `{ version: 1, kind: 'NOWPAYMENTS_WEBHOOK', providerRef: string, orderId: string, paidAmount: number, quotedAmount: number, currency: string }`
+  - `SYSTEM_ALERT`: `{ version: 1, kind: 'SYSTEM_ALERT', orderId: string, reason: string, timestamp: string }`
+  If the unique insert conflicts, return **200** (duplicate delivery). If it inserts, call `inngest.send`. Return **200 only after `inngest.send` accepts**. If send throws, return **500** so the provider retries. The row stays `PENDING`.
+- **NOWPayments IPN Signature Verification:** `POST /api/payments/crypto/webhook` strictly validates `x-nowpayments-sig` header before inserting `InboxEvent`. Algorithm: (1) parse raw JSON body, (2) sort all top-level keys in ascending ASCII alphabetical order (`Object.keys(body).sort()`), (3) serialize sorted object to string via `JSON.stringify(sortedBody)`, (4) calculate HMAC-SHA512 of that string using `NOWPAYMENTS_IPN_SECRET` (dedicated IPN secret from NOWPayments dashboard, strictly distinct from `NOWPAYMENTS_API_KEY`), and (5) compare calculated hex digest against `x-nowpayments-sig` via `crypto.timingSafeEqual`. Missing secret or mismatched signature rejects immediately with HTTP 401 without side effects.
+- **Inbox sweep & Lease Recovery** (Inngest cron, every 1 minute; a 30 s cron is not expressible): scans for events requiring dispatch: `(status = 'PENDING' AND "createdAt" <= now() - interval '15 seconds') OR (status = 'PROCESSING' AND "lockedAt" <= now() - interval '5 minutes')`. For each matching row, attempts `inngest.send` with `id` equal to the inbox row id. Upon failure, atomic evaluation is performed:
+  ```typescript
+  const newAttemptCount = attemptCount + 1;
+  if (newAttemptCount >= 10) {
+    status = 'FAILED';
+    if (kind === 'SYSTEM_ALERT') {
+      logger.error('[SYSTEM_ALERT_TERMINAL_FAILURE]', { eventId: id, orderId });
+    } else {
+      sendAdminAlert(ADMIN_CHAT_ID, { eventId: id, attemptCount: newAttemptCount });
+    }
+  } else {
+    status = 'PENDING';
+    lockedAt = null;
+    lockedBy = null;
+    attemptCount = newAttemptCount;
+  }
+  lastErrorAt = now();
+  ```
+- **At-Least-Once Claim/Lease & Emergency Offline Drain:** Delivery semantics are at-least-once with single active lease and duplicate suppression where supported by provider. `PaymentEvent` idempotency completely protects payment execution. For external messenger dispatches (Telegram/WhatsApp replies), there is an accepted residual risk of rare duplicate delivery if a worker process crashes after sending but before committing `status = 'SENT'`. Both Inngest job handlers and the offline drain tool (`scripts/drain-inbox.ts` / `npm run inbox:drain`) must atomically acquire a lease before side-effect execution via `UPDATE "InboxEvent" SET status = 'PROCESSING', "lockedAt" = now(), "lockedBy" = $workerId WHERE id = $id AND (status = 'PENDING' OR (status = 'PROCESSING' AND "lockedAt" < now() - interval '5 minutes'))`. If update count is 0, the event is skipped. Both Inngest workers and `scripts/drain-inbox.ts` reconstruct and execute handlers purely from `InboxEvent.payloadJson`. On successful side-effect dispatch, status is set to `SENT`. Upon processing failure, atomic state transition executes: `newAttemptCount = attemptCount + 1`; if `newAttemptCount >= 10`, status transitions to `FAILED` and an alert is sent to `ADMIN_CHAT_ID` (or `[SYSTEM_ALERT_TERMINAL_FAILURE]` logged without re-enqueue for `SYSTEM_ALERT`); otherwise, the event immediately transitions back to `status = 'PENDING'`, with `lockedAt = null`, `lockedBy = null`, `attemptCount = newAttemptCount`, and `lastErrorAt = now()`. This avoids stalling for 5 minutes and enables immediate retry on the next sweep tick.
 - **Outbound Messenger Retries:** Outbound HTTP dispatches to Telegram Bot API and Meta Graph API use exponential backoff with jitter (initial 500ms, max 3 attempts) and respect HTTP 429 `Retry-After`. A 3rd failure marks the delivery failed and logs `[OUTBOUND_DISPATCH_FAIL]`.
 - **Deterministic Dual LLM Fallback & Latency Budget:** Overall outer wall-time budget is strictly **8 seconds**. Primary `AI_MODEL` timeout is capped at **4 seconds**. If primary fails or times out, fallback `AI_FALLBACK_MODEL` receives the remaining wall-time (capped at maximum **3 seconds**). If both fail, the handler immediately logs `[AI_DUAL_FAILURE]`, creates an `EscalationTicket`, sends the escalation reply, and alerts `ADMIN_CHAT_ID` without hanging.
-- **Stars exception, synchronous.** `pre_checkout_query` and `successful_payment` are **not** enqueued. `POST /api/bot/telegram/webhook` answers them in-process, before the HTTP response, by calling `lib/payments/stars.ts`. Telegram stops waiting after a few seconds; an off-box worker cannot meet that. These two updates do not insert `InboxEvent`. Idempotency is `PaymentEvent` (`successful_payment`) and a read of hold/stock (`pre_checkout_query`).
+- **Stars exception, synchronous & crash boundary:** `pre_checkout_query` and `successful_payment` are **not** enqueued. `POST /api/bot/telegram/webhook` answers them in-process, before HTTP response, calling `lib/payments/stars.ts`:
+  1. `pre_checkout_query`: strictly pre-flight validation (< 10s deadline). Checks hold expiry and stock, responding via Bot API `answerPreCheckoutQuery(ok: true/false)`. **No funds are debited and Order remains PENDING; no PaymentEvent is created**. If process crashes here, customer has not been charged.
+  2. `successful_payment`: delivered as a separate update after Telegram charges user's Stars. Carries `telegram_payment_charge_id`, `provider_payment_charge_id`, `total_amount` (Stars integer), and `invoice_payload` (`orderId`). Handled in-process via `lib/payments/fulfillment.ts` inside atomic transaction with `acquireItemSlotLock`: inserts `PaymentEvent(provider = 'TELEGRAM_STARS', providerRef = telegram_payment_charge_id)`, sets `Order.status = 'PAID'`, decrements product stock or flags operator action on collision/exhaustion without rollback.
+  3. Webhook crash resilience: Telegram retries webhook on unacknowledged response. Unique constraint `@@unique([provider, providerRef])` detects existing `PaymentEvent` on retry and returns HTTP 200 immediately, eliminating duplicate fulfillment or double-charging.
+- **Inngest Concurrency Fencing & Connection Pool Protection:** Inngest functions declare explicit concurrency limits: `documentReindex` (`concurrency: { limit: 1 }`), `holdSweep` (`concurrency: { limit: 1 }`), `inboxSweep` (`concurrency: { limit: 1 }`), `purgePii` (`concurrency: { limit: 1 }`), `aiAnswer` (`concurrency: { limit: 5 }`), and `invoiceCreate` (`concurrency: { limit: 5 }`). In `lib/db/prisma.ts`, Prisma client initializes against pooled `DATABASE_URL` (PgBouncer transaction mode) with `connection_limit = 10`, guaranteeing reserved connection availability for time-critical synchronous webhooks (`pre_checkout_query`, `successful_payment`, `/api/health`).
 - AI answers, NOWPayments invoice creation, reindex, hold expiry, PII purge, and the inbox sweep are functions. The HTTP handler does not await the LLM. T-027 and T-031 only **add** a function to `lib/jobs/inngest.ts`; they do not rewrite the client created in T-015.
 
 ### 2.9. Process model & Startup assertions
@@ -231,10 +297,10 @@ v1 deploy is **exactly one** app replica. The in-memory limiter (`lru-cache`, 60
 - Logs and traces **must not** contain: bot tokens, `ADMIN_TOKEN`, `initData`, raw webhook bodies, phone, email, payment signature, NOWPayments payload. Log the order id, provider event id, and HTTP/Meta error code.
 - The logger also emits three counters (log lines, not a metrics vendor): `inbox_send_fail`, `hold_expired`, `webhook_rejected`. No OpenTelemetry collector in v1.
 - Nightly job: for orders in `CANCELLED` or `FULFILLED` whose `updatedAt` is older than **30 days**, set `customerPhone`, `customerEmail`, and `customerName` to null. `customerTgId` is kept as a support key for up to **90 days**, after which it is also nulled by the nightly job.
-- User erasure: `POST /api/admin/users/purge` accepts `{ customerTgId }` or `{ phone }` and immediately nulls personal data across both `MessengerContact` and associated `Order` records upon user erasure request.
+- User erasure: `POST /api/admin/users/purge` accepts `{ customerTgId }` or `{ phone }` and immediately nulls personal data across `MessengerContact`, associated `Order` records, and scrubs matching canonical fields inside `InboxEvent.payloadJson` (`customerTgId` for Telegram events, normalized phone for WhatsApp events). Erasure preserves only fields strictly required to safely finalize an active verified payment transaction.
 - `EscalationTicket.queryText` is customer content. Same 30-day nulling.
 - **GDPR Legal Basis & Financial Ledger Retention:** `PaymentEvent` records (`provider`, `providerRef`, `amountMinor`, `currency`) are classified as an immutable financial accounting ledger under GDPR Article 6(1)(c) (compliance with legal and tax obligations). Retention is determined by the applicable statutory accounting and tax law of the client deployment jurisdiction (configured via `PAYMENT_LEDGER_RETENTION_YEARS` env var, default 5 years). PaymentEvent records are excluded from ordinary user PII purges strictly for this legally required retention period. Note: Automatic pruning or archiving after statutory expiration is an external accounting/database maintenance procedure and is intentionally not automated by this v1 application container. `Order` records are processed under Article 6(1)(b) (contract performance); `MessengerContact` and `EscalationTicket` are processed under Article 6(1)(f) (legitimate interest for support and spam prevention).
-- **InboxEvent Retention & PII Lifecycle:** Raw HTTP headers, bot tokens, and cryptographic signatures are strictly **forbidden** from being saved into `payloadJson`. Only validated, minimal canonical domain payloads are persisted. Terminal events (`status IN ('SENT', 'FAILED')`) have their `payloadJson` purged (set to empty `{}`) after **7 days** by the nightly Inngest cron job. Customer GDPR erasure requests (`POST /api/admin/users/purge`) immediately scrub matching message texts and phone numbers from `InboxEvent.payloadJson`.
+- **InboxEvent Retention & PII Lifecycle:** Raw HTTP headers, bot tokens, and cryptographic signatures are strictly **forbidden** from being saved into `payloadJson`. Only validated, minimal canonical domain payloads (capped at 16 KB) are persisted. Nightly Inngest cron job executes scrubbing for `InboxEvent` records where `status IN ('SENT', 'FAILED')` and `createdAt < now() - interval '7 days'`: sets `payloadJson = {}`. Events in `PENDING` or `PROCESSING` are strictly preserved. Customer GDPR erasure requests (`POST /api/admin/users/purge`) immediately scrub matching message texts and phone numbers from `InboxEvent.payloadJson`.
 
 ### 2.12. Schema lifecycle
 
@@ -251,6 +317,11 @@ v1 migration is **create-only**. Expand/contract starts at the first migration a
 | Cal.com / Cal.diy for slots | Not forked. Cal.diy is a calendar monolith its own maintainers mark non-production, and its UI is a second origin the Mini App cannot frame. Homegrown range exclusion stays. A client who needs Google/Outlook sync gets Cal.diy as a separate service, not as code in this repo, and not in v1 tasks. |
 | Chatwoot as the WhatsApp edge | Correct product for a real inbox. Out of v1 because it is a second product, not because of RAM. Template send only. |
 | Payload, Vendure, Saleor, Medusa DTC, Vercel Commerce, Your Next Store | Checked 2026-10-11. None is the base. Vendure core is GPL. Medusa stays frozen. The others are a CMS, a Python stack, or a SaaS storefront with no slots. |
+| Fork Medusa for authentication and commerce primitives | Medusa includes a complete commerce backend, customer accounts, order management, and an authentication module. Adopting it would replace the current domain boundary and reopen the frozen Track 2 architecture merely to solve single-admin authentication. |
+| Fork Saleor storefront/platform | The storefront expects a Saleor GraphQL backend or Saleor Cloud deployment. This changes the existing Prisma/Postgres application into a multi-component commerce platform without replacing the custom booking and messenger workflows. |
+| Fork Payload Ecommerce | Payload provides authentication, access control, an admin panel, products, carts, orders, and payments. Those are useful when a full back office is required, but adopting its model would exceed the v1 single-admin and single-process scope. |
+| Fork a generic SaaS starter | Teams, tenant membership, subscriptions, Stripe billing, and customer login are outside v1. Copying them creates unused security and maintenance surface. |
+| Add Better Auth in v1 | Rejected for v1 because no customer accounts or multiple administrators are required. Retained as a Phase 2 candidate when session-based, individually attributable administrators become necessary. |
 | TON Connect or a raw tx-hash watcher | Extra custody story. NOWPayments hosted invoice is the one crypto rail. |
 | Full-file prompt instead of FTS | Two retrieval modes make the eval gate unable to fail. FTS only. |
 | Stripe/Paddle/YooKassa in the same checkout | No task owned signature, idempotency, or PCI boundary. Adding a hosted link is Phase 2. |
@@ -265,6 +336,34 @@ v1 migration is **create-only**. Expand/contract starts at the first migration a
 ### 2.15. Memory number
 
 The bench records peak RSS of the **app container**. 500 MB is a target, not a ship gate (owner waiver 2026-10-11). Crossing it does not authorize a second product and does not fail the sprint. Postgres is not counted in the app number. Idle homepage does not count.
+
+### 2.16. MCP / AI-agent integration boundary
+
+MCP is a Phase 2 integration candidate and is not part of Sprint B v1.
+
+Any evaluation starts with a disposable spike timeboxed to no more than 2 days under Constitution Principle XI. Spike code and its branch are deleted after measurements are captured. Passing the spike permits a new planning update but does not permit prototype code to be merged.
+
+The spike is local, read-only, and uses stdio. Candidate capabilities are:
+
+- `search_catalog`;
+- `get_item_availability`;
+- `list_operator_actions`;
+- `get_order_summary`;
+- `search_knowledge`.
+
+The MCP adapter calls existing application services. It must not:
+
+- access Prisma or PostgreSQL directly;
+- accept SQL, raw Prisma filters, or arbitrary query expressions;
+- duplicate booking, payment, inventory, inbox, or authorization logic;
+- expose raw `InboxEvent.payloadJson`, customer identifiers, raw messages, provider payloads, logs, environment variables, secrets, or signatures;
+- expose mutation tools.
+
+A future remote production MCP requires a separate planning update, Streamable HTTP, identity-based authorization, explicit read scopes, per-client audit identity, rate limiting, bounded responses, pagination, timeouts, cancellation, and versioned Zod schemas.
+
+`ADMIN_TOKEN` must not be distributed to MCP clients and is not an acceptable long-term identity mechanism for remote MCP.
+
+The first production MCP version, if approved, remains read-only. Tools for cancellation, refunds, fulfillment, messages, stock, prices, payments, or user purge require a separate security and business gate.
 
 ---
 
@@ -343,8 +442,8 @@ From a `PENDING` order the visitor pays in Stars or via a NOWPayments invoice. O
 
 ### 4.4. Payments
 
-- **FR-11 Stars.** `sendInvoice` with integer `starsPrice` / `XTR`, issued by the checkout job. `pre_checkout_query` and `successful_payment` are answered **in** `POST /api/bot/telegram/webhook` before the response (spec §2.8). They are not Inngest events.
-- **FR-12 NOWPayments.** Signature, 99% rule, `PaymentEvent` idempotency. No other crypto provider in v1.
+- **FR-11 Stars.** `sendInvoice` with integer `starsPrice` / `XTR`, issued by the checkout job. `pre_checkout_query` and `successful_payment` are answered synchronously in `POST /api/bot/telegram/webhook` before the HTTP response (spec §2.8). `pre_checkout_query` performs hold and stock validation only and does not capture money or create a `PaymentEvent`. Actual money transfer arrives as `successful_payment` carrying `telegram_payment_charge_id`, which commits fulfillment atomically and records `PaymentEvent(provider = 'TELEGRAM_STARS', providerRef = telegram_payment_charge_id)`; retries are idempotent.
+- **FR-12 NOWPayments.** Canonical signature validation over `x-nowpayments-sig` (sorted keys + `JSON.stringify` + HMAC-SHA512 using `NOWPAYMENTS_IPN_SECRET`, evaluated via `timingSafeEqual`), 99% rule, and `PaymentEvent` idempotency. No other crypto provider in v1.
 - **FR-13 Transition.** The single transaction in §2.5. Client and admin get a confirmation message **after** commit, via the job, not before.
 
 ### 4.5. Cross-cutting
@@ -534,12 +633,12 @@ Migration SQL that must ship next to the Prisma migration:
 
 ## 7. Definition of Done
 
-1. **Types.** `npm run check-types` and `npm run build` are clean.
+1. **Constitutional Quality Gates Before Done.** `npm run validate`, `npm test`, `npm run build`, `npx clai-helpers status --strict`, `npm audit` (zero unmitigated High/Critical findings), dependency license scan (zero AGPL-3.0/GPL contamination), and structured telemetry log redaction verification are completely clean (task `T-037`). Pre-implementation review gate is separately governed by Principle VI.
 2. **Hold.** Concurrent lock test: 201 vs 409. Expired hold becomes bookable after the sweeper.
 3. **Money.** Replay of one Stars `successful_payment` and one NOWPayments event: one stock decrement. 98% crypto payment does not set `PAID`.
 4. **initData.** Expired and bad HMAC rejected. Browser checkout that sends a Telegram id without `initData` is 401. Theme provider file does not contain the HMAC check (the security module does).
-4a. **Stars sync.** A `pre_checkout_query` fixture is answered in the webhook test without an Inngest call. A `PENDING` inbox row older than 15 s is resent by the sweep; the 10th failure becomes `FAILED`.
-5. **WhatsApp.** Unsigned webhook is 401. Template name comes from `ShopSettings`. Phone absent from log snapshot of a failed send.
+4a. **Stars sync & Durable Inbox.** A `pre_checkout_query` fixture is answered in the webhook test without an Inngest call. A `PENDING` inbox row older than 15 s is resent by the sweep; failure transitions atomically via `newAttemptCount = attemptCount + 1`, where the 10th failure (`newAttemptCount >= 10`) sets `status = FAILED` and alerts the operator. Nightly purge scrubs terminal payloads (`status IN ('SENT', 'FAILED')`) older than 7 days to `{}`. `POST /api/admin/users/purge` immediately scrubs customer identifiers from `payloadJson`.
+5. **WhatsApp.** Unsigned webhook is 401. Template name comes from `ShopSettings`. Phone absent from log snapshot of a failed send. Raw request body capped at 64 KB, canonical payload capped at 16 KB.
 6. **AI fixtures.** All five in US4 pass against a fixture file. Empty index escalates.
 7. **Admin.** Without `ADMIN_TOKEN`, `POST /api/admin/items` is 401. With the token, a price change is visible on `GET /api/catalog` without a rebuild.
 8. **Memory.** `docker stats` peak RSS is recorded in the quickstart while one webhook, one LLM job, and one PDF reindex overlap. Over 500 MB is written down, not a failed sprint. Idle homepage does not count.
@@ -551,4 +650,4 @@ Migration SQL that must ship next to the Prisma migration:
 
 ## 8. Non-goals
 
-- Fiat cards, TON Connect, self-custody, Chatwoot, Medusa, vector databases, n8n, multi-replica, i18n, image upload, PITR, a customer account system, a 5-day client SLA.
+- Fiat cards, TON Connect, self-custody, Chatwoot, Medusa, vector databases, n8n, multi-replica, i18n, image upload, PITR, a customer account system, a 5-day client SLA. Production MCP server, remote AI-agent access, and MCP mutation tools are outside Sprint B v1. MCP remains a Phase 2 candidate subject to a disposable read-only spike and a separate planning update.
