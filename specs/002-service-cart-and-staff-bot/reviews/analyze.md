@@ -21,6 +21,7 @@
 | :--- | :--- | :--- | :--- |
 | `FR-001` Multi-Service Basket | Yes | `T-103`, `T-104`, `T-105`, `T-111` | Приём массива `itemIds: string[]` на бэкенде и в UI |
 | `FR-002` Cumulative Duration & Price | Yes | `T-103`, `T-111` | Суммирование длительности и стоимости корзины |
+| `FR-002a` Authoritative Cart Snapshot | Yes | `T-103`, `T-114` | Серверная валидация корзины, отсечение дубликатов, неизменяемый `OrderItem` |
 | `FR-003` 30-Minute Grid Intervals | Yes | `T-104`, `T-112` | Сетка генерации стартовых окон с шагом 30 минут |
 | `FR-004` Contiguous Window Validation | Yes | `T-104`, `T-114` | Проверка сплошного окна длины `totalDurationMin` |
 | `FR-005` Global Calendar Exclusion Constraint | Yes | `T-101`, `T-102` | PostgreSQL GiST exclusion constraint по диапазону `tstzrange` |
@@ -48,16 +49,16 @@
 | `US1` Multi-Service Cart & 30-Min Hold | Yes | `T-101`, `T-102`, `T-103`, `T-104`, `T-105`, `T-111`, `T-112`, `T-114`, `T-116` | Полное покрытие |
 | `US2` Staff Bot Pager & One-Click Actions | Yes | `T-106`, `T-107`, `T-114`, `T-118` | Полное покрытие |
 | `US3` Confirmation Reminder & Smart No-Show | Yes | `T-108`, `T-109`, `T-110`, `T-114`, `T-117` | Полное покрытие |
-| `US4` Pay-On-Site vs Online Prepayment | Yes | `T-101`, `T-107b`, `T-110b`, `T-112`, `T-113`, `T-114`, `T-117` | Полное покрытие |
+| `US4` Pay-On-Site vs Online Prepayment | Yes | `T-101`, `T-107b`, `T-110b`, `T-112`, `T-113`, `T-113b`, `T-114`, `T-117` | Полное покрытие |
 
 ---
 
 ## Constitution Alignment Issues
 
 - **Principle VI (Cross-AI Review Gate)**: Первый этап валидации (`analyze.md`) завершен со статусом **PASS**. Спецификация полностью устранила замечания Copilot F1–F18 и готова к повторному независимому ревью.
-- **Principle VII (Artifact Versioning)**: Артефакты снабжены версионными снапшот-тегами (`spec/002-service-cart-and-staff-bot/v1`, `clarify/002-service-cart-and-staff-bot/v6`).
+- **Principle VII (Artifact Versioning)**: Артефакты снабжены версионными снапшот-тегами (`spec/002-service-cart-and-staff-bot/v1`, `clarify/002-service-cart-and-staff-bot/v8`).
 - **Principle IX (Two-Phase Review Flow)**: Работа ведется на изолированной planning-ветке `002-service-cart-and-staff-bot`.
-- **Principle X (Zero-Downtime Data Architecture)**: Миграция спроектирована по стандарту Guarded DDL с ресурсом `resourceId`, бэкфиллом `totalDurationMin`, защитой через `SET lock_timeout = '2s'`, префлайт-проверкой коллизий (`r1.id < r2.id`) и безопасным `down.sql`.
+- **Principle X (Zero-Downtime Data Architecture)**: Миграция спроектирована по стандарту 4-фазного Expand/Contract с ресурсом `resourceId`, бэкфиллом `totalDurationMin`, защитой через `SET lock_timeout = '2s'`, префлайт-проверкой коллизий (`r1.id < r2.id`) и безопасным `down.sql`.
 - **Principle XI (Spike Governance)**: Исследовательские прототипы не требуются, архитектура монолита проверена.
 
 ---
@@ -69,7 +70,7 @@
   - `undreplans/ROADMAP.md` (v2.6)
 - **Проверка жестких законов и фокуса**:
   - Полное соответствие предложению **Sprint B ($4,900 flat / 14 дней)** и Продукту 0 (**Tripwire $350**).
-  - Scope knife: корзина услуг расширяет существующий бизнес-процесс (каталог $\to$ холд $\to$ оплата/визит), не создавая второй параллельный продукт.
+  - Scope knife: корзина услуг расширяет существующий бизнес-процесс (каталог $\to$ холд $\to$ оплата/визит), не создавая второй параллельный продукт. Зафиксировано в `T-113b`.
   - Сохранён лимит памяти контейнера приложения $\le 500\text{ MB RAM}$.
   - Фоновые пайплайны строятся исключительно на коде **Inngest** (запрет n8n в клиентском приложении соблюдён, соблюден лимит Inngest $\le 4$ событий в `cancelOn`).
   - Управление заказами вынесено в служебный Telegram Staff-бот мастера с разграничением `staffDestinationChatId` и `authorizedStaffUserIds`.
@@ -79,15 +80,15 @@
 
 ## Unmapped Tasks
 
-Все задачи `T-101`–`T-119` (включая `T-107b` и `T-110b`) однозначно сопоставлены с функциональными требованиями, разбиты по фазам и параллельным дорожкам без висячих элементов.
+Все задачи `T-101`–`T-122` (включая `T-107b`, `T-110b`, `T-113b`, `T-116`–`T-119` и гейты `T-120`–`T-122`) однозначно сопоставлены с функциональными требованиями, разбиты по фазам и параллельным дорожкам без висячих элементов.
 
 ---
 
 ## Metrics
 
-- **Total Requirements**: 26 (22 FR + 4 NFR)
-- **Total Tasks**: 21
-- **Coverage %**: 100.0% (26/26)
+- **Total Requirements**: 27 (23 FR + 4 NFR)
+- **Total Tasks**: 24
+- **Coverage %**: 100.0% (27/27)
 - **Ambiguity count**: 0
 - **Duplication count**: 0
 - **CRITICAL count**: 0
@@ -102,8 +103,8 @@
 ```yaml
 verdict: PASS
 reviewer: analyze
-reviewed_at: 2026-10-19T15:35:00Z
-commit: 8bcb3cd0fcba3f07a7ecffae4bb79cb15f3e4986
+reviewed_at: 2026-10-19T16:00:00Z
+commit: 16df84b802613dca7740f95fcbcefae60f0d2353
 critical_count: 0
 high_count: 0
 medium_count: 0
