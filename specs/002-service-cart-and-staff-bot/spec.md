@@ -228,6 +228,7 @@ enum OrderStatus {
   PENDING
   AWAITING_PAYMENT
   PAID
+  PAID_REQUIRES_RESOLUTION
   CANCELLED
   FULFILLED
   PAYMENT_EXPIRED
@@ -244,12 +245,25 @@ enum PrepaymentTiming {
 }
 
 enum ConfirmationStatus {
-  PENDING_STAFF
-  CONFIRMED_BY_STAFF
+  PENDING_STAFF_REVIEW
+  STAFF_APPROVED
   CLIENT_CONFIRMED
   RESCHEDULE_OFFERED
-  CANCELLED_BY_CLIENT
-  CANCELLED_NO_SHOW
+}
+
+enum CancellationReason {
+  CLIENT_DECLINED
+  STAFF_REJECTED
+  PAYMENT_EXPIRED
+  CLIENT_BLOCKED
+  AUTO_CANCELLED_NO_CONFIRMATION
+  ADMIN_CANCELLED
+}
+
+enum RefundStatus {
+  NONE
+  REFUND_REQUESTED
+  REFUNDED
 }
 
 // Расширение ShopSettings
@@ -269,12 +283,15 @@ model ShopSettings {
 model Order {
   // ... существующие поля
   customerNotes              String?
-  paymentType                PaymentType        @default(PAY_ON_SITE)
-  confirmationStatus         ConfirmationStatus @default(PENDING_STAFF)
-  autoCancelOnNoConfirmation Boolean            @default(false)
-  scheduleVersion            Int                @default(1)
+  paymentType                PaymentType         @default(PAY_ON_SITE)
+  confirmationStatus         ConfirmationStatus  @default(PENDING_STAFF_REVIEW)
+  cancellationReason         CancellationReason?
+  refundStatus               RefundStatus        @default(NONE)
+  autoCancelOnNoConfirmation Boolean             @default(false)
+  scheduleVersion            Int                 @default(1)
+  rescheduleTokenHash        String?
   rescheduleTokenConsumedAt  DateTime?
-  invoiceExpiresAt           DateTime?          @db.Timestamptz(3)
+  invoiceExpiresAt           DateTime?           @db.Timestamptz(3)
   staffMessageId             Int?
   staffChatId                String?
 }
@@ -282,41 +299,28 @@ model Order {
 // Расширение SlotReservation
 model SlotReservation {
   // ... существующие поля
-  resourceId                 String             @default("default_master")
-  itemId                     String?            // nullable: бронь покрывает весь заказ с корзиной
+  resourceId                 String              @default("default_master")
+  itemId                     String?             // nullable: бронь покрывает весь заказ с корзиной
   totalDurationMin           Int
 }
 ```
 
-### Матрица конечного автомата (State Machine Matrix)
+### Матрица конечного автомата (State Machine Transition Matrix)
 
-| Текущий `OrderStatus` | `ConfirmationStatus` | `ReservationStatus` | Событие / Триггер | Новый `OrderStatus` | Новый `ConfirmationStatus` | Новый `ReservationStatus` |
-|---|---|---|---|---|---|---|
-| `PENDING` | `PENDING_STAFF` | `HELD` | Мастер: `[Принять]` (Pay on site) | `PENDING` | `CONFIRMED_BY_STAFF` | `BOOKED` |
-| `PENDING` | `PENDING_STAFF` | `HELD` | Мастер: `[Принять]` (Prepay after approval) | `AWAITING_PAYMENT` | `CONFIRMED_BY_STAFF` | `HELD` (15m window) |
-| `AWAITING_PAYMENT` | `CONFIRMED_BY_STAFF` | `HELD` | Таймер 15 минут истёк | `PAYMENT_EXPIRED` | `CANCELLED_BY_CLIENT` | `RELEASED` |
-| `AWAITING_PAYMENT` | `CONFIRMED_BY_STAFF` | `HELD` | Клиент оплатил вовремя | `PAID` | `CONFIRMED_BY_STAFF` | `BOOKED` |
-| `PENDING` | любая | `HELD`/`BOOKED` | Мастер: `[Отклонить]` | `CANCELLED` | `CANCELLED_BY_CLIENT` | `RELEASED` |
-| `PENDING` | любая | `HELD`/`BOOKED` | Мастер: `[В чёрный список]` | `CANCELLED` | `CANCELLED_BY_CLIENT` | `RELEASED` |
-| любая | `CONFIRMED_BY_STAFF` | `BOOKED` | Клиент подтвердил пуш: `[Буду]` | без изменений | `CLIENT_CONFIRMED` | `BOOKED` |
-| любая | `CONFIRMED_BY_STAFF` | `BOOKED` | Дедлайн новичка истёк | `CANCELLED` | `CANCELLED_NO_SHOW` | `RELEASED` |
-| `PAID`/`PENDING` | `CONFIRMED_BY_STAFF` | `BOOKED` | Мастер: `[Заказ выполнен]` | `FULFILLED` | без изменений | `BOOKED` |
-
-// Расширение Order
-model Order {
-  // ... существующие поля
-  customerNotes              String?
-  paymentType                PaymentType        @default(PAY_ON_SITE)
-  confirmationStatus         ConfirmationStatus @default(PENDING_STAFF)
-  autoCancelOnNoConfirmation Boolean            @default(false)
-}
-
-// Расширение SlotReservation
-model SlotReservation {
-  // ... существующие поля
-  totalDurationMin           Int
-}
-```
+| Текущий `OrderStatus` | `ConfirmationStatus` | `ReservationStatus` | Событие / Триггер | Новый `OrderStatus` | Новый `ConfirmationStatus` | Причина `cancellationReason` | Новый `ReservationStatus` |
+|---|---|---|---|---|---|---|---|
+| `PENDING` | `PENDING_STAFF_REVIEW` | `HELD` | Мастер: `[Принять]` (Pay on site) | `PENDING` | `STAFF_APPROVED` | — | `BOOKED` |
+| `PENDING` | `PENDING_STAFF_REVIEW` | `HELD` | Мастер: `[Принять]` (Prepay after approval) | `AWAITING_PAYMENT` | `STAFF_APPROVED` | — | `HELD` (15m window) |
+| `AWAITING_PAYMENT` | `STAFF_APPROVED` | `HELD` | Таймер 15 минут истёк | `PAYMENT_EXPIRED` | `STAFF_APPROVED` | `PAYMENT_EXPIRED` | `RELEASED` |
+| `AWAITING_PAYMENT` | `STAFF_APPROVED` | `HELD` | Клиент оплатил вовремя | `PAID` | `STAFF_APPROVED` | — | `BOOKED` |
+| `PAYMENT_EXPIRED` | `STAFF_APPROVED` | `RELEASED` | Запоздалый платёж (слот свободен) | `PAID` | `STAFF_APPROVED` | — | `BOOKED` |
+| `PAYMENT_EXPIRED` | `STAFF_APPROVED` | `RELEASED` | Запоздалый платёж (слот перехвачен) | `PAID_REQUIRES_RESOLUTION` | `STAFF_APPROVED` | — | `RELEASED` (SLA 24ч) |
+| `PENDING` | любая | `HELD`/`BOOKED` | Мастер: `[Отклонить]` | `CANCELLED` | `STAFF_APPROVED` | `STAFF_REJECTED` | `RELEASED` |
+| `PENDING` | любая | `HELD`/`BOOKED` | Мастер: `[В чёрный список]` | `CANCELLED` | `STAFF_APPROVED` | `CLIENT_BLOCKED` | `RELEASED` |
+| любая | `STAFF_APPROVED` | `BOOKED` | Клиент подтвердил пуш: `[Буду]` | без изменений | `CLIENT_CONFIRMED` | — | `BOOKED` |
+| любая | `STAFF_APPROVED` | `BOOKED` | Клиент отклонил пуш: `[Не смогу]` | `CANCELLED` | `STAFF_APPROVED` | `CLIENT_DECLINED` | `RELEASED` |
+| любая | `STAFF_APPROVED` | `BOOKED` | Дедлайн новичка истёк | `CANCELLED` | `STAFF_APPROVED` | `AUTO_CANCELLED_NO_CONFIRMATION` | `RELEASED` |
+| `PAID`/`PENDING` | `STAFF_APPROVED`/`CLIENT_CONFIRMED` | `BOOKED` | Мастер: `[Заказ выполнен]` | `FULFILLED` | без изменений | — | `BOOKED` |
 
 ---
 
@@ -325,6 +329,6 @@ model SlotReservation {
 - **SC-001**: Клиент может набрать 3 любые услуги в корзину, увидеть точный суммарный хронометраж и забронировать непрерывное окно с шагом 30 минут без единой накладки по времени.
 - **SC-002**: Мастер получает мгновенную карточку заказа в выделенный Telegram Staff-бот и подтверждает либо отклоняет запись в 1 клик.
 - **SC-003**: 100% новых клиентов получают пуш с кнопкой подтверждения за 24 часа до визита.
-- **SC-004**: Неподтверждённые записи новичков автоматически аннулируются за 6 часов до визита, высвобождая рабочие часы мастера.
+- **SC-004**: Неподтверждённые записи новичков автоматически аннулируются за 6 часов до визита с фиксацией точной причины `AUTO_CANCELLED_NO_CONFIRMATION`.
 - **SC-005**: Клиент может завершить бронирование без оплаты онлайн, выбрав «Оплату на месте».
 - **SC-006**: Полное прохождение автоматических тестов (`npm run validate` и `npm test`) с нулевым числом регрессий.

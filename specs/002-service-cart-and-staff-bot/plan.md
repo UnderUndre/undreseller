@@ -24,13 +24,13 @@
 - **Jobs Engine**: Inngest Cloud (`app/api/inngest`), функции выполняются внутри контейнера приложения с лимитами concurrency.
 - **Telegram SDK**: grammY 1.35.0 (два независимых инстанса: клиентский `bot` и служебный `staffBot`).
 - **Testing**: Jest 29 + Playwright E2E.
-- **Process Model**: ровно 1 контейнер приложения (`REPLICA_COUNT=1`), целевой лимит памяти $\le 500\text{ MB RAM}$.
+- **Process Model**: ровно 1 контейнер приложения (`REPLICA_COUNT=1`), целевой лимит памяти: <= 500 MB RAM (Docker Memory Fencing).
 
 ---
 
-## 3. Database Migration Strategy (Expand / Contract per Principle X)
+## 3. Database Migration Strategy (Guarded DDL with Lock-Timeout per Principle X)
 
-Миграция `20261019000000_multi_service_cart` следует строгому 4-фазному регламенту Principle X с защитой от блокировок таблицы:
+Миграция `20261019000000_multi_service_cart` следует строгому протоколу безопасного DDL с защитой от блокировки таблицы и префлайт-проверкой:
 
 1. **Safety DDL Guards & Preflight**:
    ```sql
@@ -57,11 +57,12 @@
    - Добавление `totalDurationMin Int @default(0)` в `SlotReservation`.
    - Добавление `customerNotes String?` в `Order`.
    - Добавление `scheduleVersion Int @default(1)` в `Order`.
-   - Добавление `rescheduleTokenConsumedAt DateTime?` в `Order`.
+   - Добавление `rescheduleTokenHash String?` и `rescheduleTokenConsumedAt DateTime?` в `Order`.
+   - Добавление `cancellationReason CancellationReason?` и `refundStatus RefundStatus @default(NONE)` в `Order`.
    - Добавление `invoiceExpiresAt DateTime? @db.Timestamptz(3)` в `Order`.
    - Добавление `staffMessageId Int?` и `staffChatId String?` в `Order`.
    - Добавление `paymentType PaymentType @default(PAY_ON_SITE)` в `Order`.
-   - Добавление `confirmationStatus ConfirmationStatus @default(PENDING_STAFF)` в `Order`.
+   - Добавление `confirmationStatus ConfirmationStatus @default(PENDING_STAFF_REVIEW)` в `Order`.
    - Добавление `autoCancelOnNoConfirmation Boolean @default(false)` в `Order`.
    - Добавление `staffDestinationChatId String?` и `authorizedStaffUserIds String[] @default([])` в `ShopSettings`.
    - Добавление `prepaymentTiming PrepaymentTiming @default(IMMEDIATE)` в `ShopSettings`.
@@ -82,7 +83,7 @@
        DROP CONSTRAINT IF EXISTS slot_no_overlap;
      ```
 4. **Safe Down Migration Protocol (`down.sql`)**:
-   - `down.sql` проверяет отсутствие мультисервисных пересечений перед попыткой возврата к старому `slot_no_overlap` по `itemId`. Если накоплены данные нового типа, миграция прерывается с ошибкой и требует явного регламента архивации.
+   - `down.sql` проверяет отсутствие мультисервисных пересечений перед попыткой возврата к старому `slot_no_overlap` по `itemId`. Если накоплены данные нового типа, откат прерывается с ясным сообщением о несовместимости схемы и требует ручного перевода слотов.
 
 ---
 
@@ -92,7 +93,7 @@
 app/
   api/
     booking/slots/route.ts          # Поддержка ?itemIds=id1,id2
-    booking/lock/route.ts           # Захват корзины и создание слота (с проверкой на blacklist 403)
+    booking/lock/route.ts           # Захват корзины и создание слота (с проверкой на blacklist 403 и resourceId lock)
     bot/staff/webhook/route.ts      # Вебхук Staff-бота (принять/отклонить/перенести/забанить/выполнить)
     admin/settings/route.ts         # Настройки сетки, таймингов подтверждения, prepaymentTiming и staffDestinationChatId
     admin/users/unblock/route.ts    # Разблокировка клиента администратором
@@ -104,33 +105,66 @@ lib/
   booking/windows.ts                # Генератор сплошных окон длины totalDuration
   booking/lock.ts                   # Транзакция блокировки мульти-сервисной брони
   bot/staffBot.ts                   # Инициализация grammY staffBot, пейджер заказов, кнопка бана
-  jobs/inngest.ts                   # appointmentReminderJob (TG/WhatsApp) + autoCancelUnconfirmedJob + invoiceExpiryJob
+  jobs/inngest.ts                   # appointmentReminderJob + autoCancelUnconfirmedJob + invoiceExpiryJob
 ```
 
-### Inngest Durable Sleep Race Protection (CAS Pattern)
-Для предотвращения срабатывания спящих фоновых задач после отмены, переноса или ручного подтверждения заказа:
-1. Каждая отложенная задача регистрируется с декларативным `cancelOn`:
-   ```typescript
-   cancelOn: [
-     { event: 'order/cancelled', match: 'data.orderId' },
-     { event: 'order/rescheduled', match: 'data.orderId' },
-     { event: 'order/confirmed', match: 'data.orderId' },
-     { event: 'order/paid', match: 'data.orderId' },
-   ]
-   ```
-2. В пейлоуд события передаётся `scheduleVersion`.
-3. При пробуждении воркера после `step.sleepUntil` выполняется **транзакционный Compare-And-Set (CAS)**:
-   - Заказ перечитывается из PostgreSQL;
-   - Если `order.scheduleVersion !== event.data.scheduleVersion` или статус заказа не соответствует ожидаемому предусловию — выполнение немедленно завершается (no-op) без отправки сообщений клиенту и без ошибочного сброса слота.
+### Inngest Durable Sleep Race Protection (CAS Pattern & Unambiguous cancelOn)
+Для исключения срабатывания спящих фоновых задач после отмены, переноса или ручного подтверждения заказа семантика событий разделена:
+
+1. **События жизненного цикла**:
+   - `order/created`: заказ создан.
+   - `order/staff-approved`: мастер нажал `[Принять]`.
+   - `order/client-confirmed`: клиент нажал `[Подтверждаю, буду]` (снимает риск автоотмены).
+   - `order/client-declined`: клиент нажал `[Не смогу]`.
+   - `order/paid`: онлайн-оплата подтверждена.
+   - `order/cancelled`: отмена заказа мастером/клиентом/системой.
+   - `order/rescheduled`: успешный перенос на новый слот.
+   - `order/fulfilled`: визит завершён.
+
+2. **Декларативные матрицы cancelOn**:
+   - **`appointmentReminderJob`**:
+     ```typescript
+     cancelOn: [
+       { event: 'order/cancelled', match: 'data.orderId' },
+       { event: 'order/client-declined', match: 'data.orderId' },
+       { event: 'order/rescheduled', match: 'data.orderId' },
+       { event: 'order/fulfilled', match: 'data.orderId' },
+     ]
+     ```
+     *(Напоминание НЕ отменяется при `order/paid` и `order/client-confirmed` — оплаченный клиент всё равно получает напоминание).*
+   - **`autoCancelUnconfirmedJob`**:
+     ```typescript
+     cancelOn: [
+       { event: 'order/cancelled', match: 'data.orderId' },
+       { event: 'order/client-confirmed', match: 'data.orderId' },
+       { event: 'order/client-declined', match: 'data.orderId' },
+       { event: 'order/rescheduled', match: 'data.orderId' },
+       { event: 'order/fulfilled', match: 'data.orderId' },
+     ]
+     ```
+     *(Автоотмена отменяется сразу же, как только клиент нажал «Буду»).*
+   - **`invoiceExpiryJob`**:
+     ```typescript
+     cancelOn: [
+       { event: 'order/paid', match: 'data.orderId' },
+       { event: 'order/cancelled', match: 'data.orderId' },
+       { event: 'order/rescheduled', match: 'data.orderId' },
+     ]
+     ```
+
+3. **Транзакционный Compare-And-Set (CAS)**:
+   При пробуждении после `step.sleepUntil` воркер re-read'ит `Order` из PostgreSQL внутри транзакции:
+   - Проверяет `order.scheduleVersion === event.data.scheduleVersion`;
+   - Если статус изменился или версия инкрементирована — воркер завершается no-op без ложных сообщений клиенту.
 
 ### Delayed Invoicing Lifecycle (`AFTER_STAFF_APPROVAL`)
 1. Мастер жмёт `[ ✅ Принять ]` в Staff-боте.
 2. Статус заказа переходит в `AWAITING_PAYMENT`, выставляется `invoiceExpiresAt = now + 15 min`.
 3. Запускается Inngest-функция `invoiceExpiryJob` со сном на 15 минут.
 4. Если через 15 минут статус остаётся `AWAITING_PAYMENT`:
-   - Заказ переходит в `PAYMENT_EXPIRED`, резервация переводится в `RELEASED`.
+   - Заказ переходит в `PAYMENT_EXPIRED`, `cancellationReason = 'PAYMENT_EXPIRED'`, резервация переводится в `RELEASED`.
    - Клиент и мастер получают извещение об истечении времени счёта.
-5. Запоздалый платёжный вебхук: проверяет статус слота через `acquireItemSlotLock`; если слот свободен — переводит в `PAID`, если перехвачен — фиксирует `PAID` и выставляет `requiresOperatorAction = true` (`OVERBOOKED_MANUAL_RESOLUTION`). Деньги никогда не теряются.
+5. Запоздалый платёжный вебхук: проверяет статус слота через `acquireResourceSlotLock`; если слот свободен — переводит в `PAID`, если перехвачен — фиксирует `PAID_REQUIRES_RESOLUTION` и выставляет `operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION'`, инициируя SLA оператора (24ч) на ручной перенос или возврат средств. Деньги никогда не теряются.
 
 ---
 
@@ -144,18 +178,22 @@ lib/
    - Нажатие посторонним пользователем возвращает всплывающий алерт `Access denied` без выполнения мутаций.
    - `ctx.from.id` актора записывается в структурированный лог `[STAFF_ACTION]`.
 2. **Single-Use Magic Reschedule Link Token**:
-   - Ссылка переноса формируется как:
-     `token = HMAC_SHA256(orderId + ":" + scheduleVersion + ":" + expiresAt + ":" + nonce, secret)`.
-   - Токен имеет TTL 24 часа.
-   - При открытии ссылки проверяется: валидность HMAC, `now < expiresAt`, `order.scheduleVersion === token.scheduleVersion` и `rescheduleTokenConsumedAt === null`.
-   - При успешном переносе: `rescheduleTokenConsumedAt = now()`, а `scheduleVersion` инкрементируется, делая повторное открытие невозможным.
-3. **Telegram GDPR Message Redaction Lifecycle**:
+   - При генерации ссылки генерируется случайный `nonce = randomUUID()`.
+   - В `Order` сохраняется `rescheduleTokenHash = sha256(nonce)`.
+   - Токен формируется как `orderId:scheduleVersion:expiresAt:nonce` и подписывается HMAC-SHA256 с TTL 24 часа.
+   - При открытии ссылки проверяется: валидность HMAC, `now < expiresAt`, `order.scheduleVersion === token.scheduleVersion`, `order.rescheduleTokenConsumedAt === null` и `sha256(nonce) === order.rescheduleTokenHash`.
+   - При успешном переносе: `rescheduleTokenConsumedAt = now()`, `rescheduleTokenHash = null`, а `scheduleVersion` инкрементируется, делая повторное открытие невозможным.
+3. **Telegram GDPR Message Redaction & Privacy Minimisation**:
    - Телефон клиента на карточке заказа в Telegram маскируется по умолчанию (`+7 *** *** 4567`).
-   - При создании карточки в `Order` сохраняются `staffMessageId` и `staffChatId`.
-   - При завершении заказа (`FULFILLED`), отмене (`CANCELLED`) или GDPR-очистке (`POST /api/admin/users/purge` / `nightlyPurge`):
-     Бот вызывает `editMessageText`, заменяя персональные данные и примечания на `[ДАННЫЕ_КЛИЕНТА_УДАЛЕНЫ_ПО_GDPR]`, и при наличии технической возможности удаляет сообщение.
+   - Текст `customerNotes` санитизируется, обрезается до 100 знаков превью на карточке и снабжается дисклеймером о запрете передачи персональных медицинских данных.
+   - При закрытии заказа (`FULFILLED`), отмене (`CANCELLED`) или GDPR-очистке (`POST /api/admin/users/purge` / `nightlyPurge`):
+     Бот вызывает `editMessageText`, заменяя персональные данные и примечания на `[ДАННЫЕ_КЛИЕНТА_УДАЛЕНЫ_ПО_GDPR]`. При возникновении сетевой ошибки сбой логируется как `[TELEGRAM_REDACTION_FAILED]`, а событие регистрируется в `InboxEvent` для ночного повторного ретрая.
 4. **Blacklist & Anti-Begging Perimeter**:
    - `POST /api/booking/lock` и чекаут проверяют статус `isBlocked` в `MessengerContact` для переданного телефона (нормализованного в E.164) и Telegram ID. При наличии блокировки запрос немедленно отклоняется с **HTTP 403 Forbidden** (`"Access restricted"`), предотвращая паразитные блокировки календаря. Разбан возможен только через `POST /api/admin/users/unblock`.
+5. **Resource-Scoped Advisory Lock**:
+   - Захват транзакционного замка при бронировании выполняется по `resourceId`:
+     `acquireResourceSlotLock(tx, resourceId)` -> `SELECT pg_advisory_xact_lock(hashtext('resource_slot_lock_' || $resourceId));`.
+   - Исключает глобальную сериализацию и дедлоки между независимыми мастерами.
 
 ---
 
