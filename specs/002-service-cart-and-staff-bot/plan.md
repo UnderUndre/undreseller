@@ -42,7 +42,7 @@
    BEGIN
      IF EXISTS (
        SELECT 1 FROM "SlotReservation" r1
-       JOIN "SlotReservation" r2 ON r1.id <> r2.id
+       JOIN "SlotReservation" r2 ON r1.id < r2.id
          AND COALESCE(r1."resourceId", 'default_master') = COALESCE(r2."resourceId", 'default_master')
          AND tstzrange(r1."startTime", r1."endTime") && tstzrange(r2."startTime", r2."endTime")
        WHERE r1.status IN ('HELD', 'BOOKED') AND r2.status IN ('HELD', 'BOOKED')
@@ -51,9 +51,15 @@
      END IF;
    END $$;
    ```
-2. **Phase 1: Expand (Additive & Nullable)**:
-   - Добавление `resourceId String @default("default_master")` в `SlotReservation`.
-   - Ослабление привязки: колонка `itemId String?` в `SlotReservation` становится nullable (так как бронь теперь агрегирует несколько услуг из `OrderItem[]`).
+2. **Phase 1: Expand & Backfill (Additive & Nullable)**:
+   - Добавление `resourceId` с бэкфиллом:
+     ```sql
+     ALTER TABLE "SlotReservation" ADD COLUMN IF NOT EXISTS "resourceId" TEXT;
+     ALTER TABLE "SlotReservation" ALTER COLUMN "resourceId" SET DEFAULT 'default_master';
+     UPDATE "SlotReservation" SET "resourceId" = 'default_master' WHERE "resourceId" IS NULL;
+     ALTER TABLE "SlotReservation" ALTER COLUMN "resourceId" SET NOT NULL;
+     ALTER TABLE "SlotReservation" ALTER COLUMN "itemId" DROP NOT NULL;
+     ```
    - Добавление `totalDurationMin Int @default(0)` в `SlotReservation`.
    - Добавление `customerNotes String?` в `Order`.
    - Добавление `scheduleVersion Int @default(1)` в `Order`.
@@ -137,12 +143,11 @@ lib/
      cancelOn: [
        { event: 'order/cancelled', match: 'data.orderId' },
        { event: 'order/client-confirmed', match: 'data.orderId' },
-       { event: 'order/client-declined', match: 'data.orderId' },
        { event: 'order/rescheduled', match: 'data.orderId' },
        { event: 'order/fulfilled', match: 'data.orderId' },
      ]
      ```
-     *(Автоотмена отменяется сразу же, как только клиент нажал «Буду»).*
+     *(Строго 4 события, в пределах лимита Inngest <= 5 событий. Отмена заказа клиентом или сбой оплаты атомарно порождают `order/cancelled`).*
    - **`invoiceExpiryJob`**:
      ```typescript
      cancelOn: [
@@ -164,7 +169,7 @@ lib/
 4. Если через 15 минут статус остаётся `AWAITING_PAYMENT`:
    - Заказ переходит в `PAYMENT_EXPIRED`, `cancellationReason = 'PAYMENT_EXPIRED'`, резервация переводится в `RELEASED`.
    - Клиент и мастер получают извещение об истечении времени счёта.
-5. Запоздалый платёжный вебхук: проверяет статус слота через `acquireResourceSlotLock`; если слот свободен — переводит в `PAID`, если перехвачен — фиксирует `PAID_REQUIRES_RESOLUTION` и выставляет `operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION'`, инициируя SLA оператора (24ч) на ручной перенос или возврат средств. Деньги никогда не теряются.
+5. Запоздалый платёжный вебхук: проверяет статус слота через `acquireResourceSlotLock`; если слот свободен — переводит в `PAID`, если перехвачен — фиксирует `PAID_REQUIRES_RESOLUTION`, выставляет `operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION'`, `refundStatus = 'REFUND_REQUESTED'`, инициируя SLA оператора (24ч) на ручной перенос или проведение возврата через шлюз. Деньги никогда не теряются.
 
 ---
 
@@ -176,18 +181,19 @@ lib/
    - Обработчик инлайн-кнопок валидирует:
      `String(ctx.chat.id) === settings.staffDestinationChatId && settings.authorizedStaffUserIds.includes(String(ctx.from.id))`.
    - Нажатие посторонним пользователем возвращает всплывающий алерт `Access denied` без выполнения мутаций.
+   - При любом действии мастера кнопки `inline_keyboard` немедленно удаляются вызовом `editMessageReplyMarkup({ inline_keyboard: [] })` для исключения гонок повторных нажатий.
    - `ctx.from.id` актора записывается в структурированный лог `[STAFF_ACTION]`.
 2. **Single-Use Magic Reschedule Link Token**:
-   - При генерации ссылки генерируется случайный `nonce = randomUUID()`.
+   - При генерации ссылки создаётся случайный `nonce = randomUUID()`.
    - В `Order` сохраняется `rescheduleTokenHash = sha256(nonce)`.
    - Токен формируется как `orderId:scheduleVersion:expiresAt:nonce` и подписывается HMAC-SHA256 с TTL 24 часа.
    - При открытии ссылки проверяется: валидность HMAC, `now < expiresAt`, `order.scheduleVersion === token.scheduleVersion`, `order.rescheduleTokenConsumedAt === null` и `sha256(nonce) === order.rescheduleTokenHash`.
    - При успешном переносе: `rescheduleTokenConsumedAt = now()`, `rescheduleTokenHash = null`, а `scheduleVersion` инкрементируется, делая повторное открытие невозможным.
 3. **Telegram GDPR Message Redaction & Privacy Minimisation**:
    - Телефон клиента на карточке заказа в Telegram маскируется по умолчанию (`+7 *** *** 4567`).
-   - Текст `customerNotes` санитизируется, обрезается до 100 знаков превью на карточке и снабжается дисклеймером о запрете передачи персональных медицинских данных.
+   - Текст `customerNotes` не пересылается в чат Telegram в открытом виде во избежание утечки чувствительных персональных данных; на карточке выводится индикатор `[Есть примечания]` и защищенная ссылка в админку.
    - При закрытии заказа (`FULFILLED`), отмене (`CANCELLED`) или GDPR-очистке (`POST /api/admin/users/purge` / `nightlyPurge`):
-     Бот вызывает `editMessageText`, заменяя персональные данные и примечания на `[ДАННЫЕ_КЛИЕНТА_УДАЛЕНЫ_ПО_GDPR]`. При возникновении сетевой ошибки сбой логируется как `[TELEGRAM_REDACTION_FAILED]`, а событие регистрируется в `InboxEvent` для ночного повторного ретрая.
+     Бот вызывает `editMessageText`, заменяя персональные данные на `[ДАННЫЕ_КЛИЕНТА_УДАЛЕНЫ_ПО_GDPR]`. Постоянные ошибки Telegram API (сообщение удалено, не найдено) обрабатываются как terminal no-op; временные сетевые сбои ретраятся через `InboxEvent`.
 4. **Blacklist & Anti-Begging Perimeter**:
    - `POST /api/booking/lock` и чекаут проверяют статус `isBlocked` в `MessengerContact` для переданного телефона (нормализованного в E.164) и Telegram ID. При наличии блокировки запрос немедленно отклоняется с **HTTP 403 Forbidden** (`"Access restricted"`), предотвращая паразитные блокировки календаря. Разбан возможен только через `POST /api/admin/users/unblock`.
 5. **Resource-Scoped Advisory Lock**:
