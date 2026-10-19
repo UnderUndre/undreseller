@@ -7,25 +7,26 @@
 
 ## Phase 1: Database & Schema
 
-- [ ] `T-101` `[DB]` Update `prisma/schema.prisma` with `totalDurationMin` on `SlotReservation`, `customerNotes`, `paymentType`, `confirmationStatus`, `autoCancelOnNoConfirmation` on `Order`, and configuration fields on `ShopSettings` (`slotGridStepMin`, `confirmationNoticeHours`, `autoCancelDeadlineHours`, `autoCancelForNewClients`, `allowPayOnSite`, `prepaymentTiming`, `staffChatId`).
-- [ ] `T-102` `[DB]` Generate and write SQL migration `20261019000000_multi_service_cart` updating `slot_no_overlap` exclusion constraint to calendar level (`tstzrange("startTime", "endTime")`) and write safe `down.sql`.
+- [ ] `T-101` `[DB]` Update `prisma/schema.prisma` with `resourceId` (default `"default_master"`), nullable `itemId`, and `totalDurationMin` on `SlotReservation`; `customerNotes`, `paymentType`, `confirmationStatus`, `autoCancelOnNoConfirmation`, `scheduleVersion`, `rescheduleTokenConsumedAt`, `invoiceExpiresAt`, `staffMessageId`, `staffChatId` on `Order`; `PAYMENT_EXPIRED` on `OrderStatus`; and configuration fields on `ShopSettings` (`slotGridStepMin`, `confirmationNoticeHours`, `autoCancelDeadlineHours`, `autoCancelForNewClients`, `allowPayOnSite`, `prepaymentTiming`, `staffDestinationChatId`, `authorizedStaffUserIds`).
+- [ ] `T-102` `[DB]` Generate and write SQL migration `20261019000000_multi_service_cart` with DDL lock timeout guards (`SET statement_timeout = '5s'; SET lock_timeout = '2s'`), preflight collision detection query, resource-level GiST exclusion constraint (`slot_resource_no_overlap`), dropping legacy `slot_no_overlap`, and safe `down.sql`.
 
 ## Phase 2: Booking Core & Cart Service
 
-- [ ] `T-103` `[BE]` `[US1]` `lib/booking/cart.ts`: validate cart items (max 10 items ceiling), sum `totalDurationMin` and `totalMinor`.
-- [ ] `T-104` `[BE]` `[US1]` `lib/booking/windows.ts` update: support `itemIds: string[]`, generate 30-min grid intervals (`slotGridStepMin`), filter contiguous windows of length `totalDurationMin` against reservations and breaks.
+- [ ] `T-103` `[BE]` `[US1]` `lib/booking/cart.ts`: validate cart items (max 10 items ceiling, positive durations, single currency), sum `totalDurationMin` and `totalMinor`.
+- [ ] `T-104` `[BE]` `[US1]` `lib/booking/windows.ts` update: support `itemIds: string[]` and `resourceId`, generate 30-min grid intervals (`slotGridStepMin`), filter contiguous windows of length `totalDurationMin` against reservations and breaks.
 - [ ] `T-105` `[BE]` `[US1]` `lib/booking/lock.ts` + `POST /api/booking/lock` update: multi-service booking lock with global calendar advisory lock, `customerNotes` persistence, blacklist enforcement (rejects blocked Telegram ID or phone with HTTP 403 Forbidden), and client history segmentation (`autoCancelOnNoConfirmation = true` for new clients).
 
 ## Phase 3: Dedicated Staff Bot
 
-- [ ] `T-106` `[BE]` `[US2]` `lib/bot/staffBot.ts`: grammY bot instance for staff (`STAFF_BOT_TOKEN`), order card formatter, inline keyboard (`[Принять]`, `[Отклонить]`, `[Перенести]`, `[В чёрный список]`), and HMAC-signed Magic Reschedule link generator.
-- [ ] `T-107` `[BE]` `[US2]` `POST /api/bot/staff/webhook`: secret verification (`STAFF_WEBHOOK_SECRET`), staff authorization (`ctx.from.id == staffChatId`), action handlers (approve, reject, reschedule, and blacklist blocking `MessengerContact.isBlocked = true` and cancelling order with `CANCELLED_BLOCKED`), plus `POST /api/admin/users/unblock` for manual unbanning.
+- [ ] `T-106` `[BE]` `[US2]` `lib/bot/staffBot.ts`: grammY bot instance for staff (`STAFF_BOT_TOKEN`), order card formatter with masked phone (`+7 *** *** 4567`), 5 action buttons (`[Принять]`, `[Отклонить]`, `[Перенести]`, `[В чёрный список]`, `[Заказ выполнен]`), and HMAC-signed single-use Magic Reschedule link generator with `nonce`, `expiresAt`, and `scheduleVersion`.
+- [ ] `T-107` `[BE]` `[US2]` `POST /api/bot/staff/webhook`: secret verification (`STAFF_WEBHOOK_SECRET`), role separation checking `staffDestinationChatId` AND `authorizedStaffUserIds.includes(ctx.from.id)`, action handlers (approve, reject, reschedule, blacklist `CANCELLED_BLOCKED`, and `FULFILLED`), Telegram PII redaction (`editMessageText` to `[ДАННЫЕ_КЛИЕНТА_УДАЛЕНЫ_ПО_GDPR]`), and `POST /api/admin/users/unblock`.
 
-## Phase 4: Confirmation & Smart Auto-Cancellation (Inngest)
+## Phase 4: Confirmation, Auto-Cancellation & Invoicing (Inngest)
 
-- [ ] `T-108` `[BE]` `[US3]` Inngest function `appointmentReminderJob` in `lib/jobs/inngest.ts`: sleeps until `startTime - confirmationNoticeHours`, dispatches omnichannel push (Telegram for TMA/TG clients, WhatsApp Cloud API template for phone-based clients) with confirmation buttons.
-- [ ] `T-109` `[BE]` `[US3]` Client bot response handler for confirmation buttons (`[Подтверждаю]` -> `CLIENT_CONFIRMED`, `[Не смогу]` -> `CANCELLED_BY_CLIENT`, alerts staff bot).
-- [ ] `T-110` `[BE]` `[US3]` Inngest function `autoCancelUnconfirmedJob` in `lib/jobs/inngest.ts`: checks unconfirmed bookings at `startTime - autoCancelDeadlineHours`, auto-cancels unconfirmed bookings for new clients, alerts staff and client.
+- [ ] `T-108` `[BE]` `[US3]` Inngest function `appointmentReminderJob` in `lib/jobs/inngest.ts`: with `cancelOn` triggers (`order/cancelled`, `order/rescheduled`, `order/confirmed`), sleep until `startTime - confirmationNoticeHours`, wake-up CAS check (`scheduleVersion`), and omnichannel dispatch (Telegram for TMA/TG clients, WhatsApp Cloud API template for phone-based clients).
+- [ ] `T-109` `[BE]` `[US3]` Client response handler for confirmation buttons (`[Подтверждаю]` -> `CLIENT_CONFIRMED`, `[Не смогу]` -> `CANCELLED_BY_CLIENT`, alerts staff bot).
+- [ ] `T-110` `[BE]` `[US3]` Inngest function `autoCancelUnconfirmedJob` in `lib/jobs/inngest.ts`: with `cancelOn` triggers, sleep until `startTime - autoCancelDeadlineHours`, wake-up CAS check (`scheduleVersion`), auto-cancels unconfirmed bookings for new clients (`CANCELLED_NO_SHOW`), alerts staff and client.
+- [ ] `T-110b` `[BE]` `[US4]` Inngest function `invoiceExpiryJob` in `lib/jobs/inngest.ts`: handles 15-minute invoice window for `AFTER_STAFF_APPROVAL`. If unpaid after 15 minutes, transitions order to `PAYMENT_EXPIRED` and releases reservation (`RELEASED`). Handles late webhooks without funds loss (`OVERBOOKED_MANUAL_RESOLUTION` or `PAID`).
 
 ## Phase 5: Storefront UI & TMA
 
@@ -33,9 +34,13 @@
 - [ ] `T-112` `[FE]` `[US1]` `components/booking/SlotGrid.tsx` update: multi-service slot display with 30-min step, `customerNotes` input with fixed-price disclaimer, pay-on-site radio selection.
 - [ ] `T-113` `[FE]` `[US4]` `components/checkout/CheckoutModal.tsx` & `app/checkout/page.tsx` update: support `PAY_ON_SITE` without gateway redirection, and configurable prepayment timing (`IMMEDIATE` vs `AFTER_STAFF_APPROVAL`).
 
-## Phase 6: Quality Gates & Tests
+## Phase 6: Quality Gates & Comprehensive Tests
 
-- [ ] `T-114` `[E2E]` Unit tests in `tests/unit/multi-service-cart.test.ts`: multi-service contiguous window calculations, new-client auto-cancel logic, staff-bot action idempotency, and blacklist 403 rejection tests.
+- [ ] `T-114` `[E2E]` Unit tests in `tests/unit/multi-service-cart.test.ts`: multi-service contiguous window calculations, 30-min grid step, slot break/conflict filtering.
+- [ ] `T-116` `[DB]` `[E2E]` Integration test for PostgreSQL GiST exclusion: concurrent booking collisions on overlapping multi-service windows return 409 (`23P01`), DDL lock timeout verification, and safe `down.sql` rollback test.
+- [ ] `T-117` `[BE]` Inngest sleep race condition & CAS tests: verify stale runs aborted on rescheduled/cancelled orders, 15-minute invoice timeout test, Telegram PII redaction test on order completion and GDPR purge.
+- [ ] `T-118` `[SEC]` Staff bot authorization test (unauthorized group member callback rejected with alert), Magic Reschedule link single-use and tamper rejection test, blacklist 403 lock rejection test.
+- [ ] `T-119` `[PERF]` Latency benchmark for slot calculation (p95 < 50ms) and memory ceiling verification (<= 500 MB RAM).
 - [ ] `T-115` `[SEC]` `[OPS]` Final constitutional quality gate: `npm run validate`, `npm test`, `npm run build`, license audit, telemetry redaction verification.
 
 ---
@@ -52,11 +57,16 @@ T-106 → T-107
 T-105 → T-108
 T-108 → T-109
 T-109 → T-110
+T-107 → T-110b
 T-103 + T-104 → T-111
 T-111 + T-105 → T-112
 T-112 → T-113
-T-105 + T-107 + T-110 + T-113 → T-114
-T-114 → T-115
+T-105 + T-107 + T-110 + T-110b + T-113 → T-114
+T-102 + T-105 → T-116
+T-108 + T-110 + T-110b + T-107 → T-117
+T-105 + T-106 + T-107 → T-118
+T-104 + T-114 → T-119
+T-114 + T-116 + T-117 + T-118 + T-119 → T-115
 ```
 
 ## Parallel lanes
@@ -66,6 +76,7 @@ T-114 → T-115
 | Database | `[DB]` | T-101 → T-102 |
 | Booking Core | `[BE]` | T-103 → T-104 → T-105 |
 | Staff Bot | `[BE]` | T-106 → T-107 |
-| Inngest Lifecycles | `[BE]` | T-108 → T-109 → T-110 |
+| Inngest Lifecycles | `[BE]` | T-108 → T-109 → T-110, T-107 → T-110b |
 | Storefront UI | `[FE]` | T-111 → T-112 → T-113 |
-| Verification | `[E2E]` `[SEC]` `[OPS]` | T-114 → T-115 |
+| Verification | `[E2E]` `[DB]` `[BE]` `[SEC]` `[PERF]` `[OPS]` | T-114, T-116, T-117, T-118, T-119 → T-115 |
+

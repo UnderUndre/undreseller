@@ -37,24 +37,27 @@
 | `FR-016` Pay-On-Site Support | Yes | `T-101`, `T-112`, `T-113` | Выбор оплаты при визите без обязательного перехода к шлюзам |
 | `FR-017` Blacklist & Anti-Begging Enforcement | Yes | `T-105`, `T-106`, `T-107`, `T-114` | Блокировка выпрашивающих скидки клиентов с возвратом HTTP 403 |
 | `FR-018` Configurable Prepayment Timing | Yes | `T-101`, `T-113` | Настройка момента предоплаты: `IMMEDIATE` vs `AFTER_STAFF_APPROVAL` |
-| `NFR-001` Slot Query Latency | Yes | `T-104`, `T-114` | Время расчета слотов < 50 мс (p95) |
+| `FR-019` Authoritative State Machine & Delayed Invoicing | Yes | `T-101`, `T-110b`, `T-117` | Жизненный цикл `AWAITING_PAYMENT`, 15-мин таймер и `PAYMENT_EXPIRED` |
+| `FR-020` Telegram GDPR Redaction & PII Minimisation | Yes | `T-101`, `T-106`, `T-107`, `T-117` | Маскирование телефона, `editMessageText` при закрытии/purge |
+| `FR-021` Staff One-Click Fulfillment | Yes | `T-106`, `T-107` | Кнопка `[Заказ выполнен / Оплачен]` переводит в `FULFILLED` |
+| `NFR-001` Slot Query Latency | Yes | `T-104`, `T-114`, `T-119` | Время расчета слотов < 50 мс (p95) |
 | `NFR-002` Staff Notification Delivery SLA | Yes | `T-106`, `T-107` | Доставка алерта в Staff-бот < 1.5 секунды |
-| `NFR-003` Memory Ceiling | Yes | `T-115` | Потребление памяти контейнера <= 500 MB RAM |
-| `NFR-004` GDPR Data Hygiene | Yes | `T-101`, `T-115` | Автоматическая зачистка `customerNotes` через 30 дней |
-| `US1` Multi-Service Cart & 30-Min Hold | Yes | `T-101`, `T-102`, `T-103`, `T-104`, `T-105`, `T-111`, `T-112`, `T-114` | Полное покрытие |
-| `US2` Staff Bot Pager & One-Click Actions | Yes | `T-106`, `T-107`, `T-114` | Полное покрытие |
-| `US3` Confirmation Reminder & Smart No-Show | Yes | `T-108`, `T-109`, `T-110`, `T-114` | Полное покрытие |
-| `US4` Pay-On-Site vs Online Prepayment | Yes | `T-101`, `T-112`, `T-113`, `T-114` | Полное покрытие |
+| `NFR-003` Memory Ceiling | Yes | `T-115`, `T-119` | Потребление памяти контейнера <= 500 MB RAM |
+| `NFR-004` GDPR Data Hygiene | Yes | `T-101`, `T-115`, `T-117` | Автоматическая зачистка `customerNotes` и Telegram-сообщений |
+| `US1` Multi-Service Cart & 30-Min Hold | Yes | `T-101`, `T-102`, `T-103`, `T-104`, `T-105`, `T-111`, `T-112`, `T-114`, `T-116` | Полное покрытие |
+| `US2` Staff Bot Pager & One-Click Actions | Yes | `T-106`, `T-107`, `T-114`, `T-118` | Полное покрытие |
+| `US3` Confirmation Reminder & Smart No-Show | Yes | `T-108`, `T-109`, `T-110`, `T-114`, `T-117` | Полное покрытие |
+| `US4` Pay-On-Site vs Online Prepayment | Yes | `T-101`, `T-110b`, `T-112`, `T-113`, `T-114`, `T-117` | Полное покрытие |
 
 ---
 
 ## Constitution Alignment Issues
 
-- **Principle VI (Cross-AI Review Gate)**: Первый этап валидации (`analyze.md`) завершен со статусом **PASS**. Спецификация готова к получению двух внешних рецензий от независимых моделей.
+- **Principle VI (Cross-AI Review Gate)**: Первый этап валидации (`analyze.md`) завершен со статусом **PASS**. Спецификация полностью устранила замечания Copilot F1–F18 и готова к повторному независимому ревью.
 - **Principle VII (Artifact Versioning)**: Артефакты снабжены версионными снапшот-тегами (`spec/002-service-cart-and-staff-bot/v1`, `clarify/002-service-cart-and-staff-bot/v3`).
 - **Principle IX (Two-Phase Review Flow)**: Работа ведется на изолированной planning-ветке `002-service-cart-and-staff-bot`.
-- **Principle X (Zero-Downtime Data Architecture)**: Изменения схемы в `T-101` и `T-102` спроектированы по 4-фазному стандарту Expand/Contract (аддитивные поля со значениями по умолчанию, безопасная замена констрейнта исключения без блокировки базы и безопасный `down.sql`).
-- **Principle XI (Spike Governance)**: Исследовательские прототипы не требуются, архитектура строится на проверенном производственном стеке.
+- **Principle X (Zero-Downtime Data Architecture)**: Миграция спроектирована по стандарту Expand/Contract с ресурсом `resourceId`, защитой через `SET lock_timeout = '2s'`, префлайт-проверкой коллизий и безопасным `down.sql`.
+- **Principle XI (Spike Governance)**: Исследовательские прототипы не требуются, архитектура монолита проверена.
 
 ---
 
@@ -68,22 +71,22 @@
   - Scope knife: корзина услуг расширяет существующий бизнес-процесс (каталог $\to$ холд $\to$ оплата/визит), не создавая второй параллельный продукт.
   - Сохранён лимит памяти контейнера приложения $\le 500\text{ MB RAM}$.
   - Фоновые пайплайны строятся исключительно на коде **Inngest** (запрет n8n в клиентском приложении соблюдён).
-  - Управление заказами вынесено в служебный Telegram Staff-бот мастера, исключая необходимость в сложной внешней админ-панели на React/SaaS-стартере.
+  - Управление заказами вынесено в служебный Telegram Staff-бот мастера с разграничением `staffDestinationChatId` и `authorizedStaffUserIds`.
   - **Дрифт не обнаружен**: No commercial drift detected.
 
 ---
 
 ## Unmapped Tasks
 
-Все задачи `T-101`–`T-115` однозначно сопоставлены с функциональными требованиями, разбиты по фазам и параллельным дорожкам без висячих элементов.
+Все задачи `T-101`–`T-119` однозначно сопоставлены с функциональными требованиями, разбиты по фазам и параллельным дорожкам без висячих элементов.
 
 ---
 
 ## Metrics
 
-- **Total Requirements**: 22 (18 FR + 4 NFR)
-- **Total Tasks**: 15
-- **Coverage %**: 100.0% (22/22)
+- **Total Requirements**: 25 (21 FR + 4 NFR)
+- **Total Tasks**: 20
+- **Coverage %**: 100.0% (25/25)
 - **Ambiguity count**: 0
 - **Duplication count**: 0
 - **CRITICAL count**: 0
@@ -98,8 +101,8 @@
 ```yaml
 verdict: PASS
 reviewer: analyze
-reviewed_at: 2026-10-19T11:45:00Z
-commit: 15109ff94c3642799357ce55878ec711c38d120e
+reviewed_at: 2026-10-19T13:30:00Z
+commit: 8118a946b5e0031853ba5fa8d1469e4695029b97
 critical_count: 0
 high_count: 0
 medium_count: 0
