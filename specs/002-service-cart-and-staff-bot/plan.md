@@ -4,7 +4,7 @@
 > "These walls are funny. First you hate 'em, then you get used to 'em. Enough time passes, you get so you depend on them." — _Побег из Шоушенка_  
 > "Scissors cuts paper, paper covers rock, rock crushes lizard... — Распределённый дедлок в микросервисах." — Шелдон Купер (_The Big Bang Theory_)
 
-**Planning Branch**: `specs/002-service-cart-and-staff-bot` | **Date**: 2026-10-19  
+**Branch**: `002-service-cart-and-staff-bot` | **Date**: 2026-10-19  
 **Spec**: [`spec.md`](spec.md)  
 **Standard**: NIST SP 800-218 SSDF & ISO/IEC/IEEE 12207:2017  
 **Commercial Context**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v18.3**
@@ -28,44 +28,17 @@
 
 ---
 
-## 3. Database Migration Strategy (Principle X: Four-Phase Expand/Contract)
+## 3. Database Migration Strategy (Four Deployments, No Backfill + SET NOT NULL Compaction)
 
-The migration is deliberately split across deploys. A single migration MUST NOT add, backfill, switch reads, enforce NOT NULL, add the new exclusion constraint, and drop the old constraint in one production transaction.
+1. **Expand deployment**: add nullable `resourceId` and `totalDurationMin`, new tables/enums/nullable columns, and backward-compatible dual-write. Do not backfill, set NOT NULL, drop legacy constraints, or switch reads here.
+2. **Backfill deployment**: resumable bounded batches populate resource and duration fields while legacy reads remain authoritative. Record checkpoint, mismatch and quarantine metrics. No `SET NOT NULL` is executed.
+3. **Validation and cutover deployment**:
+   - Add temporary `CHECK (resourceId IS NOT NULL) NOT VALID` and `CHECK (totalDurationMin IS NOT NULL AND totalDurationMin BETWEEN 1 AND 480) NOT VALID`.
+   - Run `VALIDATE CONSTRAINT` as separate statements after backfill reaches zero remainder.
+   - Switch reads while dual-write remains active; add `slot_resource_no_overlap` in a separate guarded DDL attempt after overlap preflight.
+4. **Contract deployment**: after observation, run `SET NOT NULL` in a separate migration relying on validated CHECK constraints; remove temporary checks, stop dual-write, then drop legacy `slot_no_overlap`.
 
-### Phase 1: Expand, additive only
-
-- Add nullable `resourceId`, nullable `totalDurationMin`, new Order/ShopSettings fields, enums and the new `RefundOperation` table. No old column or constraint is removed.
-- Set defaults only for new writes where PostgreSQL can do so without a table rewrite; old application versions remain functional.
-- Add supporting non-unique indexes with `CREATE INDEX CONCURRENTLY` where applicable. The exclusion constraint is not created yet.
-- Deploy backward-compatible application code that reads the old representation and dual-writes `resourceId`, `totalDurationMin`, OrderItems and legacy `itemId` for every new/modified reservation.
-
-### Phase 2: Dual-write and rate-limited backfill
-
-- Keep reads on the old representation. Run a resumable, rate-limited background backfill in bounded batches.
-- Backfill `resourceId='default_master'` and recompute every `totalDurationMin` from `endTime - startTime`; stop and quarantine rows where `endTime <= startTime`, duration is not a whole minute, or duration is outside `1..480`.
-- Persist checkpoints and metrics: scanned, updated, quarantined, remaining, batch latency and lock wait. Re-running the job is idempotent.
-- Shadow-read the new representation and emit mismatch telemetry without changing user-visible results.
-
-### Phase 3: Cutover
-
-- Preflight requires zero backfill remainder, zero quarantined active rows, zero shadow-read mismatch, and no resource-level overlap (`r1.id < r2.id`).
-- Deploy the read switch to the new representation while dual-write remains enabled. Monitor booking 409 rate, slot-query latency, mismatch count and payment/job errors for the agreed observation window.
-- In a separate guarded DDL step, add `slot_resource_no_overlap`. `lock_timeout=2s` and `statement_timeout=5s` bound each attempt. Retry/backoff lives in `.specify/scripts/bash/migrate-safe.sh`, max 5 attempts.
-- Before production, benchmark this step on a restored v1 database. On five failures or budget breach, abort automated deployment. Maintenance fallback requires pausing booking writes, rerunning preflight, applying the constraint, and restoring writes after health checks.
-
-### Phase 4: Contract, dedicated cleanup migration
-
-- Only after the observation window and health-check PASS: enforce `resourceId`/`totalDurationMin` NOT NULL and positive checks, stop legacy reads, remove dual-write adapters, then drop `slot_no_overlap`.
-- Removal of obsolete `itemId` semantics or columns is a separate cleanup migration and requires proof that no rollback-compatible deployment depends on them.
-- `down.sql` refuses destructive rollback when multi-service data cannot be represented by the legacy schema; recovery uses forward-fix or an explicit archival runbook.
-
-### Deployment evidence
-
-- `migrate-safe.sh` records attempt number, timings, commit SHA and outcome.
-- The planning PR must include restored-v1 benchmark output and the compatibility matrix for old app/new schema and new app/old+expanded schema.
-- Snapshot tagging follows `snapshot-stage.{sh,ps1}`; this attachment review cannot create the required Git tag outside a worktree.
-
----
+`SET NOT NULL` MUST NOT share a transaction with full-table backfill. Each DDL attempt uses `lock_timeout='2s'`, `statement_timeout='5s'`, max-five external retries, restored-v1 benchmark evidence, and an abort/maintenance fallback.
 
 ## 4. Key Architectural Modules & State Machines
 
@@ -75,7 +48,7 @@ app/
     booking/slots/route.ts          # Поддержка ?itemIds=id1,id2
     booking/lock/route.ts           # Захват корзины и создание слота (с проверкой на blacklist 403 и resourceId lock)
     bot/staff/webhook/route.ts      # Вебхук Staff-бота (принять/отклонить/перенести/забанить/выполнить)
-    admin/settings/route.ts         # Настройки сетки, таймингов подтверждения, prepaymentTiming и staffDestinationChatId
+    admin/settings/route.ts         # `enabledExternalIntegration` and fail-closed runtime validation
     admin/users/unblock/route.ts    # Разблокировка клиента администратором
 components/
   catalog/CartDrawer.tsx            # Корзина услуг с плавающим баром и итоговым хронометражем
@@ -147,6 +120,17 @@ lib/
 
 ---
 
+#### Refund Ledger Invariant
+
+`PaymentEvent` remains an immutable provider-event ledger. Refunds and crypto reimbursements are represented only by `RefundOperation`; no synthetic negative `PaymentEvent` is created.
+
+### 4.5 Job Engine Continuity
+
+- Inngest Cloud is the primary scheduler; PostgreSQL deadline fields and schedule versions are authoritative.
+- An independent reconciliation sweeper leases overdue rows and invokes the same idempotent CAS services for reminders, auto-cancel and invoice expiry.
+- Alert on oldest overdue unreconciled deadline; outage recovery drains from PostgreSQL.
+- Self-hosted Inngest is a documented and tested migration option, not an automatic hot standby. The runbook records configuration, migration limits, tests and support limitations.
+
 ## 5. Security, Authorization & Privacy Invariants
 
 1. **Staff Bot Role Separation & Authorization**:
@@ -155,14 +139,14 @@ lib/
    - Обработчик инлайн-кнопок валидирует:
      `String(ctx.chat.id) === settings.staffDestinationChatId && settings.authorizedStaffUserIds.includes(String(ctx.from.id))`.
    - Нажатие посторонним пользователем возвращает всплывающий алерт `Access denied` без выполнения мутаций.
-   - Каждое действие мастера сначала выполняет action-specific транзакционный CAS и дедупликацию `callbackQuery.id`. После commit карточка Telegram обновляется через outbox: `inline_keyboard` удаляется вызовом `editMessageReplyMarkup({ inline_keyboard: [] })`. Сбой Telegram не откатывает бизнес-состояние; повторная проекция идемпотентна.
+   - При любом действии мастера кнопки `inline_keyboard` немедленно удаляются вызовом `editMessageReplyMarkup({ inline_keyboard: [] })` для исключения гонок повторных нажатий.
    - `ctx.from.id` актора записывается в структурированный лог `[STAFF_ACTION]`.
 2. **Single-Use Magic Reschedule Link Token**:
-   - При генерации ссылки создаётся случайный `nonce = randomUUID()`; новый hash активируется CAS-обновлением по `orderId` и `scheduleVersion`, инвалидируя предыдущий неиспользованный токен.
+   - При генерации ссылки создаётся случайный `nonce = randomUUID()`.
    - В `Order` сохраняется `rescheduleTokenHash = sha256(nonce)`.
    - Токен формируется как `orderId:scheduleVersion:expiresAt:nonce` и подписывается HMAC-SHA256 с TTL 24 часа.
    - При открытии ссылки проверяется: валидность HMAC, `now < expiresAt`, `order.scheduleVersion === token.scheduleVersion`, `order.rescheduleTokenConsumedAt === null` и `sha256(nonce) === order.rescheduleTokenHash`.
-   - При успешном переносе один атомарный CAS проверяет `orderId`, `scheduleVersion`, hash, `expiresAt` и `rescheduleTokenConsumedAt IS NULL`, затем выставляет `rescheduleTokenConsumedAt = now()`, обнуляет hash и инкрементирует `scheduleVersion`.
+   - При успешном переносе: `rescheduleTokenConsumedAt = now()`, `rescheduleTokenHash = null`, а `scheduleVersion` инкрементируется, делая повторное открытие невозможным.
 3. **Telegram GDPR Message Redaction & Privacy Minimisation**:
    - Телефон клиента на карточке заказа в Telegram маскируется по умолчанию (`+7 *** *** 4567`).
    - Текст `customerNotes` не пересылается в чат Telegram в открытом виде во избежание утечки чувствительных персональных данных; на карточке выводится индикатор `[Есть примечания]` и защищенная ссылка в админку.
@@ -177,28 +161,10 @@ lib/
 
 ---
 
-## 6. Provider-Separated Refund/Reimbursement Operations
-
-- `PaymentEvent` остаётся неизменяемым provider-event ledger. Возвраты и компенсационные выплаты хранятся в отдельной `RefundOperation` со статусами `REQUESTED`, `SUBMITTED`, `CONFIRMED`, `FAILED`, `UNKNOWN` и уникальным `idempotencyKey`.
-- Telegram Stars использует `refundStarPayment(user_id, telegram_payment_charge_id)`.
-- Completed crypto payment не трактуется как provider refund. Возврат клиенту является merchant crypto reimbursement/payout после проверки asset, network, подтверждённого destinationAddress, комиссии, merchant balance и operator authorization. Сохраняются `providerRef`, `txid` и network confirmations; ambiguous timeout переводит операцию в `UNKNOWN` до reconciliation.
-- SLA 24ч контролируется отдельным джобом; просрочка создаёт operator escalation.
-
----
-
-## 7. Commercial Alignment and Delivery Boundary
-
-- Business-plan mapping: internal reusable Track 1 Light Monolith / Sprint B template. This work does not bypass the 10-paid-Tripwire Demand Gate and does not itself claim production traction.
-- Per client SOW: max 2 roles, one key booking workflow, one enabled external integration, 14 calendar days, $4,900 flat. Additional WhatsApp/payment/messenger adapters remain disabled or move to Phase 2 Backlog at $100/hour unless the business plan is amended.
-- Memory gate: application container <= 500 MB RAM. Heavy logistics, large inventory, native mobile apps and microservices are excluded.
-- Commercial drift check is repeated if ICP, pricing, packaging, payment rails, external integration count or unit economics change.
-
----
-
-## 8. Build Order
+## 6. Build Order
 
 1. Схема Prisma и SQL-миграция (`prisma/schema.prisma`, safe migration `20261019000000_multi_service_cart` с lock_timeout и `down.sql`).
-2. Сервисная логика корзины и сетки 30 минут: серверная валидация, immutable `OrderItem` snapshot, запрет дублей/неактивных услуг и лимит 480 минут (`lib/booking/cart.ts`, `lib/booking/windows.ts` с `resourceId`).
+2. Сервисная логика корзины и сетки 30 минут (`lib/booking/cart.ts`, `lib/booking/windows.ts` с `resourceId`).
 3. Транзакционный лок корзины (`lib/booking/lock.ts`, `app/api/booking/lock` с проверкой на черный список).
 4. Staff-бот и пейджер (`lib/bot/staffBot.ts`, `app/api/bot/staff/webhook` с разделением прав и маскированием ПДн).
 5. Фоновые таймеры Inngest (напоминания клиенту с CAS-защитой, автоотмена новичков, таймер счёта `invoiceExpiryJob`).

@@ -5,7 +5,7 @@
 > "Why don't you explain this to me like I'm five." — Майкл Скотт (_The Office_)  
 > "Well, I didn't realize you had documentation." — Бабуленька (_Young Sheldon_)
 
-**Planning Branch**: `specs/002-service-cart-and-staff-bot`  
+**Feature Branch**: `002-service-cart-and-staff-bot`  
 **Directory**: `specs/002-service-cart-and-staff-bot`  
 **Created**: 2026-10-19  
 **Status**: Draft  
@@ -28,13 +28,6 @@
 6. **Гибкие способы оплаты и конечный автомат**: поддержка выбора «Оплата на месте» (`PAY_ON_SITE`) либо «Онлайн-предоплата» (Stars / NOWPayments) с настраиваемым моментом списания (`IMMEDIATE` vs `AFTER_STAFF_APPROVAL`) и 15-минутным окном ожидания (`PAYMENT_EXPIRED`).
 
 ---
-
-## 1.1. Commercial Scope Guardrails (Business Plan v18.3)
-
-- Эта спецификация развивает внутренний reusable Track 1 Light Monolith / Modular Commerce starter для Sprint B, а не объявляет отдельный публичный SKU и не отменяет Demand Gate. Публичный старт Sprint A/B остаётся заблокирован до 10 оплаченных Tripwire-заказов.
-- Для конкретной клиентской поставки Sprint B сохраняются границы бизнес-плана: максимум 2 роли, 1 ключевой бизнес-процесс, 1 внешняя интеграция и 14 календарных дней. Адаптеры Telegram, WhatsApp, Stars и NOWPayments могут существовать в шаблоне, но SOW активирует только один внешний интеграционный контур; остальные выключены feature flags либо выносятся в Phase 2 Backlog.
-- Настоящий feature не меняет цены: Tripwire $350–$490, Sprint A $3,500 + $500/мес, Sprint B $4,900 flat. Изменение упаковки, цены, числа внешних интеграций или delivery timebox требует обновления business plan до фиксации plan/tasks.
-- Целевой runtime сохраняет Light Monolith и лимит приложения <= 500 MB RAM. Микросервисы и Heavy Enterprise Logistics остаются вне Phase A.
 
 ## 2. User Scenarios & Testing
 
@@ -65,12 +58,12 @@
 **Why this priority**: Исключает необходимость постоянного входа в веб-админку; мастер управляет потоком прямо с телефона за 1 клик, защищая бизнес от халявщиков и неадекватов, не допуская утечки ПДн в групповых чатах.
 
 **Independent Test**:  
-Создать бронь. Убедиться, что в `staffDestinationChatId` прилетает сообщение от Staff-бота с кнопками. Нажать `[В чёрный список]` — проверить мгновенный перевод резервации в `RELEASED`, заказа в `CANCELLED` (с причиной `CLIENT_BLOCKED`), установку `isBlocked = true` для клиента и отказ HTTP 403 на любую повторную попытку бронирования.
+Создать бронь. Убедиться, что в `staffDestinationChatId` прилетает сообщение от Staff-бота с кнопками. Нажать `[В чёрный список]` — проверить мгновенный перевод резервации в `RELEASED`, заказа в `CANCELLED` (с причиной `CANCELLED_BLOCKED`), установку `isBlocked = true` для клиента и отказ HTTP 403 на любую повторную попытку бронирования.
 
 **Acceptance Scenarios**:
 1. **Given** поступившая новая запись,  
    **When** авторизованный мастер (`ctx.from.id` входит в `authorizedStaffUserIds`) нажимает кнопку `[ ✅ Принять ]`,  
-   **Then** поле `confirmationStatus` заказа обновляется на `STAFF_APPROVED`, карточка у мастера редактируется на `✅ Запись принята`, а клиенту отправляется сообщение о подтверждении визита.
+   **Then** статус брони в БД обновляется на `CONFIRMED_BY_STAFF`, карточка у мастера редактируется на `✅ Запись принята`, а клиенту отправляется сообщение о подтверждении визита.
 2. **Given** поступившая новая запись,  
    **When** неавторизованный пользователь нажимает инлайн-кнопку в чате,  
    **Then** мутация отклоняется, статус в БД не меняется, бот возвращает алерт `Access denied`.
@@ -82,7 +75,7 @@
    **Then** система генерирует криптографически подписанную одноразовую ссылку (Magic Reschedule Link с `nonce`, `expiresAt` и `scheduleVersion`) и отправляет клиенту; после успешного выбора нового времени токен помечается использованным (`rescheduleTokenConsumedAt = now()`), повторный переход невозможен.
 5. **Given** поступившая запись с нарушением правил (выпрашивание скидки, торг при фикс-прайсе, спам),  
    **When** мастер нажимает кнопку `[ 🚫 В чёрный список ]`,  
-   **Then** резервация немедленно освобождается (`RELEASED`), заказ аннулируется (`CANCELLED`), контакты клиента (Telegram ID и нормализованный телефон E.164) вносятся в чёрный список (`MessengerContact.isBlocked = true`), клиенту направляется системный отказ о нарушении правил фиксированного прайса, а любая повторная попытка блокировки слота с этих реквизитов отклоняется с **HTTP 403 Forbidden**.
+   **Then** резервация немедленно освобождается (`RELEASED`), заказ аннулируется (`CANCELLED`), контакты клиента (Telegram ID и нормализованный телефон E.164) вносятся в чёрный список (`MessengerContact.isBlocked = true`), клиенту направляется системный отказ о нарушении правил фиксированного прайса, а повторная попытка отклоняется с **HTTP 403** только по Telegram ID/customerId; phone-only совпадение требует `MANUAL_REVIEW`.
 6. **Given** завершённый визит или отмена заказа,  
    **When** заказ переходит в статус `FULFILLED` или `CANCELLED`,  
    **Then** бот автоматически редактирует служебное сообщение в `staffDestinationChatId`, маскируя персональные данные меткой `[ДАННЫЕ_КЛИЕНТА_УДАЛЕНЫ_ПО_GDPR]` и удаляя сообщение при наличии технической возможности в Telegram API.
@@ -168,23 +161,23 @@
 
 - **FR-001 (Multi-Service Basket)**: Система ДОЛЖНА позволять клиенту передавать массив идентификаторов услуг `itemIds: string[]` при расчёте слотов и оформлении брони.
 - **FR-002 (Cumulative Duration & Price)**: Система ДОЛЖНА суммировать длительность `totalDurationMin = sum(durationMin)` и стоимость `totalMinor = sum(priceMinor)` всех выбранных услуг.
-- **FR-002a (Authoritative Cart Snapshot)**: При `POST /api/booking/lock` сервер ДОЛЖЕН повторно загрузить услуги внутри транзакции, отклонить дубликаты `itemIds`, неактивные/удалённые позиции, смешение валют, неположительную длительность и `totalDurationMin > 480`. Цена, валюта, название и `durationMin` ДОЛЖНЫ копироваться в неизменяемый snapshot `OrderItem`; значения клиента не являются источником истины.
 - **FR-003 (30-Minute Grid Intervals)**: Генератор доступных слотов ДОЛЖЕН формировать стартовые точки строго с шагом `slotGridStepMin` (по умолчанию 30 минут) в локальной таймзоне заведения `shopTimezone`.
 - **FR-004 (Contiguous Window Validation)**: Генератор слотов ДОЛЖЕН исключать любое кандидатное время T, если интервал `[T, T + totalDurationMin]` пересекает обеденный перерыв, нерабочее время, буфер `minNoticeMin` или существующую бронь в статусах `HELD`/`BOOKED`.
 - **FR-005 (Resource Calendar Exclusion Constraint)**: База данных ДОЛЖНА обеспечивать атомарную защиту от пересечения броней через PostgreSQL GiST exclusion constraint по диапазону `("resourceId" WITH =, tstzrange("startTime", "endTime") WITH &&) WHERE status IN ('HELD', 'BOOKED')`.
 - **FR-006 (Customer Notes Field & Fixed-Price Policy)**: Модель заказа ДОЛЖНА содержать текстовое поле `customerNotes` (максимум 1 000 символов, санитизированное от HTML/скриптов). Под полем в интерфейсе ДОЛЖЕН отображаться обязательный дисклеймер: *«💡 У нас фиксированный прайс. Запросы скидок, торга и бартера не рассматриваются и ведут к аннулированию записи и ограничению доступа»*.
 - **FR-007 (Dedicated Staff Bot & Role Separation)**: Система ДОЛЖНА поддерживать работу второго независимого Telegram-бота (`STAFF_BOT_TOKEN`), обслуживающего маршрут `/api/bot/staff/webhook` с секретным токеном `STAFF_WEBHOOK_SECRET`. Чат доставки (`staffDestinationChatId`, поддерживающий ID групп и каналов вида `-100...`) ДОЛЖЕН быть строго отделен от списка авторизованных пользователей-мастеров (`authorizedStaffUserIds: string[]`).
+- **FR-007a (Telegram Bundle Credential Matrix)**: При `enabledExternalIntegration = TELEGRAM_BUNDLE` разрешены ровно два bot token: `BOT_TOKEN` и `STAFF_BOT_TOKEN`; оба относятся к одному Telegram integration contour. `TELEGRAM_BUNDLE` запрещает `WHATSAPP_*` и `NOWPAYMENTS_*`. Профили `WHATSAPP` и `NOWPAYMENTS` запрещают оба Telegram token. Startup/readiness MUST fail before serving traffic on any mixed or unknown credential set.
 - **FR-008 (Staff Order Pager Card with Masked PII & Zero Leak Notes)**: При поступлении брони Staff-бот ДОЛЖЕН отправлять в `staffDestinationChatId` структурированную карточку заказа со списком услуг, временем, суммой, маскированным телефоном клиента (`+7 *** *** 4567`), статусом (новый/постоянный), индикатором наличия пожеланий (текст заметок `customerNotes` не передается в открытом виде в чат во избежание утечки чувствительных персональных данных; мастер просматривает примечание по защищенной ссылке в админке или по кнопке) и кнопками `[Принять]`, `[Отклонить]`, `[Перенести]`, `[В чёрный список]`. При переходе в терминальное состояние кнопки (`inline_keyboard`) ДОЛЖНЫ удаляться методом `editMessageReplyMarkup`.
 - **FR-009 (One-Click Staff Approval)**: Нажатие кнопки `[Принять]` авторизованным мастером ДОЛЖНО переводить заказ в статус `CONFIRMED_BY_STAFF` (или `AWAITING_PAYMENT` при отложенной оплате), уведомлять клиента и блокировать повторные нажатия кнопок у мастера путем удаления `inline_keyboard`.
-- **FR-010 (One-Click Staff Rejection)**: Нажатие кнопки `[Отклонить]` ДОЛЖНО освобождать слот (`status = RELEASED`), переводить заказ в `CANCELLED` (`cancellationReason = 'STAFF_REJECTED'`; `ConfirmationStatus` остаётся без изменений) и отправлять клиенту извещение об отмене.
-- **FR-011 (Secure Single-Use Reschedule Link)**: Нажатие кнопки `[Перенести]` ДОЛЖНО генерировать клиенту одноразовую ссылку на страницу `/book`, подписанную HMAC-SHA256 с полезной нагрузкой `orderId:scheduleVersion:expiresAt:nonce` (TTL 24 часа). В `Order` сохраняется `rescheduleTokenHash = sha256(nonce)`. При успешном сохранении нового времени `rescheduleTokenConsumedAt` выставляется в текущее время, `rescheduleTokenHash` обнуляется, а `scheduleVersion` инкрементируется, предотвращая повторное открытие (защита от replay-атак). Активация и погашение токена выполняются атомарными CAS-обновлениями по `orderId`, `scheduleVersion`, `rescheduleTokenHash`, `expiresAt` и `rescheduleTokenConsumedAt IS NULL`; повторная выдача инвалидирует предыдущий hash.
+- **FR-010 (One-Click Staff Rejection)**: Нажатие кнопки `[Отклонить]` ДОЛЖНО освобождать слот (`status = RELEASED`), переводить заказ в `CANCELLED` (`cancellationReason = 'STAFF_REJECTED'`, `ConfirmationStatus` остаётся без изменений) и отправлять клиенту извещение об отмене.
+- **FR-011 (Secure Single-Use Reschedule Link)**: Нажатие кнопки `[Перенести]` ДОЛЖНО генерировать клиенту одноразовую ссылку на страницу `/book`, подписанную HMAC-SHA256 с полезной нагрузкой `orderId:scheduleVersion:expiresAt:nonce` (TTL 24 часа). В `Order` сохраняется `rescheduleTokenHash = sha256(nonce)`. При успешном сохранении нового времени `rescheduleTokenConsumedAt` выставляется в текущее время, `rescheduleTokenHash` обнуляется, а `scheduleVersion` инкрементируется, предотвращая повторное открытие (защита от replay-атак).
 - **FR-012 (Omnichannel Client Reminder Dispatch)**: Фоновый воркер Inngest ДОЛЖЕН отправлять клиенту напоминание с запросом подтверждения визита за `confirmationNoticeHours` (по умолчанию 24 ч) до начала приёма: через Telegram (если есть `customerTgId`) с кнопками `[ 👍 Буду ]` / `[ 🚫 Не смогу ]`, либо через WhatsApp Cloud API (по номеру телефона) с утверждённым шаблоном подтверждения.
 - **FR-013 (Client Positive Confirmation)**: Нажатие клиентом кнопки `[Подтверждаю]` ДОЛЖНО переводить статус в `CLIENT_CONFIRMED` и уведомлять мастера в Staff-боте.
 - **FR-014 (Smart Auto-Cancellation)**: Если `autoCancelOnNoConfirmation === true` и клиент не подтвердил запись до наступления `autoCancelDeadlineHours` (по умолчанию 4–6 ч), система ДОЛЖНА автоматически переводить резервацию в `RELEASED`, заказ в `CANCELLED` (`cancellationReason = 'AUTO_CANCELLED_NO_CONFIRMATION'`, `ConfirmationStatus` без изменений), уведомлять клиента и отправлять алерт в Staff-бот.
 - **FR-015 (New vs Regular Client Segmentation)**: Система ДОЛЖНА определять статус клиента по количеству завершённых заказов: при наличии >= 1 выполненного заказа правило жесткой автоотмены по умолчанию отключается.
 - **FR-016 (Pay-On-Site Support)**: Система ДОЛЖНА поддерживать метод оплаты `PAY_ON_SITE` без обязательного перехода к внешним платёжным провайдерам.
 - **FR-017 (Blacklist & Anti-Begging Enforcement)**: Нажатие кнопки `[ 🚫 В чёрный список ]` в Staff-боте ДОЛЖНО:
-  1. Немедленно переводить резервацию в `RELEASED`, а заказ — в `CANCELLED` (`cancellationReason = 'CLIENT_BLOCKED'`; `ConfirmationStatus` остаётся без изменений).
+  1. Немедленно переводить резервацию в `RELEASED`, а заказ — в `CANCELLED` (`cancellationReason = 'CLIENT_BLOCKED'`, `ConfirmationStatus` остаётся без изменений).
   2. Выставлять `isBlocked = true` для `MessengerContact` по `externalId` (Telegram ID и нормализованный телефон E.164) с записью системного лога `[CLIENT_BLACKLISTED]`.
   3. Отправлять клиенту извещение: *«Ваша запись аннулирована в связи с нарушением правил сервиса (запрос скидки/торга при фиксированном прайсе). Доступ к онлайн-записи ограничен»*.
   4. При любых последующих попытках вызова `POST /api/booking/lock` или чекаута с заблокированного Telegram ID или номера телефона возвращать **HTTP 403 Forbidden** (`"Access restricted"`).
@@ -193,10 +186,10 @@
 - **FR-019 (Authoritative State Machine & Delayed Invoicing)**: Система ДОЛЖНА поддерживать жизненный цикл счетов: при `prepaymentTiming == AFTER_STAFF_APPROVAL` одобрение мастера переводит заказ в `AWAITING_PAYMENT` с `invoiceExpiresAt = now + 15 min`. По истечении 15 минут неоплаченный заказ переходит в `PAYMENT_EXPIRED`, а бронь освобождается (`RELEASED`).
 - **FR-020 (Telegram GDPR Redaction & PII Minimisation)**: При переходе заказа в терминальные статусы (`CANCELLED`, `FULFILLED`) или при вызове GDPR-очистки `POST /api/admin/users/purge` система ДОЛЖНА вызывать метод Telegram API `editMessageText`, заменяя контакты и примечания в сообщении Staff-бота на `[ДАННЫЕ_КЛИЕНТА_УДАЛЕНЫ_ПО_GDPR]`. При постоянных ошибках (сообщение не найдено, удалено) операция завершается как terminal no-op; временные сетевые сбои ретраятся через `InboxEvent`.
 - **FR-021 (Staff One-Click Fulfillment with CAS)**: Карточка заказа в Staff-боте после подтверждения визита ДОЛЖНА предоставлять кнопку `[ ✅ Заказ выполнен / Оплачен ]`. Мутация ДОЛЖНА выполняться внутри транзакции с предикатом CAS: `UPDATE "Order" SET status = 'FULFILLED', scheduleVersion = scheduleVersion + 1 WHERE id = $orderId AND status IN ('PENDING', 'PAID') AND confirmationStatus IN ('STAFF_APPROVED', 'CLIENT_CONFIRMED')`. Если заказ уже обработан, повторное нажатие игнорируется (`[ALREADY_PROCESSED]`).
-- **FR-022 (Refund State Machine & Provider Separation)**: Для заказа `PAID_REQUIRES_RESOLUTION` или отмены оплаченного визита создаётся отдельная `RefundOperation` со статусом `REQUESTED`, уникальным `idempotencyKey` и SLA оператора 24 часа. Исходный `PaymentEvent` остаётся неизменяемым provider-event ledger.
-  - **Telegram Stars**: официальный `refundStarPayment(user_id, telegram_payment_charge_id)`; повтор `CHARGE_ALREADY_REFUNDED` сверяется с той же парой user/charge и не создаёт вторую операцию.
-  - **Crypto / NOWPayments**: не provider refund, а отдельная merchant reimbursement/payout операция после проверки подтверждённого `destinationAddress`, `asset`, `network`, комиссии, merchant balance и operator authorization. Сохраняются `providerRef`, `txid` и число network confirmations.
-  - Статусы операции: `REQUESTED → SUBMITTED → CONFIRMED`; ошибки переходят в `FAILED`, неоднозначный timeout — в `UNKNOWN` до reconciliation. После `CONFIRMED` поле `Order.refundStatus` становится `REFUNDED`.
+- **FR-022 (Refund State Machine & Provider Separation)**: Для заказов в статусе `PAID_REQUIRES_RESOLUTION` или при отмене оплаченного визита создается запись `RefundOperation` в статусе `REFUND_REQUESTED` со сроком SLA оператора 24 часа. Возврат разделяется по провайдерам:
+  - Telegram Stars: выполняется официальным вызовом Bot API `refundStarPayment(user_id, telegram_payment_charge_id)`;
+  - NOWPayments: выполняется как merchant crypto reimbursement (поскольку провайдер не производит автовозвратов завершённых криптоплатежей) с фиксацией сети, адреса получателя, txid и комиссии;
+  - По завершении статус переходит в `REFUNDED`.
 
 ---
 
@@ -204,7 +197,9 @@
 
 - **NFR-001 (Slot Query Latency)**: Вычисление доступных слотов для корзины из 5 услуг на диапазон в 7 дней ДОЛЖНО выполняться быстрее **50 мс** (p95).
 - **NFR-002 (Staff Notification Delivery SLA)**: Уведомление в Staff-бот ДОЛЖНО ставиться в очередь отправки не позднее **1.5 секунды** после успешного взятия холда клиентом. Фактическая доставка во внешнюю сеть Telegram логируется событием `[STAFF_DISPATCH_SENT]`.
-- **NFR-003 (Memory Ceiling)**: Потребление оперативной памяти контейнера приложения при одновременной работе клиентского и Staff-бота ДОЛЖНО укладываться в лимит **500 MB RAM** (Docker Memory Fencing).
+- **NFR-003 (Memory Ceiling)**: Потребление памяти ДОЛЖНО быть <= **500 MB RAM**. Benchmark включает два bot instances, Inngest handlers, PDF parsing, 100 concurrent booking requests и заполненный Telegram outbox; фиксируются peak/steady RSS, а OOM/restart считается FAIL.
+- **NFR-006 (DDL Compaction & Validation)**: Backfill и ужесточение nullability выполняются разными deployment stages. Сначала добавляется `CHECK (resourceId IS NOT NULL) NOT VALID` и аналогичный CHECK для `totalDurationMin`; затем отдельной командой `VALIDATE CONSTRAINT`; только после успешной валидации в следующем maintenance-safe contract stage выполняется `SET NOT NULL`, после чего временные CHECK удаляются. `SET NOT NULL` не находится в одной транзакции с full-table backfill.
+- **NFR-007 (Job Engine Continuity)**: Inngest Cloud является primary scheduler, но не единственным источником истины. Все deadline-поля хранятся в PostgreSQL. Независимый reconciliation sweeper периодически выбирает overdue reminders, confirmation deadlines и invoice expiries и применяет те же idempotent CAS transitions. Outage Inngest не должен приводить к безвозвратно пропущенной автоотмене или expiry. Self-hosted Inngest поддерживается только как документированный migration option, не как необъявленный hot standby.
 - **NFR-004 (GDPR / Data Hygiene)**: Поле `customerNotes` классифицируется как персональные данные и ДОЛЖНО автоматически нуллифицироваться через 30 дней после закрытия заказа.
 
 ---
@@ -217,7 +212,7 @@
   - Телефон маскируется в сообщениях Telegram по умолчанию;
   - Пожелания клиента хранятся в изолированном виде, исключены из внешних логов;
   - При закрытии заказа или GDPR-запросе сообщение в Telegram-чате редактируется/зачищается;
-  - `POST /api/admin/users/purge` стирает `customerNotes` и редактирует известные сообщения, отправленные Staff-ботом; пересланные или вручную скопированные сообщения находятся вне технической гарантии удаления;
+  - `POST /api/admin/users/purge` немедленно стирает `customerNotes` и зачищает следы в мессенджерах;
   - Ночной джоб обнуляет комментарии старых заказов через 30 дней.
 
 ---
@@ -256,6 +251,12 @@ enum PrepaymentTiming {
   AFTER_STAFF_APPROVAL
 }
 
+enum ExternalIntegration {
+  NONE
+  TELEGRAM_BUNDLE
+  WHATSAPP
+  NOWPAYMENTS
+}
 enum ConfirmationStatus {
   PENDING_STAFF_REVIEW
   STAFF_APPROVED
@@ -276,37 +277,6 @@ enum RefundStatus {
   NONE
   REFUND_REQUESTED
   REFUNDED
-}
-enum RefundOperationStatus {
-  REQUESTED
-  SUBMITTED
-  CONFIRMED
-  FAILED
-  UNKNOWN
-}
-enum RefundOperationKind {
-  TELEGRAM_STARS_REFUND
-  CRYPTO_REIMBURSEMENT
-}
-model RefundOperation {
-  id                 String                 @id @default(cuid())
-  orderId            String
-  kind               RefundOperationKind
-  status             RefundOperationStatus  @default(REQUESTED)
-  idempotencyKey     String                 @unique
-  providerRef        String?
-  amountMinor        Int?
-  asset              String?
-  network            String?
-  destinationAddress String?
-  networkFee         String?
-  txid               String?
-  requestedBy        String
-  requestedAt        DateTime               @default(now())
-  submittedAt        DateTime?
-  confirmedAt        DateTime?
-  lastErrorCode      String?
-  reconciliationAt  DateTime?
 }
 
 // Расширение ShopSettings
@@ -339,6 +309,14 @@ model Order {
   staffChatId                String?
 }
 
+// Расширение MessengerContact
+model MessengerContact {
+  // ... существующие поля
+  customerId              String?
+  phoneVerifiedAt         DateTime?
+  phoneVerificationMethod String?
+  phoneRiskExpiresAt      DateTime?
+}
 // Расширение SlotReservation
 model SlotReservation {
   // ... существующие поля
@@ -375,5 +353,3 @@ model SlotReservation {
 - **SC-004**: Неподтверждённые записи новичков автоматически аннулируются за 6 часов до визита с фиксацией точной причины `AUTO_CANCELLED_NO_CONFIRMATION`.
 - **SC-005**: Клиент может завершить бронирование без оплаты онлайн, выбрав «Оплату на месте».
 - **SC-006**: Полное прохождение автоматических тестов (`npm run validate` и `npm test`) с нулевым числом регрессий.
-- **SC-007**: Конкурирующие действия Staff-бота дают ровно один успешный переход; остальные возвращают `ALREADY_PROCESSED` без повторных side effects.
-- **SC-008**: Миграция проходит на восстановленной копии v1 в пределах измеренного deployment budget; превышение lock/build budget останавливает deploy и требует maintenance fallback.
