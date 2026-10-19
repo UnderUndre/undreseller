@@ -8,7 +8,7 @@
 ## Phase 1: Database & Schema
 
 - [ ] `T-101` `[DB]` Update `prisma/schema.prisma` with `resourceId` (default `"default_master"`), nullable `itemId`, and `totalDurationMin` on `SlotReservation`; `customerNotes`, `paymentType`, `confirmationStatus`, `cancellationReason`, `refundStatus`, `autoCancelOnNoConfirmation`, `scheduleVersion`, `rescheduleTokenHash`, `rescheduleTokenConsumedAt`, `invoiceExpiresAt`, `staffMessageId`, `staffChatId` on `Order`; `PAYMENT_EXPIRED`, `PAID_REQUIRES_RESOLUTION` on `OrderStatus`; and configuration fields on `ShopSettings` (`slotGridStepMin`, `confirmationNoticeHours`, `autoCancelDeadlineHours`, `autoCancelForNewClients`, `allowPayOnSite`, `prepaymentTiming`, `staffDestinationChatId`, `authorizedStaffUserIds`).
-- [ ] `T-102` `[DB]` Generate and write SQL migration `20261019000000_multi_service_cart` with DDL lock timeout guards (`SET statement_timeout = '5s'; SET lock_timeout = '2s'`), preflight collision detection query, resource-level GiST exclusion constraint (`slot_resource_no_overlap`), dropping legacy `slot_no_overlap`, and safe `down.sql`.
+- [ ] `T-102` `[DB]` Generate and write SQL migration `20261019000000_multi_service_cart` with DDL lock timeout guards (`SET statement_timeout = '5s'; SET lock_timeout = '2s'` with retry backoff), preflight collision detection query (`r1.id < r2.id`), actual duration backfill (`UPDATE "SlotReservation" SET "totalDurationMin" = EXTRACT(EPOCH FROM ("endTime" - "startTime")) / 60 WHERE "totalDurationMin" = 0 OR "totalDurationMin" IS NULL`), resource-level GiST exclusion constraint (`slot_resource_no_overlap`), dropping legacy `slot_no_overlap`, and safe `down.sql`.
 
 ## Phase 2: Booking Core & Cart Service
 
@@ -19,7 +19,8 @@
 ## Phase 3: Dedicated Staff Bot
 
 - [ ] `T-106` `[BE]` `[US2]` `lib/bot/staffBot.ts`: grammY bot instance for staff (`STAFF_BOT_TOKEN`), order card formatter with masked phone (`+7 *** *** 4567`), 5 action buttons (`[Принять]`, `[Отклонить]`, `[Перенести]`, `[В чёрный список]`, `[Заказ выполнен]`), and HMAC-signed single-use Magic Reschedule link generator with `nonce`, `expiresAt`, `rescheduleTokenHash`, and `scheduleVersion`.
-- [ ] `T-107` `[BE]` `[US2]` `POST /api/bot/staff/webhook`: secret verification (`STAFF_WEBHOOK_SECRET`), role separation checking `staffDestinationChatId` AND `authorizedStaffUserIds.includes(ctx.from.id)`, action handlers (approve, reject, reschedule, blacklist `CANCELLED`, and `FULFILLED`), Telegram PII redaction (`editMessageText` to `[ДАННЫЕ_КЛИЕНТА_УДАЛЕНЫ_ПО_GDPR]` with failed-redaction retry queue), and `POST /api/admin/users/unblock`.
+- [ ] `T-107` `[BE]` `[US2]` `POST /api/bot/staff/webhook`: secret verification (`STAFF_WEBHOOK_SECRET`), role separation checking `staffDestinationChatId` AND `authorizedStaffUserIds.includes(ctx.from.id)`, action handlers with transactional CAS (`UPDATE "Order" WHERE confirmationStatus = 'PENDING_STAFF_REVIEW'`), Telegram PII redaction (`editMessageText` to `[ДАННЫЕ_КЛИЕНТА_УДАЛЕНЫ_ПО_GDPR]` with failed-redaction retry queue), and `POST /api/admin/users/unblock`.
+- [ ] `T-107b` `[BE]` `[US4]` Provider refund & reconciliation workflow: implement idempotent refund action (`POST /api/admin/orders/[id]/refund`) via provider API (Stars refund, NOWPayments payout/refund reconciliation), transition `refundStatus = REFUNDED`, record negative `PaymentEvent`, and audit operator SLA.
 
 ## Phase 4: Confirmation, Auto-Cancellation & Invoicing (Inngest)
 
@@ -37,8 +38,8 @@
 ## Phase 6: Quality Gates & Comprehensive Tests
 
 - [ ] `T-114` `[E2E]` Unit tests in `tests/unit/multi-service-cart.test.ts`: multi-service contiguous window calculations, 30-min grid step, slot break/conflict filtering.
-- [ ] `T-116` `[DB]` `[E2E]` Integration test for PostgreSQL GiST exclusion: concurrent booking collisions on overlapping multi-service windows return 409 (`23P01`), DDL lock timeout verification, and safe `down.sql` rollback test.
-- [ ] `T-117` `[BE]` Inngest sleep race condition & CAS tests: verify stale runs aborted on rescheduled/cancelled orders, 15-minute invoice timeout test, Telegram PII redaction test on order completion and GDPR purge.
+- [ ] `T-116` `[DB]` `[E2E]` Integration test for PostgreSQL GiST exclusion: concurrent booking collisions on overlapping multi-service windows return 409 (`23P01`), DDL lock timeout verification with retry policy, and safe `down.sql` rollback test.
+- [ ] `T-117` `[BE]` Inngest sleep race condition & CAS tests: verify Inngest cancelOn triggers are strictly <= 4 events per function, stale runs aborted on rescheduled/cancelled orders, 15-minute invoice timeout test, refundStatus transition and reconciliation tests, Telegram PII redaction test on order completion and GDPR purge.
 - [ ] `T-118` `[SEC]` Staff bot authorization test (unauthorized group member callback rejected with alert), Magic Reschedule link single-use and tamper rejection test, blacklist 403 lock rejection test.
 - [ ] `T-119` `[PERF]` Latency benchmark for slot calculation (p95 < 50ms) and memory ceiling verification (<= 500 MB RAM).
 - [ ] `T-115` `[SEC]` `[OPS]` Final constitutional quality gate: `npm run validate`, `npm test`, `npm run build`, license audit, telemetry redaction verification.
@@ -54,6 +55,7 @@ T-103 → T-104
 T-104 → T-105
 T-105 → T-106
 T-106 → T-107
+T-107 → T-107b
 T-105 → T-108
 T-108 → T-109
 T-109 → T-110
@@ -61,9 +63,9 @@ T-107 → T-110b
 T-103 + T-104 → T-111
 T-111 + T-105 → T-112
 T-112 → T-113
-T-105 + T-107 + T-110 + T-110b + T-113 → T-114
+T-105 + T-107 + T-107b + T-110 + T-110b + T-113 → T-114
 T-102 + T-105 → T-116
-T-108 + T-110 + T-110b + T-107 → T-117
+T-108 + T-110 + T-110b + T-107 + T-107b → T-117
 T-105 + T-106 + T-107 → T-118
 T-104 + T-114 → T-119
 T-114 + T-116 + T-117 + T-118 + T-119 → T-115
@@ -75,7 +77,7 @@ T-114 + T-116 + T-117 + T-118 + T-119 → T-115
 |---|---|---|
 | Database | `[DB]` | T-101 → T-102 |
 | Booking Core | `[BE]` | T-103 → T-104 → T-105 |
-| Staff Bot | `[BE]` | T-106 → T-107 |
+| Staff Bot | `[BE]` | T-106 → T-107 → T-107b |
 | Inngest Lifecycles | `[BE]` | T-108 → T-109 → T-110, T-107 → T-110b |
 | Storefront UI | `[FE]` | T-111 → T-112 → T-113 |
 | Verification | `[E2E]` `[DB]` `[BE]` `[SEC]` `[PERF]` `[OPS]` | T-114, T-116, T-117, T-118, T-119 → T-115 |

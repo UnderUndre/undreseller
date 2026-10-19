@@ -40,6 +40,7 @@
 | `FR-019` Authoritative State Machine & Delayed Invoicing | Yes | `T-101`, `T-110b`, `T-117` | Жизненный цикл `AWAITING_PAYMENT`, 15-мин таймер и `PAYMENT_EXPIRED` |
 | `FR-020` Telegram GDPR Redaction & PII Minimisation | Yes | `T-101`, `T-106`, `T-107`, `T-117` | Маскирование телефона, `editMessageText` при закрытии/purge |
 | `FR-021` Staff One-Click Fulfillment | Yes | `T-106`, `T-107` | Кнопка `[Заказ выполнен / Оплачен]` переводит в `FULFILLED` |
+| `FR-022` Refund State Machine & Resolution SLA | Yes | `T-107b`, `T-117` | Жизненный цикл возвратов (`NONE` -> `REFUND_REQUESTED` -> `REFUNDED`) |
 | `NFR-001` Slot Query Latency | Yes | `T-104`, `T-114`, `T-119` | Время расчета слотов < 50 мс (p95) |
 | `NFR-002` Staff Notification Delivery SLA | Yes | `T-106`, `T-107` | Доставка алерта в Staff-бот < 1.5 секунды |
 | `NFR-003` Memory Ceiling | Yes | `T-115`, `T-119` | Потребление памяти контейнера <= 500 MB RAM |
@@ -47,16 +48,16 @@
 | `US1` Multi-Service Cart & 30-Min Hold | Yes | `T-101`, `T-102`, `T-103`, `T-104`, `T-105`, `T-111`, `T-112`, `T-114`, `T-116` | Полное покрытие |
 | `US2` Staff Bot Pager & One-Click Actions | Yes | `T-106`, `T-107`, `T-114`, `T-118` | Полное покрытие |
 | `US3` Confirmation Reminder & Smart No-Show | Yes | `T-108`, `T-109`, `T-110`, `T-114`, `T-117` | Полное покрытие |
-| `US4` Pay-On-Site vs Online Prepayment | Yes | `T-101`, `T-110b`, `T-112`, `T-113`, `T-114`, `T-117` | Полное покрытие |
+| `US4` Pay-On-Site vs Online Prepayment | Yes | `T-101`, `T-107b`, `T-110b`, `T-112`, `T-113`, `T-114`, `T-117` | Полное покрытие |
 
 ---
 
 ## Constitution Alignment Issues
 
 - **Principle VI (Cross-AI Review Gate)**: Первый этап валидации (`analyze.md`) завершен со статусом **PASS**. Спецификация полностью устранила замечания Copilot F1–F18 и готова к повторному независимому ревью.
-- **Principle VII (Artifact Versioning)**: Артефакты снабжены версионными снапшот-тегами (`spec/002-service-cart-and-staff-bot/v1`, `clarify/002-service-cart-and-staff-bot/v3`).
+- **Principle VII (Artifact Versioning)**: Артефакты снабжены версионными снапшот-тегами (`spec/002-service-cart-and-staff-bot/v1`, `clarify/002-service-cart-and-staff-bot/v6`).
 - **Principle IX (Two-Phase Review Flow)**: Работа ведется на изолированной planning-ветке `002-service-cart-and-staff-bot`.
-- **Principle X (Zero-Downtime Data Architecture)**: Миграция спроектирована по стандарту Expand/Contract с ресурсом `resourceId`, защитой через `SET lock_timeout = '2s'`, префлайт-проверкой коллизий и безопасным `down.sql`.
+- **Principle X (Zero-Downtime Data Architecture)**: Миграция спроектирована по стандарту Guarded DDL с ресурсом `resourceId`, бэкфиллом `totalDurationMin`, защитой через `SET lock_timeout = '2s'`, префлайт-проверкой коллизий (`r1.id < r2.id`) и безопасным `down.sql`.
 - **Principle XI (Spike Governance)**: Исследовательские прототипы не требуются, архитектура монолита проверена.
 
 ---
@@ -70,7 +71,7 @@
   - Полное соответствие предложению **Sprint B ($4,900 flat / 14 дней)** и Продукту 0 (**Tripwire $350**).
   - Scope knife: корзина услуг расширяет существующий бизнес-процесс (каталог $\to$ холд $\to$ оплата/визит), не создавая второй параллельный продукт.
   - Сохранён лимит памяти контейнера приложения $\le 500\text{ MB RAM}$.
-  - Фоновые пайплайны строятся исключительно на коде **Inngest** (запрет n8n в клиентском приложении соблюдён).
+  - Фоновые пайплайны строятся исключительно на коде **Inngest** (запрет n8n в клиентском приложении соблюдён, соблюден лимит Inngest $\le 4$ событий в `cancelOn`).
   - Управление заказами вынесено в служебный Telegram Staff-бот мастера с разграничением `staffDestinationChatId` и `authorizedStaffUserIds`.
   - **Дрифт не обнаружен**: No commercial drift detected.
 
@@ -78,15 +79,15 @@
 
 ## Unmapped Tasks
 
-Все задачи `T-101`–`T-119` однозначно сопоставлены с функциональными требованиями, разбиты по фазам и параллельным дорожкам без висячих элементов.
+Все задачи `T-101`–`T-119` (включая `T-107b` и `T-110b`) однозначно сопоставлены с функциональными требованиями, разбиты по фазам и параллельным дорожкам без висячих элементов.
 
 ---
 
 ## Metrics
 
-- **Total Requirements**: 25 (21 FR + 4 NFR)
-- **Total Tasks**: 20
-- **Coverage %**: 100.0% (25/25)
+- **Total Requirements**: 26 (22 FR + 4 NFR)
+- **Total Tasks**: 21
+- **Coverage %**: 100.0% (26/26)
 - **Ambiguity count**: 0
 - **Duplication count**: 0
 - **CRITICAL count**: 0
@@ -101,7 +102,7 @@
 ```yaml
 verdict: PASS
 reviewer: analyze
-reviewed_at: 2026-10-19T14:50:00Z
+reviewed_at: 2026-10-19T15:00:00Z
 commit: badd5976b3281ec5be3d002a281862590fc5a871
 critical_count: 0
 high_count: 0

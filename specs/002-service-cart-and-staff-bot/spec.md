@@ -132,10 +132,10 @@
    **Then** заказ переходит в статус `AWAITING_PAYMENT`, выставляется `invoiceExpiresAt = now + 15 min`, клиенту отправляется счёт на оплату.
 3. **Given** заказ в статусе `AWAITING_PAYMENT`,  
    **When** клиент не производит оплату в течение 15 минут,  
-   **Then** фоновый воркер Inngest переводит заказ в `PAYMENT_EXPIRED`, освобождает слот (`SlotReservation.status = 'RELEASED'`), клиент и мастер получают уведомление об истечении времени счёта.
+   **Then** фоновый воркер Inngest переводит заказ в `PAYMENT_EXPIRED` (`cancellationReason = 'PAYMENT_EXPIRED'`), освобождает слот (`SlotReservation.status = 'RELEASED'`), клиент и мастер получают уведомление об истечении времени счёта.
 4. **Given** заказ с истекшим счётом `PAYMENT_EXPIRED`,  
    **When** поступает запоздалый платёжный вебхук,  
-   **Then** система проверяет доступность слота: если слот свободен, бронь восстанавливается (`BOOKED`), заказ переходит в `PAID`; если слот перехвачен, заказ помечается `PAID`, резервация остаётся `RELEASED`, выставляется `requiresOperatorAction = true` и `operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION'`, и создаётся системный алерт на возврат средств или согласование другого окна (деньги никогда не теряются).
+   **Then** система проверяет доступность слота: если слот свободен, бронь восстанавливается (`BOOKED`), заказ переходит в `PAID`; если слот перехвачен, заказ переходит в статус `PAID_REQUIRES_RESOLUTION` (а не в `PAID`), резервация остаётся `RELEASED`, выставляется `requiresOperatorAction = true`, `operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION'`, `refundStatus = REFUND_REQUESTED` и запускается регламентный SLA оператора 24ч на ручной перенос или возврат средств через `PaymentEvent` (деньги никогда не теряются).
 5. **Given** успешно оказанная услуга при оплате на месте,  
    **When** мастер нажимает кнопку `[ ✅ Заказ выполнен / Оплачен ]` в Staff-боте,  
    **Then** заказ переходит в финальный статус `OrderStatus.FULFILLED`.
@@ -312,15 +312,15 @@ model SlotReservation {
 |---|---|---|---|---|---|---|---|
 | `PENDING` | `PENDING_STAFF_REVIEW` | `HELD` | Мастер: `[Принять]` (Pay on site) | `PENDING` | `STAFF_APPROVED` | — | `BOOKED` |
 | `PENDING` | `PENDING_STAFF_REVIEW` | `HELD` | Мастер: `[Принять]` (Prepay after approval) | `AWAITING_PAYMENT` | `STAFF_APPROVED` | — | `HELD` (15m window) |
-| `AWAITING_PAYMENT` | `STAFF_APPROVED` | `HELD` | Таймер 15 минут истёк | `PAYMENT_EXPIRED` | `STAFF_APPROVED` | `PAYMENT_EXPIRED` | `RELEASED` |
+| `AWAITING_PAYMENT` | `STAFF_APPROVED` | `HELD` | Таймер 15 минут истёк | `PAYMENT_EXPIRED` | без изменений | `PAYMENT_EXPIRED` | `RELEASED` |
 | `AWAITING_PAYMENT` | `STAFF_APPROVED` | `HELD` | Клиент оплатил вовремя | `PAID` | `STAFF_APPROVED` | — | `BOOKED` |
 | `PAYMENT_EXPIRED` | `STAFF_APPROVED` | `RELEASED` | Запоздалый платёж (слот свободен) | `PAID` | `STAFF_APPROVED` | — | `BOOKED` |
 | `PAYMENT_EXPIRED` | `STAFF_APPROVED` | `RELEASED` | Запоздалый платёж (слот перехвачен) | `PAID_REQUIRES_RESOLUTION` | `STAFF_APPROVED` | — | `RELEASED` (SLA 24ч) |
-| `PENDING` | любая | `HELD`/`BOOKED` | Мастер: `[Отклонить]` | `CANCELLED` | `STAFF_APPROVED` | `STAFF_REJECTED` | `RELEASED` |
-| `PENDING` | любая | `HELD`/`BOOKED` | Мастер: `[В чёрный список]` | `CANCELLED` | `STAFF_APPROVED` | `CLIENT_BLOCKED` | `RELEASED` |
+| `PENDING` | любая | `HELD`/`BOOKED` | Мастер: `[Отклонить]` | `CANCELLED` | без изменений | `STAFF_REJECTED` | `RELEASED` |
+| `PENDING` | любая | `HELD`/`BOOKED` | Мастер: `[В чёрный список]` | `CANCELLED` | без изменений | `CLIENT_BLOCKED` | `RELEASED` |
 | любая | `STAFF_APPROVED` | `BOOKED` | Клиент подтвердил пуш: `[Буду]` | без изменений | `CLIENT_CONFIRMED` | — | `BOOKED` |
-| любая | `STAFF_APPROVED` | `BOOKED` | Клиент отклонил пуш: `[Не смогу]` | `CANCELLED` | `STAFF_APPROVED` | `CLIENT_DECLINED` | `RELEASED` |
-| любая | `STAFF_APPROVED` | `BOOKED` | Дедлайн новичка истёк | `CANCELLED` | `STAFF_APPROVED` | `AUTO_CANCELLED_NO_CONFIRMATION` | `RELEASED` |
+| любая | `STAFF_APPROVED` | `BOOKED` | Клиент отклонил пуш: `[Не смогу]` | `CANCELLED` | без изменений | `CLIENT_DECLINED` | `RELEASED` |
+| любая | `STAFF_APPROVED` | `BOOKED` | Дедлайн новичка истёк | `CANCELLED` | без изменений | `AUTO_CANCELLED_NO_CONFIRMATION` | `RELEASED` |
 | `PAID`/`PENDING` | `STAFF_APPROVED`/`CLIENT_CONFIRMED` | `BOOKED` | Мастер: `[Заказ выполнен]` | `FULFILLED` | без изменений | — | `BOOKED` |
 
 ---
