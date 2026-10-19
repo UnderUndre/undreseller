@@ -14,12 +14,12 @@
 
 - [ ] `T-103` `[BE]` `[US1]` `lib/booking/cart.ts`: validate cart items (max 10 items ceiling), sum `totalDurationMin` and `totalMinor`.
 - [ ] `T-104` `[BE]` `[US1]` `lib/booking/windows.ts` update: support `itemIds: string[]`, generate 30-min grid intervals (`slotGridStepMin`), filter contiguous windows of length `totalDurationMin` against reservations and breaks.
-- [ ] `T-105` `[BE]` `[US1]` `lib/booking/lock.ts` + `POST /api/booking/lock` update: multi-service booking lock with global calendar advisory lock, `customerNotes` persistence, and client history segmentation (`autoCancelOnNoConfirmation = true` for new clients).
+- [ ] `T-105` `[BE]` `[US1]` `lib/booking/lock.ts` + `POST /api/booking/lock` update: multi-service booking lock with global calendar advisory lock, `customerNotes` persistence, blacklist enforcement (rejects blocked Telegram ID or phone with HTTP 403 Forbidden), and client history segmentation (`autoCancelOnNoConfirmation = true` for new clients).
 
 ## Phase 3: Dedicated Staff Bot
 
-- [ ] `T-106` `[BE]` `[US2]` `lib/bot/staffBot.ts`: grammY bot instance for staff (`STAFF_BOT_TOKEN`), order card formatter, inline keyboard (`[Принять]`, `[Отклонить]`, `[Перенести]`), and HMAC-signed Magic Reschedule link generator.
-- [ ] `T-107` `[BE]` `[US2]` `POST /api/bot/staff/webhook`: secret verification (`STAFF_WEBHOOK_SECRET`), staff authorization (`ctx.from.id == staffChatId`), and action handlers.
+- [ ] `T-106` `[BE]` `[US2]` `lib/bot/staffBot.ts`: grammY bot instance for staff (`STAFF_BOT_TOKEN`), order card formatter, inline keyboard (`[Принять]`, `[Отклонить]`, `[Перенести]`, `[В чёрный список]`), and HMAC-signed Magic Reschedule link generator.
+- [ ] `T-107` `[BE]` `[US2]` `POST /api/bot/staff/webhook`: secret verification (`STAFF_WEBHOOK_SECRET`), staff authorization (`ctx.from.id == staffChatId`), action handlers (approve, reject, reschedule, and blacklist blocking `MessengerContact.isBlocked = true` and cancelling order with `CANCELLED_BLOCKED`), plus `POST /api/admin/users/unblock` for manual unbanning.
 
 ## Phase 4: Confirmation & Smart Auto-Cancellation (Inngest)
 
@@ -30,12 +30,12 @@
 ## Phase 5: Storefront UI & TMA
 
 - [ ] `T-111` `[FE]` `[US1]` `components/catalog/CartDrawer.tsx`: multi-service selection drawer, total duration and price display, and checkout trigger.
-- [ ] `T-112` `[FE]` `[US1]` `components/booking/SlotGrid.tsx` update: multi-service slot display with 30-min step, `customerNotes` input, pay-on-site radio selection.
+- [ ] `T-112` `[FE]` `[US1]` `components/booking/SlotGrid.tsx` update: multi-service slot display with 30-min step, `customerNotes` input with fixed-price disclaimer, pay-on-site radio selection.
 - [ ] `T-113` `[FE]` `[US4]` `components/checkout/CheckoutModal.tsx` & `app/checkout/page.tsx` update: support `PAY_ON_SITE` without gateway redirection.
 
 ## Phase 6: Quality Gates & Tests
 
-- [ ] `T-114` `[E2E]` Unit tests in `tests/unit/multi-service-cart.test.ts`: multi-service contiguous window calculations, new-client auto-cancel logic, staff-bot action idempotency.
+- [ ] `T-114` `[E2E]` Unit tests in `tests/unit/multi-service-cart.test.ts`: multi-service contiguous window calculations, new-client auto-cancel logic, staff-bot action idempotency, and blacklist 403 rejection tests.
 - [ ] `T-115` `[SEC]` `[OPS]` Final constitutional quality gate: `npm run validate`, `npm test`, `npm run build`, license audit, telemetry redaction verification.
 
 ---

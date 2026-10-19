@@ -51,17 +51,18 @@
 app/
   api/
     booking/slots/route.ts          # Поддержка ?itemIds=id1,id2
-    booking/lock/route.ts           # Захват корзины и создание слота
-    bot/staff/webhook/route.ts      # Вебхук Staff-бота (принять/отклонить/перенести)
+    booking/lock/route.ts           # Захват корзины и создание слота (с проверкой на blacklist 403)
+    bot/staff/webhook/route.ts      # Вебхук Staff-бота (принять/отклонить/перенести/забанить)
     admin/settings/route.ts         # Настройки сетки, таймингов подтверждения и staffChatId
+    admin/users/unblock/route.ts    # Разблокировка клиента администратором
 components/
   catalog/CartDrawer.tsx            # Корзина услуг с плавающим баром и итоговым хронометражем
-  booking/SlotGrid.tsx              # Сетка с шагом 30 мин, поле customerNotes, radio оплаты
+  booking/SlotGrid.tsx              # Сетка с шагом 30 мин, поле customerNotes с дисклеймером фикс-прайса
 lib/
   booking/cart.ts                   # Валидация корзины, подсчет totalDuration и totalMinor
   booking/windows.ts                # Генератор сплошных окон длины totalDuration
   booking/lock.ts                   # Транзакция блокировки мульти-сервисной брони
-  bot/staffBot.ts                   # Инициализация grammY staffBot, пейджер заказов, кнопки
+  bot/staffBot.ts                   # Инициализация grammY staffBot, пейджер заказов, кнопка бана
   jobs/inngest.ts                   # appointmentReminderJob + autoCancelUnconfirmedJob
 ```
 
@@ -71,11 +72,13 @@ lib/
 
 1. **Staff Bot Security**:
    - Вебхук проверяет заголовок `x-telegram-bot-api-secret-token` (`STAFF_WEBHOOK_SECRET`).
-   - Кнопки `[Принять]`, `[Отклонить]`, `[Перенести]` сверяют `ctx.from.id` с белым списком `staffChatId`. Посторонние пользователи получают отказ.
+   - Кнопки `[Принять]`, `[Отклонить]`, `[Перенести]`, `[В чёрный список]` сверяют `ctx.from.id` с белым списком `staffChatId`. Посторонние пользователи получают отказ.
 2. **Magic Reschedule Link Token**:
    - Ссылка переноса подписывается HMAC-SHA256 (`token = HMAC(orderId, secret)`), чтобы клиент не мог подделать ID заказа или чужой слот.
 3. **Rate Limiting**:
    - Защита эндпоинта бронирования через `checkRateLimit` (10 попыток в минуту).
+4. **Blacklist & Anti-Begging Perimeter**:
+   - `POST /api/booking/lock` и чекаут проверяют статус `isBlocked` в `MessengerContact` для переданного телефона и Telegram ID. При наличии блокировки запрос немедленно отклоняется с **HTTP 403 Forbidden** (`"Access restricted"`), предотвращая паразитные блокировки календаря. Разбан возможен только через `POST /api/admin/users/unblock`.
 
 ---
 
