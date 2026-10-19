@@ -37,7 +37,7 @@
    - Добавление `paymentType PaymentType @default(PAY_ON_SITE)` в `Order`.
    - Добавление `confirmationStatus ConfirmationStatus @default(PENDING_STAFF)` в `Order`.
    - Добавление `autoCancelOnNoConfirmation Boolean @default(false)` в `Order`.
-   - Добавление полей конфигурации в `ShopSettings` (`slotGridStepMin`, `confirmationNoticeHours`, `autoCancelDeadlineHours`, `autoCancelForNewClients`, `allowPayOnSite`, `staffChatId`).
+   - Добавление полей конфигурации в `ShopSettings` (`slotGridStepMin`, `confirmationNoticeHours`, `autoCancelDeadlineHours`, `autoCancelForNewClients`, `allowPayOnSite`, `prepaymentTiming`, `staffChatId`).
 2. **Constraint Update**:
    - Замена констрейнта исключения `slot_no_overlap`: перенос с `itemId` на глобальный диапазон `tstzrange("startTime", "endTime")` для всех броней мастера в статусах `HELD`/`BOOKED`.
 3. **Safe Down Migration**:
@@ -53,7 +53,7 @@ app/
     booking/slots/route.ts          # Поддержка ?itemIds=id1,id2
     booking/lock/route.ts           # Захват корзины и создание слота (с проверкой на blacklist 403)
     bot/staff/webhook/route.ts      # Вебхук Staff-бота (принять/отклонить/перенести/забанить)
-    admin/settings/route.ts         # Настройки сетки, таймингов подтверждения и staffChatId
+    admin/settings/route.ts         # Настройки сетки, таймингов подтверждения, prepaymentTiming и staffChatId
     admin/users/unblock/route.ts    # Разблокировка клиента администратором
 components/
   catalog/CartDrawer.tsx            # Корзина услуг с плавающим баром и итоговым хронометражем
@@ -63,7 +63,7 @@ lib/
   booking/windows.ts                # Генератор сплошных окон длины totalDuration
   booking/lock.ts                   # Транзакция блокировки мульти-сервисной брони
   bot/staffBot.ts                   # Инициализация grammY staffBot, пейджер заказов, кнопка бана
-  jobs/inngest.ts                   # appointmentReminderJob + autoCancelUnconfirmedJob
+  jobs/inngest.ts                   # appointmentReminderJob (TG/WhatsApp) + autoCancelUnconfirmedJob
 ```
 
 ---
