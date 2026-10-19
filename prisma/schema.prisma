@@ -1,0 +1,196 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum ItemType {
+  PRODUCT
+  SERVICE
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+  FULFILLED
+}
+
+enum ReservationStatus {
+  HELD
+  BOOKED
+  RELEASED
+}
+
+enum PaymentMethod {
+  TELEGRAM_STARS
+  CRYPTO_GATEWAY
+}
+
+enum MessengerPlatform {
+  TELEGRAM
+  WHATSAPP
+}
+
+enum InboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+}
+
+enum InboxEventKind {
+  TELEGRAM_UPDATE
+  WHATSAPP_MESSAGE
+  NOWPAYMENTS_WEBHOOK
+  SYSTEM_ALERT
+}
+
+model ShopSettings {
+  id                   Int      @id @default(1)
+  currency             String   // ISO 4217
+  greeting             String
+  whatsappTemplateName String
+  updatedAt            DateTime @updatedAt
+}
+
+model Item {
+  id           String            @id @default(uuid())
+  slug         String            @unique
+  title        String
+  description  String
+  priceMinor   Int
+  starsPrice   Int?
+  currency     String
+  imageUrl     String?
+  itemType     ItemType
+  stock        Int?              // null only for SERVICE
+  durationMin  Int?
+  isActive     Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  orderItems   OrderItem[]
+  reservations SlotReservation[]
+  hours        WeeklyHours[]
+}
+
+model WeeklyHours {
+  id            String  @id @default(uuid())
+  itemId        String?
+  item          Item?   @relation(fields: [itemId], references: [id])
+  weekday       Int     // ISO 1–7
+  startMin      Int
+  endMin        Int
+  breakStartMin Int?
+  breakEndMin   Int?
+}
+
+model SlotReservation {
+  id                     String            @id @default(uuid())
+  itemId                 String
+  item                   Item              @relation(fields: [itemId], references: [id])
+  orderId                String            @unique
+  order                  Order             @relation(fields: [orderId], references: [id])
+  startTime              DateTime          @db.Timestamptz(3)
+  endTime                DateTime          @db.Timestamptz(3)
+  status                 ReservationStatus
+  holdExpiresAt          DateTime?         @db.Timestamptz(3)
+  requiresOperatorAction Boolean           @default(false)
+  operatorActionReason   String?
+  createdAt              DateTime          @default(now())
+}
+
+model Order {
+  id                     String           @id @default(uuid())
+  orderNumber            String           @unique
+  status                 OrderStatus      @default(PENDING)
+  totalMinor             Int
+  currency               String
+  customerName           String?
+  customerPhone          String?
+  customerEmail          String?
+  customerTgId           String?
+  requiresOperatorAction Boolean          @default(false)
+  operatorActionReason   String?
+  items                  OrderItem[]
+  reservation            SlotReservation?
+  paymentMethod          PaymentMethod?
+  paymentRef             String?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+}
+
+model OrderItem {
+  id               String @id @default(uuid())
+  orderId          String
+  order            Order  @relation(fields: [orderId], references: [id])
+  itemId           String
+  item             Item   @relation(fields: [itemId], references: [id])
+  quantity         Int
+  priceMinor       Int
+  stockDecremented Int    @default(0)
+}
+
+model PaymentEvent {
+  id          String        @id @default(uuid())
+  orderId     String
+  provider    PaymentMethod
+  providerRef String
+  amountMinor Int
+  currency    String
+  accepted    Boolean
+  createdAt   DateTime      @default(now())
+
+  @@unique([provider, providerRef])
+}
+
+model MessengerContact {
+  id              String            @id @default(uuid())
+  platform        MessengerPlatform
+  externalId      String
+  lastAutoReplyAt DateTime?
+  isBlocked       Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@unique([platform, externalId])
+}
+
+model EscalationTicket {
+  id         String            @id @default(uuid())
+  platform   MessengerPlatform
+  senderId   String
+  queryText  String?
+  isResolved Boolean           @default(false)
+  createdAt  DateTime          @default(now())
+}
+
+model KnowledgeChunk {
+  id       String                   @id @default(uuid())
+  source   String
+  position Int
+  content  String
+  tsv      Unsupported("tsvector")?
+
+  @@index([tsv], type: Gin)
+}
+
+model InboxEvent {
+  id           String         @id @default(uuid())
+  provider     String
+  eventId      String
+  kind         InboxEventKind
+  payloadJson  Json
+  status       InboxStatus    @default(PENDING)
+  attemptCount Int            @default(0)
+  lastErrorAt  DateTime?      @db.Timestamptz(3)
+  lockedAt     DateTime?      @db.Timestamptz(3)
+  lockedBy     String?
+  createdAt    DateTime       @default(now())
+
+  @@unique([provider, eventId])
+}
