@@ -1,7 +1,7 @@
 # 📚 UnderUndre Modular Commerce — Documentation Hub
 
 **Repository**: `UnderUndre/undreseller`  
-**Version**: 2.0.0 (`001-modular-commerce-template` + `002-service-cart-and-staff-bot`)  
+**Version**: 2.1.0 (`001-modular-commerce-template` + `002-service-cart-and-staff-bot` actualized + `003-commerce-operations-capability-packs` planned)  
 **Product**: Sprint B (HERO) — 14-Day SaaS MVP & Sovereign Commerce Factory ($4,900 flat)  
 **Methodology**: **Diátaxis Framework** (Tutorials, How-To, Reference, Explanation)  
 **Compliance Standards**: ISO/IEC/IEEE 29148:2018, ISO/IEC/IEEE 12207:2017 & NIST SP 800-218 SSDF
@@ -15,14 +15,17 @@
             ┌──────────────────────────────┬──────────────────────────────┐
             │ 1. TUTORIALS (Обучение)      │ 4. EXPLANATION (Концепции)   │
             │                              │                              │
-ДЕЙСТВИЕ    │ • Руководство быстрого пуска │ • Системная архитектура v2   │
+ДЕЙСТВИЕ    │ • Руководство быстрого пуска │ • Системная архитектура v2.1 │
             │   docs/whitelabel-           │   specs/main/                │
             │   quickstart.md              │   architecture.md            │
+            │ • Регламент ручного QA       │ • Операционное ядро v3       │
+            │   docs/manual-qa-            │   specs/003-commerce-        │
+            │   test-cases.md              │   operations-capability-packs│
             ├──────────────────────────────┼──────────────────────────────┤
             │ 2. HOW-TO GUIDES (Ранбуки)   │ 3. REFERENCE (Справочники)   │
             │                              │                              │
-ЗНАНИЕ      │ • Day-14 Onboarding Checklist│ • Системные требования v2    │
-            │ • Аварийный дренаж очередей  │   specs/main/requirements.md │
+ЗНАНИЕ      │ • Day-14 Onboarding Checklist│ • Системные требования v2.1  │
+            │ • Дренаж очередей (CLI/API)  │   specs/main/requirements.md │
             │ • Непрерывность Inngest/CAS  │ • Схема данных Prisma        │
             │ • 4-фазная миграция БД       │   prisma/schema.prisma       │
             │ • Разблокировка и возвраты   │ • Матрица совместимости DDL  │
@@ -31,12 +34,15 @@
 
 ---
 
-## 1. Tutorials (Обучение и быстрый старт)
-- **[`docs/whitelabel-quickstart.md`](../../docs/whitelabel-quickstart.md)**:
+## 1. Tutorials (Обучение, быстрый старт и ручной QA)
+- **\[suspicious link removed\]**:
   - Пошаговое развёртывание витрины с нуля за 15 минут.
   - Настройка брендинга, логотипа и цветовой палитры в `config/shop.config.ts`.
   - Выбор профиля внешней интеграции (`ENABLED_EXTERNAL_INTEGRATION`: `TELEGRAM_BUNDLE`, `WHATSAPP`, `NOWPAYMENTS`, `NONE`).
-  - Запуск базы данных, выполнение 4-фазных миграций и наполнение демо-магазина (`npm run db:seed`).
+  - Запуск базы данных, выполнение миграций (`npm run db:migrate`) и наполнение демо-магазина (`npm run db:seed`).
+- **\[suspicious link removed\]** и **[specs/002-service-cart-and-staff-bot/checklists/00-START-HERE.md](https://www.google.com/search?q=../002-service-cart-and-staff-bot/checklists/00-START-HERE.md)**:
+  - Полный регламент ручного и автоматизированного регрессионного тестирования (35 тест-кейсов: 5 браузерных `TC-WEB-01..05`, 11 Telegram-кейсов `TC-BOT-CLIENT-01..04` и `TC-BOT-STAFF-01..06`, возвраты `TC-PAY-01` и 19 bash-скриптов в `specs/002-service-cart-and-staff-bot/checklists/scripts/`).
+  - Автоматическая регистрация вебхуков обоих ботов через `specs/002-service-cart-and-staff-bot/checklists/scripts/_setup-webhooks.sh` или `setup-webhooks.ps1`.
 
 ---
 
@@ -44,33 +50,40 @@
 
 ### 📋 Протокол сдачи проекта (Day-14 Onboarding Checklist)
 Проводится в формате 60-минутного живого созвона с клиентом перед закрытием эскроу Upwork / подписанием акта DocuSeal:
-- [ ] **1. Изоляция ключей и проверка профиля интеграции**: Клиент в присутствии инженера вставляет боевые ключи в хостовое окружение согласно выбранному профилю (`ENABLED_EXTERNAL_INTEGRATION="TELEGRAM_BUNDLE"` $\to$ `TELEGRAM_BOT_TOKEN` + `STAFF_BOT_TOKEN`, `STAFF_WEBHOOK_SECRET`, `ADMIN_TOKEN`, `ADMIN_CHAT_ID`, `AI_API_KEY`). Fail-closed валидатор (`lib/config/integrationProfile.ts`) блокирует смешанные ключи разных контуров.
-- [ ] **2. Тестовая бронь корзины услуг и Staff-бот**: Оформление комплексной записи из 2–3 услуг с шагом 30 минут, проверка прихода карточки в `staffDestinationChatId` с маскированным телефоном (`+7 *** *** 4567`) и подтверждение в 1 клик.
-- [ ] **3. Тестовая транзакция / Pay-On-Site**: Проведение тестового заказа через `PAY_ON_SITE` либо боевого платежа минимального номинала (1 Star или $1 в крипте) с проверкой `PaymentEvent`.
+- [ ] **1. Изоляция ключей и проверка профиля интеграции**: Клиент в присутствии инженера вставляет боевые ключи в хостовое окружение согласно выбранному профилю (`ENABLED_EXTERNAL_INTEGRATION="TELEGRAM_BUNDLE"` $\to$ `TELEGRAM_BOT_TOKEN` + `STAFF_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `STAFF_WEBHOOK_SECRET`, `STAFF_CHAT_ID`, `STAFF_AUTHORIZED_IDS`, `ADMIN_TOKEN`, `ADMIN_CHAT_ID`, `AI_API_KEY`). Fail-closed валидатор (`lib/config/integrationProfile.ts`) блокирует смешанные ключи разных контуров и любой третий бот-токен.
+- [ ] **2. Тестовая бронь корзины услуг и Staff-бот**: Оформление комплексной записи из 2–3 услуг с шагом 30 минут, указанием пожеланий (`customerNotes`) и контактов мессенджеров (`customerTgUsername`, `hasWhatsApp`, `hasTelegram`). Проверка прихода карточки в `staffDestinationChatId` (или `STAFF_CHAT_ID`), работы 6 инлайн-кнопок (`[Принять]`, `[Отклонить]`, `[Перенести]`, `[В чёрный список]`, `[Заказ выполнен]`, `[Копировать контакты]`) и автогенерации шаблонного текста ответа клиенту (`formatMasterTemplate`).
+- [ ] **3. Тестовая транзакция / Pay-On-Site**: Проведение тестового заказа через `PAY_ON_SITE` либо боевого платежа минимального номинала (1 Star или $1 в крипте) с проверкой `PaymentEvent` и прихода карточки товара/услуги мастеру.
 - [ ] **4. Проверка DR-восстановления и 4-фазной миграции**: Демонстрация лога успешного тестового наката дампа и `.specify/scripts/bash/migrate-safe.sh` в изолированный тестовый контейнер PostgreSQL.
 - [ ] **5. Фиксация RPO/RTO**: Клиент уведомлен, что RPO равен 6 часам (интервал хостового Restic/pg_dump), восстановление — из дампа (не PITR).
 - [ ] **6. Подписание приемки**: Релиз эскроу-платежа (остаток 50% = $2,450).
 
-### 🚨 Аварийный сброс очереди сообщений (`scripts/drain-inbox.ts`) и сверка дедлайнов (`docs/inngest-continuity-runbook.md`)
-При сбое или недоступности Inngest Cloud оператор выполняет ручной дренаж очереди и сверку просроченных таймеров напрямую из PostgreSQL:
-```bash
-# 1. Подключиться по SSH к хосту приложения и перейти в директорию:
-cd /opt/undreseller
+### 🚨 Обработка очереди `InboxEvent` и аварийный дренаж (`inboxPoller.ts`, CLI и Admin API)
+Обработка входящих/исходящих событий `InboxEvent` (`TELEGRAM_UPDATE`, `TELEGRAM_OUTBOUND`, `STAFF_BOT_OUTBOUND`, `SYSTEM_ALERT`) застрахована тремя независимыми механизмами:
+1. **Встроенный фоновый поллер (`lib/jobs/inboxPoller.ts`)**: автоматически запускается при старте сервера Next.js через `instrumentation.ts` и опрашивает таблицу `InboxEvent` каждые **5 секунд** (пачками по 10 записей), не требуя внешнего Inngest Cloud для базовой доставки сообщений и обработки колбэков.
+2. **CLI-дренаж по SSH (`scripts/drain-inbox.ts` / `scripts/drain-inbox-mjs.mjs`)**:
+   ```bash
+   cd /opt/undreseller
+   npm run inbox:drain
+   ```
+3. **Админский HTTP-эндпоинт (`POST /api/admin/tools/drain-inbox`)**:
+   ```bash
+   curl -X POST http://localhost:3000/api/admin/tools/drain-inbox \
+     -H "Authorization: Bearer $ADMIN_TOKEN"
+   ```
+   Атомарно захватывает и обрабатывает до 100 записей `PENDING`, возвращая JSON-отчёт `{ summary: { total, drained, failed }, results }`.
 
-# 2. Запустить автономный обработчик инбокса и Telegram-аутбокса:
-npm run inbox:drain
-```
-*Подробный регламент восстановления дедлайнов напоминаний, автоотмен и 15-минутных счетов, а также миграции на self-hosted Inngest приведён в [`docs/inngest-continuity-runbook.md`](../../docs/inngest-continuity-runbook.md).*
+*Подробный регламент восстановления дедлайнов напоминаний, автоотмен и 15-минутных счетов, а также миграции на self-hosted Inngest приведён в \[suspicious link removed\].*
 
-### 🗄 Безопасный накат 4-фазных миграций БД (`.specify/scripts/bash/migrate-safe.sh`)
-Все изменения схемы выполняются по 4-фазному стандарту **Expand $\to$ Backfill $\to$ Validate/Cutover $\to$ Contract** с барьерами `SET lock_timeout = '2s'` и `SET statement_timeout = '5s'` и до 5 ретраев с экспоненциальным backoff:
+### 🗄 Безопасный накат миграций БД (`.specify/scripts/bash/migrate-safe.sh`)
+Все изменения схемы выполняются по 4-фазному стандарту **Expand $\to$ Backfill $\to$ Validate/Cutover $\to$ Contract** с барьерами `SET lock_timeout = '2s'` и `SET statement_timeout = '5s'` и до 5 ретраев с экспоненциальным backoff (`scripts/migrate.ts`), включая миграцию контактных полей клиента `20261020140000_add_client_contact_fields`:
 ```bash
 DIRECT_URL="postgresql://..." .specify/scripts/bash/migrate-safe.sh
 ```
-*Матрица обратной совместимости и результаты бенчмарка на снимке v1 задокументированы в [`specs/002-service-cart-and-staff-bot/migration-compatibility-matrix.md`](../002-service-cart-and-staff-bot/migration-compatibility-matrix.md).*
+*Матрица обратной совместимости и результаты бенчмарка на снимке v1 задокументированы в [specs/002-service-cart-and-staff-bot/migration-compatibility-matrix.md](https://www.google.com/search?q=../002-service-cart-and-staff-bot/migration-compatibility-matrix.md).*
 
-### 🔓 Разблокировка клиента и проведение возвратов
+### 🔓 Разблокировка клиента, GDPR-зачистка и проведение возвратов
 - **Аудируемый разбан клиента**: `POST /api/admin/users/unblock` (требует Bearer `ADMIN_TOKEN`, `actor`, `reason`, `customerTgId` или `phone`). Сбрасывает `isBlocked` и записывает событие `[CLIENT_UNBLOCKED]`.
+- **Право на забвение (GDPR Purge)**: `POST /api/admin/users/purge` и `POST /api/admin/orders/[id]/purge` обнуляют ПДн заказа (`customerName`, `customerPhone`, `customerEmail`, `customerTgId`, `customerNotes`), очищают `MessengerContact` / `InboxEvent` и ставят задачу приоритета `CRITICAL_GDPR_AND_MARKUP (100)` на замену текста карточки в чате Staff-бота строкой `[ДАННЫЕ_КЛИЕНТА_УДАЛЕНЫ_ПО_GDPR]`.
 - **Провайдер-изолированный возврат средств**: `POST /api/admin/orders/[id]/refund` (требует `idempotencyKey`, `kind: 'TELEGRAM_STARS_REFUND' | 'CRYPTO_REIMBURSEMENT'`, `actor`). Создаёт и проводит `RefundOperation`, оставляя `PaymentEvent` неизменяемым.
 
 ### 🔑 Процедура бесшовной ротации `ADMIN_TOKEN`
@@ -83,17 +96,20 @@ DIRECT_URL="postgresql://..." .specify/scripts/bash/migrate-safe.sh
 ---
 
 ## 3. Reference (Технические справочники)
-- **[`specs/main/requirements.md`](requirements.md)**: Свод функциональных требований (`FR-01`–`FR-16` и `FR-101`–`FR-122`), нефункциональных требований (`NFR-01`–`NFR-07`), матрицы конечного автомата заказов, честного SLA и модели угроз STRIDE.
-- **[`prisma/schema.prisma`](../../prisma/schema.prisma)**: Полная реляционная схема базы данных с перечислениями, `SlotReservation` (`resourceId`), `RefundOperation`, `TelegramRateState` и констрейнтами.
-- **[`.env.example`](../../.env.example)**: Справочник всех переменных окружения с описанием форматов и контуров интеграций.
-- **[`config/shop.config.ts`](../../config/shop.config.ts)**: Конфигурация брендинга, таймзоны, FTS и правил санитизации.
+- **[`specs/main/requirements.md`](requirements.md)**: Свод функциональных требований (`FR-01`–`FR-16` и `FR-101`–`FR-124`), нефункциональных требований (`NFR-01`–`NFR-07`), матрицы конечного автомата заказов, честного SLA и модели угроз STRIDE.
+- **\[suspicious link removed\]**: Полная реляционная схема базы данных с перечислениями, `Order` (`customerTgUsername`, `hasWhatsApp`, `hasTelegram`), `SlotReservation` (`resourceId`), `RefundOperation`, `TelegramRateState` и констрейнтами.
+- **\[suspicious link removed\]**: Справочник всех переменных окружения (включая `STAFF_CHAT_ID`, `STAFF_AUTHORIZED_IDS`, `INNGEST_EVENT_KEY`, `ENABLED_EXTERNAL_INTEGRATION`).
+- **\[suspicious link removed\]**: Конфигурация брендинга, таймзоны (`Asia/Yerevan`), FTS (`simple`) и правил санитизации приветствия.
+- **[specs/003-commerce-operations-capability-packs/spec.md](https://www.google.com/search?q=../003-commerce-operations-capability-packs/spec.md)**: Спецификация развития продукта в модульное операционное ядро малого бизнеса (Capability Packs, нейтральность к юрисдикции, портфельный AI Gateway с LM Studio и OmniRoute).
 
 ---
 
 ## 4. Explanation & Architecture Records
 - **[`specs/main/architecture.md`](architecture.md)**:
   - Топология шлюза Traefik v3 и изоляция сетей `web_gateway` / `backend_network`.
-  - Мульти-сервисная корзина (`CartDrawer`), сетка 30 минут и ресурсный барьер конкуренции слотов: `acquireResourceSlotLock` + PostgreSQL GiST `slot_resource_no_overlap`.
-  - Архитектура выделенного Telegram Staff-бота (`STAFF_BOT_TOKEN`), разделение `staffDestinationChatId` и `authorizedStaffUserIds`, одноразовые ссылки переноса (Magic Reschedule Link) и GDPR-редакция сообщений в чатах.
+  - Серверная инициализация через `instrumentation.ts`: кэширование метаданных ботов в `globalThis` (`lib/bot/botManager.ts`) и встроенный 5-секундный поллер `lib/jobs/inboxPoller.ts` + процессор `lib/jobs/inboxProcessor.ts`.
+  - Мульти-сервисная корзина (`CartDrawer`), сетка 30 минут, учёт истории по телефону/Telegram ID/`@username` и ресурсный барьер конкуренции слотов: `acquireResourceSlotLock` + PostgreSQL GiST `slot_resource_no_overlap`.
+  - Архитектура выделенного Telegram Staff-бота (`STAFF_BOT_TOKEN`), 3-уровневая авторизация мастера (`authorizedStaffUserIds` $\to$ `STAFF_AUTHORIZED_IDS` $\to$ личный чат), 6 кнопок карточки (включая `📋 Копировать контакты`), генерация шаблонов ответов мастеру (`formatMasterTemplate`), серверный модуль переноса `lib/bot/magicReschedule.ts` и GDPR-редакция сообщений по запросу `/purge`.
+  - Локальный FTS RAG-движок (`lib/ai/documentParser.ts`, `lib/ai/knowledgeEngine.ts`) с защитой от prompt-injection и каскадом моделей (`4s primary -> 3s fallback -> 8s total`).
   - Защита спящих воркеров Inngest через `cancelOn` ($\le 4$ событий) + `scheduleVersion` CAS, независимый PostgreSQL deadline sweeper и durable Telegram outbox с шейпингом и защитой от 429 rate-limit.
   - Стандарт **Docker Memory Fencing (v18.3)** на сервере Hetzner CPX42 (лимит $\le 500\text{ MB RAM}$ на контейнер приложения).

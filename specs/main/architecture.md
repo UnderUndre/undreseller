@@ -1,7 +1,7 @@
 # System Architecture: Modular E-Commerce & Multi-Service Booking Engine (Track 1)
 
 **Repository**: `UnderUndre/undreseller`  
-**Version**: 2.0.0 (Production Architecture — `001-modular-commerce-template` + `002-service-cart-and-staff-bot`)  
+**Version**: 2.1.0 (Production Architecture — `001-modular-commerce-template` + `002-service-cart-and-staff-bot` actualized)  
 **Standard Compliance**: ISO/IEC/IEEE 29148:2018, ISO/IEC/IEEE 12207:2017 & NIST SP 800-218 SSDF  
 **Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v18.3**
 
@@ -9,7 +9,7 @@
 
 ## 1. System Overview & Topography
 
-`undreseller` — суверенный монолитный транзакционный движок электронной коммерции и комплексного сервисного бронирования (Track 1) для малого сервисного и товарного B2B/B2C бизнеса. Архитектура спроектирована по принципу **«Choose Boring Technology»**: один легковесный контейнер приложения на Next.js 15 (`REPLICA_COUNT=1`, $\le 500\text{ MB RAM}$), единая база данных PostgreSQL 16 с аппаратным GiST-исключением пересечения слотов на уровне ресурса (`resourceId`), нативный Telegram Mini App (TMA), двухботовый контур Telegram (клиентский `bot` + служебный пейджер мастера `staffBot`), шлюз WhatsApp Cloud API, локальный FTS RAG по базе знаний и фоновый движок жизненных циклов на Inngest + PostgreSQL deadline sweeper.
+`undreseller` — суверенный монолитный транзакционный движок электронной коммерции и комплексного сервисного бронирования (Track 1) для малого сервисного и товарного B2B/B2C бизнеса. Архитектура спроектирована по принципу **«Choose Boring Technology»**: один легковесный контейнер приложения на Next.js 15 (`REPLICA_COUNT=1`, $\le 500\text{ MB RAM}$), единая база данных PostgreSQL 16 с аппаратным GiST-исключением пересечения слотов на уровне ресурса (`resourceId`), нативный Telegram Mini App (TMA), двухботовый контур Telegram (клиентский `bot` + служебный пейджер мастера `staffBot` с кэшированием `botInfo` через `instrumentation.ts`), шлюз WhatsApp Cloud API, локальный FTS RAG по базе знаний и двойной контур фоновых задач (встроенный 5-секундный `inboxPoller` + Inngest Cloud со страхующим PostgreSQL `deadlineSweeper`).
 
 ### Топология сервисов и разделение ответственности
 
@@ -40,7 +40,7 @@
 │   • 90-сек Loom видео         │  (/book, /catalog)  │   • Сетка 30 мин /book        │
 │   • 3 тарифа ($350, $3.5k, $4.9k)                   │   • Чекаут /checkout          │
 │   • Upwork 5% / DocuSeal      │                     │   • Client Bot + Staff Bot    │
-└───────────────────────────────┘                     │   • Inngest + PG Sweeper      │
+└───────────────────────────────┘                     │   • InboxPoller + Inngest/PG  │
                                                       └───────────────────────────────┘
                                                                        │
                                                         Docker Network: "backend_network"
@@ -59,6 +59,7 @@
 
 ```text
 undreseller/
+├── instrumentation.ts                  # Next.js server startup hook: initializeBots() + startInboxPoller()
 ├── app/                                # Next.js 15 App Router
 │   ├── layout.tsx                      # Корневой лейаут, подключение TelegramProvider
 │   ├── page.tsx                        # Главная витрина каталога (CartDrawer + ItemCard grid)
@@ -69,15 +70,17 @@ undreseller/
 │   ├── sitemap.ts                      # Динамический sitemap с офлайн-фоллбеком
 │   └── api/
 │       ├── health/route.ts             # Healthcheck (SELECT 1 ping, без env/PII)
-│       ├── catalog/                    # Публичные GET эндпоинты активного каталога
+│       ├── catalog/
+│       │   ├── route.ts                # Публичный GET активного каталога
+│       │   └── [slug]/route.ts         # Публичный GET карточки товара/услуги по slug
 │       ├── booking/
 │       │   ├── slots/route.ts          # Расчет сплошных окон (?itemIds=id1,id2&resourceId=...)
-│       │   └── lock/route.ts           # Захват мульти-сервисного холда, 403 blacklist, 409 GiST
-│       ├── checkout/route.ts           # Оформление PAY_ON_SITE, IMMEDIATE и AFTER_STAFF_APPROVAL
+│       │   └── lock/route.ts           # Захват мульти-сервисного холда, контакты, 403 blacklist, 409 GiST
+│       ├── checkout/route.ts           # Оформление PAY_ON_SITE, IMMEDIATE и AFTER_STAFF_APPROVAL + Staff card
 │       ├── inngest/route.ts            # Обслуживание 7 функций Inngest (serve handler)
 │       ├── bot/
-│       │   ├── telegram/webhook/       # Webhook клиентского бота (Stars sync + Inbox async)
-│       │   ├── staff/webhook/          # Webhook Staff-бота (RBAC чата/юзера + CAS действий)
+│       │   ├── telegram/webhook/       # Webhook клиентского бота (Stars sync + InboxEvent + bot.handleUpdate)
+│       │   ├── staff/webhook/          # Webhook Staff-бота (RBAC + CAS 5 кнопок + copy_contacts + шаблоны)
 │       │   └── whatsapp/webhook/       # Webhook WhatsApp (HMAC verify + Inbox async)
 │       ├── payments/crypto/webhook/    # Webhook NOWPayments (HMAC-SHA512 + 99% check)
 │       └── admin/
@@ -86,6 +89,8 @@ undreseller/
 │           ├── settings/route.ts       # Настройки магазина и валидация профиля интеграций (PUT)
 │           ├── reindex/route.ts        # Запуск асинхронной переиндексации базы знаний
 │           ├── escalations/route.ts    # Дашборд нерешенных инцидентов оператора
+│           ├── tools/
+│           │   └── drain-inbox/route.ts# Ручной HTTP-дренаж очереди InboxEvent (POST, до 100 событий)
 │           ├── users/
 │           │   ├── purge/route.ts      # GDPR-зачистка клиента + редакция карточек в Telegram
 │           │   └── unblock/route.ts    # Аудируемый разбан клиента (actor + reason)
@@ -96,7 +101,7 @@ undreseller/
 │   ├── catalog/
 │   │   ├── CartDrawer.tsx              # Плавающая корзина услуг (до 10 услуг, сумма времени/цены)
 │   │   └── ItemCard.tsx                # Карточка товара/услуги с ценами в USD и XTR Stars
-│   ├── booking/SlotGrid.tsx            # Сетка с шагом 30 мин, customerNotes + дисклеймер, PAY_ON_SITE
+│   ├── booking/SlotGrid.tsx            # Сетка 30 мин, контакты мессенджеров, customerNotes + дисклеймер
 │   ├── checkout/CheckoutModal.tsx      # Модалка оплаты (PAY_ON_SITE / Stars / Crypto / отложенный счёт)
 │   └── tma/TelegramProvider.tsx        # TMA SDK: theme, MainButton, safe insets
 ├── config/
@@ -107,25 +112,31 @@ undreseller/
 │   └── bench-memory.sh                 # Скрипт замера RSS и DR-дрилла восстановления
 ├── docs/
 │   ├── whitelabel-quickstart.md        # Руководство оператора и чеклист Дня 14
-│   └── inngest-continuity-runbook.md   # Ранбук непрерывности джобов и миграции Inngest
+│   ├── inngest-continuity-runbook.md   # Ранбук непрерывности джобов и миграции Inngest
+│   └── manual-qa-test-cases.md         # Zero-Trust Manual QA Playbook (сайт, TMA, боты, возвраты)
 ├── lib/
 │   ├── db/prisma.ts                    # Клиент Prisma (DATABASE_URL, connection_limit=10)
 │   ├── config/
 │   │   └── integrationProfile.ts       # Fail-closed матрица профилей интеграций Sprint B
+│   ├── ai/
+│   │   ├── documentParser.ts           # Парсинг knowledge.md/.pdf (<=10MB, <=50 стр, <=200 чанков) и FTS индекс
+│   │   └── knowledgeEngine.ts          # FTS RAG (top-5, <=8k токенов), защита от инъекций, каскад 4s->3s
 │   ├── booking/
 │   │   ├── advisoryLock.ts             # acquireResourceSlotLock + acquireItemSlotLock
 │   │   ├── cart.ts                     # Авторитетная валидация корзины и снимки OrderItem
-│   │   ├── lock.ts                     # Транзакция мульти-сервисного лока, OTP, 403 blacklist
+│   │   ├── lock.ts                     # Транзакция лока, OTP, 403 blacklist, история по @username, пуш мастеру
 │   │   └── windows.ts                  # Генератор сплошных окон с шагом 30 мин по resourceId
 │   ├── security/
 │   │   ├── adminAuth.ts                # Bearer аутентификация админа, dual-token ротация
 │   │   ├── initData.ts                 # Верификация Telegram initData HMAC (±60с, 3600с)
 │   │   ├── rateLimiter.ts              # LRU-лимитер 10/60с со startup assertion REPLICA=1
 │   │   └── whatsappSignature.ts        # Верификация подписи Meta X-Hub-Signature-256
-│   ├── telemetry/logger.ts             # Дени-лист секретов/PII (вкл. customerNotes, OTP, токены)
-│   ├── inbox/schemas.ts                # Дискриминированные Zod-схемы InboxEventKind, лимиты
+│   ├── telemetry/logger.ts             # Дени-лист секретов/PII и сериализация объектов Error
+│   ├── inbox/schemas.ts                # Дискриминированные Zod-схемы InboxEventKind, лимиты 64KB/16KB
 │   ├── jobs/
-│   │   ├── inngest.ts                  # 7 функций Inngest (свиперы, реиндекс, пуши, автоотмена, счёт)
+│   │   ├── inngest.ts                  # 7 функций Inngest + флаг isInngestConfigured
+│   │   ├── inboxPoller.ts              # Встроенный фоновый поллер InboxEvent (каждые 5 секунд)
+│   │   ├── inboxProcessor.ts           # Единый обработчик событий InboxEvent (вкл. client:confirm/decline)
 │   │   └── deadlineSweeper.ts          # Независимый PostgreSQL sweeper просроченных дедлайнов
 │   ├── payments/
 │   │   ├── fulfillment.ts              # Перевод в PAID / PAID_REQUIRES_RESOLUTION (при коллизии)
@@ -133,37 +144,43 @@ undreseller/
 │   │   ├── stars.ts                    # Синхронная обработка Stars (pre_checkout, payment)
 │   │   └── nowpayments.ts              # HMAC-SHA512 верификация и правило 99%
 │   └── bot/
-│       ├── telegramBot.ts              # Клиентский бот (/start, TMA button, manager alert)
-│       ├── staffBot.ts                 # Служебный бот мастера, маскирование ПДн, Magic Reschedule
-│       ├── staffActions.ts             # Авторизация мастера и транзакционный CAS 5 кнопок
-│       ├── clientConfirmation.ts       # Обработчик кнопок [Подтверждаю] / [Не смогу]
+│       ├── botManager.ts               # Инициализация обоих ботов при старте и кэш botInfo в globalThis
+│       ├── telegramBot.ts              # Клиентский бот (/start, /help, TMA button, client:confirm/decline)
+│       ├── staffBot.ts                 # Служебный бот мастера, карточка заказа, 6 кнопок, шаблоны ответов
+│       ├── magicReschedule.ts          # Server-only модуль (node:crypto) генерации/проверки Magic Reschedule Link
+│       ├── staffActions.ts             # 3-уровневая авторизация мастера и транзакционный CAS действий
+│       ├── clientConfirmation.ts       # Обработчик кнопок [Подтверждаю, буду!] / [Не смогу прийти]
 │       ├── telegramOutbox.ts           # Durable диспетчер Telegram с 429 cooldown и приоритетами
 │       ├── whatsappClient.ts           # Отправка официальных шаблонов Meta с backoff
 │       └── cooldown.ts                 # 24-часовой анти-спам кулдаун на номер
 ├── prisma/
-│   ├── schema.prisma                   # Схема данных Prisma v2
+│   ├── schema.prisma                   # Схема данных Prisma v2.1
 │   └── migrations/
 │       ├── 20261018000000_init/                                    # Базовая схема v1
 │       ├── 20261019000000_multi_service_cart/                      # Stage 1: Expand
 │       ├── 20261019010000_multi_service_cart_backfill/             # Stage 2: Bounded Backfill
 │       ├── 20261019020000_multi_service_cart_validate_cutover/     # Stage 3: Validate & Cutover
-│       └── 20261019030000_multi_service_cart_contract/             # Stage 4: Contract
+│       ├── 20261019030000_multi_service_cart_contract/             # Stage 4: Contract
+│       └── 20261020140000_add_client_contact_fields/               # Stage 5: customerTgUsername, hasWhatsApp, hasTelegram
 ├── scripts/
 │   ├── backfill-slot-reservations.ts   # Идемпотентный батч-бэкфилл и префлайт коллизий r1.id < r2.id
-│   ├── drain-inbox.ts                  # Аварийный оффлайн-дренаж очереди при сбое Inngest
+│   ├── clean-and-test-staff-notification.sh # Скрипт очистки и проверки уведомлений Staff-бота
+│   ├── clean-db.ps1 / clean-db.sh      # Скрипты очистки таблиц локальной БД
+│   ├── drain-inbox.ts / drain-inbox-mjs.mjs # Автономный CLI-дренаж очереди InboxEvent
 │   ├── migrate.ts                      # Запуск миграций с 5 ретраями и lock_timeout=2s
 │   └── seed.ts                         # Наполнение демо-данными
 └── specs/
-    ├── main/                           # Каноническая документация системы (Living Spec v2.0.0)
+    ├── main/                           # Каноническая документация системы (Living Spec v2.1.0)
     ├── 001-modular-commerce-template/  # Спецификация v1 шаблона
-    └── 002-service-cart-and-staff-bot/ # Спецификация v2 (корзина, Staff-бот, CAS, возвраты)
+    ├── 002-service-cart-and-staff-bot/ # Спецификация v2 (корзина, Staff-бот, CAS, возвраты, QA-скрипты)
+    └── 003-commerce-operations-capability-packs/ # Спецификация v3 (операционное ядро и Capability Packs)
 ```
 
 ---
 
 ## 3. Data Flow & Core Mechanisms
 
-### 3.1. Мульти-сервисная корзина и ресурсный барьер конкуренции (Resource Concurrency)
+### 3.1. Мульти-сервисная корзина, контакты клиента и ресурсный барьер конкуренции (Resource Concurrency)
 
 ```text
 КЛИЕНТ 1                             БЭКЕНД (/api/booking/lock)                     POSTGRESQL 16
@@ -173,19 +190,24 @@ undreseller/
    │                                              │─── acquireResourceSlotLock(resourceId)│ (Блокировка ресурса)
    │                                              │─── Проверка Blacklist (TG ID / Phone)►│ (403 если заблокирован)
    │                                              │─── Авторитетная загрузка Item[] ─────►│ (Сумма времени <= 480м)
+   │                                              │─── Проверка истории (TG/Phone/@user) ►│ (isNewClient)
    │                                              │─── INSERT Order + OrderItem Snapshots►│
    │                                              │─── INSERT SlotReservation (HELD) ────►│ (GiST slot_resource_no_overlap)
    │                                              │◄── SUCCESS ───────────────────────────│
    │                                              │─── COMMIT ───────────────────────────►│
+   │                                              │─── dispatchStaffOrderPagerCard() ────►│ (InboxEvent STAFF_BOT_OUTBOUND)
    │◄── 201 Created (15-min hold) ────────────────│                                       │
 ```
 
 1. **Авторитетный снимок корзины (`lib/booking/cart.ts`):**
-   - Сервер перечитывает актуальные записи `Item` внутри транзакции, отклоняет дубликаты, неактивные позиции, смешанные валюты, пустые корзины, корзины $> 10$ услуг или с суммарной длительностью $> 480$ минут.
-   - В `OrderItem` сохраняются неизменяемые снимки `titleSnapshot`, `priceMinor`, `currency` и `durationMin`.
-2. **Сетка 30 минут и непрерывные окна (`lib/booking/windows.ts`):**
-   - Кандидатные слоты генерируются с шагом `slotGridStepMin` (по умолчанию 30 минут: `10:00`, `10:30`, `11:00`...) и проверяются на непрерывную вместимость интервала `[T, T + totalDurationMin]` без пересечения с обеденным перерывом и активными бронями.
-3. **Двухуровневый ресурсный барьер:**
+   - Сервер перечитывает актуальные записи `Item` внутри транзакции, отклоняет дубликаты (`DUPLICATE_CART_ITEM`), неактивные позиции, смешанные валюты, пустые корзины, корзины $> 10$ услуг или с суммарной длительностью $> 480$ минут.
+   - В `OrderItem` сохраняются неизменяемые снимки `titleSnapshot`, `priceMinor`, `currency`, `quantity` и `durationMin`.
+2. **Сбор мессенджер-контактов и распознавание постоянных клиентов (`SlotGrid.tsx`, `lib/booking/lock.ts`):**
+   - При записи через браузер форма собирает имя, телефон (с нормализацией E.164 в `normalizePhoneE164`, включая автозамену ведущей `8` на `+7` для 11-значных номеров), опциональный email, флаги `hasWhatsApp` и `hasTelegram`, а также `customerTgUsername` (`@username`).
+   - Проверка истории завершённых визитов (`status: 'FULFILLED'`) выполняется по `OR`-фильтру: `customerTgId`, нормализованный/исходный `customerPhone` и `customerTgUsername` (с `@` и без `@`). При наличии $\ge 1$ выполненного заказа клиент помечается как постоянный (`isNewClient = false`, `autoCancelOnNoConfirmation = false`).
+3. **Сетка 30 минут и непрерывные окна (`lib/booking/windows.ts`):**
+   - Кандидатные слоты генерируются с шагом `slotGridStepMin` (по умолчанию 30 минут: `09:00`, `09:30`, `10:00`...) и проверяются на непрерывную вместимость интервала `[T, T + totalDurationMin]` без пересечения с обеденным перерывом и активными бронями.
+4. **Двухуровневый ресурсный барьер:**
    - **Уровень 1 (Транзакционный Resource Advisory Lock):** `acquireResourceSlotLock(tx, resourceId)` выполняет `SELECT pg_advisory_xact_lock(hashtext('resource_slot_lock_' || $resourceId))`. Исключает глобальную сериализацию между независимыми мастерами/ресурсами.
    - **Уровень 2 (Аппаратный GiST Exclusion Constraint):** констрейнт `slot_resource_no_overlap`:
      ```sql
@@ -194,27 +216,35 @@ undreseller/
        tstzrange("startTime", "endTime") WITH &&
      ) WHERE ("status" IN ('HELD', 'BOOKED'));
      ```
-4. **4-фазный стандарт миграций БД (Principle X):**
-   - **Stage 1 (Expand):** добавление nullable-колонок `resourceId`, `totalDurationMin`, снятие `NOT NULL` с `itemId`, создание таблиц `RefundOperation` и `TelegramRateState`.
-   - **Stage 2 (Backfill):** батчевый бэкфилл (`LIMIT 500 FOR UPDATE SKIP LOCKED`) с карантином аномальных интервалов в `SlotReservationQuarantine` и чекпоинтами в `MigrationBackfillCheckpoint` без `SET NOT NULL` в одной транзакции.
-   - **Stage 3 (Validate & Cutover):** префлайт-проверка коллизий (`r1.id < r2.id`), навешивание `CHECK ... NOT VALID`, отдельная команда `VALIDATE CONSTRAINT` и создание `slot_resource_no_overlap`.
-   - **Stage 4 (Contract):** быстрый метадаata-переход `SET NOT NULL` (опирающийся на валидированный `CHECK`), удаление временного `CHECK` и старого констрейнта `slot_no_overlap`.
+5. **Немедленная отправка карточки мастеру (`dispatchStaffOrderPagerCard`):**
+   - Сразу после коммита транзакции бронирования в `createSlotHoldLock` (`lib/booking/lock.ts`), а также при оформлении заказа через `POST /api/checkout` (как для существующей брони услуг, так и для товарного заказа `itemType === 'PRODUCT'`), карточка заказа автоматически ставится в очередь `InboxEvent` (`STAFF_BOT_OUTBOUND`) с ключом дедупликации `staff_pager_${orderId}_v1`.
 
 ---
 
-### 3.2. Выделенный Telegram Staff-бот, RBAC и одноразовый перенос (Magic Reschedule)
+### 3.2. Выделенный Telegram Staff-бот, 3-уровневый RBAC, шаблоны мастера и одноразовый перенос
 
-1. **Разделение чата доставки и прав акторов (`lib/bot/staffActions.ts`):**
-   - Вебхук `/api/bot/staff/webhook` проверяет `x-telegram-bot-api-secret-token` (`STAFF_WEBHOOK_SECRET`).
-   - `staffDestinationChatId` задаёт целевой чат/группу (`-100...`), а `authorizedStaffUserIds: string[]` — белый список личных Telegram ID мастеров.
-   - Нажатие инлайн-кнопки неавторизованным участником группы отклоняется с алертом `Access denied` (HTTP 403) без единой мутации в БД.
-2. **Минимизация ПДн и GDPR-редакция в Telegram (`lib/bot/staffBot.ts`):**
-   - На карточке заказа телефон клиента маскируется по умолчанию (`+7 *** *** 4567`), а текст `customerNotes` никогда не пересылается в открытом виде в чат (выводится только индикатор `[Есть примечания]`).
-   - При переходе заказа в терминальный статус (`FULFILLED`, `CANCELLED`) или вызове GDPR-очистки бот редактирует сообщение в чате мастера на `[ДАННЫЕ_КЛИЕНТА_УДАЛЕНЫ_ПО_GDPR]` и снимает клавиатуру `inline_keyboard`.
-3. **Одноразовая ссылка переноса (Magic Reschedule Link):**
-   - Подписывается HMAC-SHA256 по строке `orderId:scheduleVersion:expiresAtMs:nonce` (TTL 24 часа), в БД хранится `rescheduleTokenHash = sha256(nonce)`.
-   - При использовании проверяются HMAC, срок действия, совпадение `scheduleVersion`, `rescheduleTokenConsumedAt === null` и хэш `nonce`. После переноса выставляется `rescheduleTokenConsumedAt = now()`, `rescheduleTokenHash = null` и инкрементируется `scheduleVersion`.
-4. **Защита от выпрашивания скидок и верификация владения номером (`T-105`, `T-107`):**
+1. **Инициализация ботов при старте (`instrumentation.ts`, `lib/bot/botManager.ts`):**
+   - При запуске Node.js-рантайма хук `register()` вызывает `initializeBots()`, который единожды выполняет `bot.init()` / `staffBot.init()` и кэширует `__clientBotInfo` и `__staffBotInfo` в `globalThis` (переживая HMR-перезагрузки в режиме разработки). Вебхуки вызывают `waitForBots()` перед обработкой апдейтов.
+2. **Разделение чата доставки и 3-уровневая проверка прав (`lib/bot/staffActions.ts`):**
+   - Вебхук `/api/bot/staff/webhook` проверяет `x-telegram-bot-api-secret-token` (`STAFF_WEBHOOK_SECRET`) через `timingSafeEqual`.
+   - Функция `authorizeStaffCallback` сверяет `chatId === staffDestinationChatId` (из `ShopSettings.staffDestinationChatId` или `.env` `STAFF_CHAT_ID`) и проверяет `fromUserId` по трём источникам:
+     1) массив `ShopSettings.authorizedStaffUserIds` в БД (приоритетный источник истины);
+     2) fallback-список `STAFF_AUTHORIZED_IDS` / `STAFF_ADMIN_IDS` из `.env`;
+     3) личный чат 1-на-1 с ботом (`String(chatId) === actorId`).
+   - Неавторизованный клик отклоняется с HTTP 403 (`status: 'ACCESS_DENIED'`) и всплывающим алертом в Telegram без мутаций в БД.
+3. **Операционная карточка заказа, 6 кнопок и готовые шаблоны для копирования (`lib/bot/staffBot.ts`):**
+   - Поскольку в Track 1 нет отдельной веб-админки для мастеров, карточка `formatStaffOrderCard` отображает мастеру рабочие данные заказа: имя, телефон, флаги WhatsApp/Telegram, `@username`, список услуг, длительность, интервал времени, сумму, полное примечание (`📝 Примечание: ...`) и строку быстрого копирования контактов.
+   - Клавиатура `buildStaffActionKeyboard` содержит **6 инлайн-кнопок**:
+     - 5 транзакционных CAS-действий: `✅ Принять` (`staff:approve`), `❌ Отклонить` (`staff:reject`), `🔄 Перенести` (`staff:reschedule`), `🚫 В чёрный список` (`staff:blacklist`), `✅ Заказ выполнен` (`staff:fulfill`);
+     - 1 немутирующее действие: `📋 Копировать контакты` (`staff:copy_contacts:<orderId>`), которое отправляет мастеру отдельное сообщение (`formatCopyContactsText`) для удобного копирования в буфер обмена.
+   - При успешном применении любого из 5 CAS-действий (`outcome === 'APPLIED'`) со старой карточки снимается инлайн-клавиатура (`removeInlineKeyboard: true`), клиенту (при наличии `customerTgId`) уходит автоуведомление через `CLIENT_BOT`, а мастеру в чат приходит готовый текстовый шаблон (`formatMasterTemplate` с конвертацией времени в `UTC+4`) для ручной пересылки клиенту в WhatsApp или Telegram.
+4. **Разграничение операционной видимости контактов и GDPR-зачистки (`enqueueStaffMessageRedaction`):**
+   - При штатных действиях мастера и автоотмене новичка контакты на карточке в чате мастера сохраняются (`triggerGdprRedaction: false`), чтобы мастер мог связаться с клиентом.
+   - При вызове административных эндпоинтов права на забвение (`POST /api/admin/users/purge` и `POST /api/admin/orders/[id]/purge`) ПДн в БД обнуляются, а в `TelegramOutbox` ставится задача приоритета `CRITICAL_GDPR_AND_MARKUP (100)` на вызов `editMessageText`, заменяющая текст карточки в чате мастера на `[ДАННЫЕ_КЛИЕНТА_УДАЛЕНЫ_ПО_GDPR]`.
+5. **Одноразовая ссылка переноса (`lib/bot/magicReschedule.ts`):**
+   - Криптографические функции (`node:crypto`) вынесены в серверный модуль `lib/bot/magicReschedule.ts`, чтобы исключить попадание `node:crypto` в клиентский бандл.
+   - Ссылка подписывается HMAC-SHA256 по строке `orderId:scheduleVersion:expiresAtMs:nonce` (TTL 24 часа), в БД хранится `rescheduleTokenHash = sha256(nonce)`. После выбора нового слота выставляется `rescheduleTokenConsumedAt = now()`, `rescheduleTokenHash = null` и инкрементируется `scheduleVersion`.
+6. **Защита от выпрашивания скидок и верификация владения номером (`lib/booking/lock.ts`):**
    - Кнопка `[ 🚫 В чёрный список ]` аннулирует бронь (`CLIENT_BLOCKED`), блокирует стабильный `customerTgId`/`customerId` и ставит риск-маркер на телефон E.164 со сроком истечения 90 дней (`phoneRiskExpiresAt`).
    - Блокировка по подтверждённому Telegram ID или верифицированному телефону возвращает **HTTP 403 Forbidden** (`"Access restricted"`). Совпадение только по неверифицированному телефону направляется на `MANUAL_REVIEW`, а подтверждение нового владельца рециклированного номера через SMS OTP (`verifyPhoneOtpPure`) автоматически снимает чужую блокировку (`[PHONE_REBIND_UNBLOCK]`).
 
@@ -238,16 +268,32 @@ undreseller/
 
 ---
 
-### 3.4. Защита спящих воркеров Inngest (CAS + `cancelOn`), Deadline Sweeper и Durable Telegram Outbox
+### 3.4. Встроенный Inbox Poller, воркеры Inngest (CAS + `cancelOn`), Deadline Sweeper и Durable Telegram Outbox
 
-1. **Декларативные матрицы `cancelOn` ($\le 4$ событий) + `scheduleVersion` CAS (`lib/jobs/inngest.ts`):**
+1. **Встроенный 5-секундный поллер и единый процессор инбокса (`lib/jobs/inboxPoller.ts`, `lib/jobs/inboxProcessor.ts`):**
+   - `startInboxPoller()` каждые 5 секунд выбирает до 10 записей `InboxEvent` в статусе `PENDING`, атомарно захватывает их (`status = 'PROCESSING'`) и вызывает `processInboxEventRow()`.
+   - `processInboxEventRow()` обрабатывает `SYSTEM_ALERT`, `TELEGRAM_UPDATE` (включая парсинг колбэков подтверждения клиента `client:confirm:<orderId>` и `client:decline:<orderId>` с вызовом `handleClientConfirmationCallback`), а также исходящие очереди `TELEGRAM_OUTBOUND` и `STAFF_BOT_OUTBOUND` (`sendMessage`, `editMessageText`, `editMessageReplyMarkup`).
+   - При отсутствии `INNGEST_EVENT_KEY` (`isInngestConfigured === false`) приложение продолжает штатно обрабатывать вебхуки, кнопки мастера и очередь сообщений через встроенный поллер без падения запросов.
+2. **Декларативные матрицы `cancelOn` ($\le 4$ событий) + `scheduleVersion` CAS (`lib/jobs/inngest.ts`):**
    - `appointmentReminderJob` (4 триггера отмены: `order/cancelled`, `order/client-declined`, `order/rescheduled`, `order/fulfilled`): спит до `startTime - confirmationNoticeHours`, при пробуждении сверяет `scheduleVersion` и отправляет пуш в Telegram или шаблон WhatsApp.
    - `autoCancelUnconfirmedJob` (4 триггера отмены: `order/cancelled`, `order/client-confirmed`, `order/rescheduled`, `order/fulfilled`): спит до `startTime - autoCancelDeadlineHours`. При пробуждении автоматически отменяет неподтверждённую бронь **нового клиента** (`AUTO_CANCELLED_NO_CONFIRMATION` + `RELEASED`), а для **постоянного клиента** ($\ge 1$ выполненный заказ) сохраняет бронь и шлёт предупреждение мастеру.
    - `invoiceExpiryJob` (3 триггера отмены: `order/paid`, `order/cancelled`, `order/rescheduled`): спит 15 минут для `AFTER_STAFF_APPROVAL`.
-2. **Независимый PostgreSQL Deadline Reconciliation Sweeper (`lib/jobs/deadlineSweeper.ts`):**
+3. **Независимый PostgreSQL Deadline Reconciliation Sweeper (`lib/jobs/deadlineSweeper.ts`):**
    - Периодически сканирует PostgreSQL на просроченные дедлайны напоминаний, автоотмен и 15-минутных счетов и применяет те же идемпотентные CAS-переходы, гарантируя нулевую потерю автоотмен при даунтайме Inngest Cloud. При отставании $> 120$ секунд генерирует `[DEADLINE_SWEEPER_LAG_ALERT]`.
-3. **Durable Telegram Dispatcher (`lib/bot/telegramOutbox.ts`):**
+4. **Durable Telegram Dispatcher (`lib/bot/telegramOutbox.ts`):**
    - Единый персистентный диспетчер исходящих вызовов для каждого бота (`CLIENT_BOT` и `STAFF_BOT`) с шейпингом частоты (~1 сообщ./с в личный чат, ~20 сообщ./мин в группу `-100...`), общим кулдауном `TelegramRateState.cooldownUntil` из `parameters.retry_after` при HTTP 429, приоритетной очередью (`CRITICAL=100` для GDPR-редакции и снятия кнопок) с защитой от голодания (starvation boost), атомарными лизами и классификацией постоянных ошибок Telegram (`message to edit not found`, `chat not found`, 400/403) как `TERMINAL_NO_OP`.
+
+---
+
+### 3.5. Локальный FTS RAG-движок базы знаний (`lib/ai/documentParser.ts`, `lib/ai/knowledgeEngine.ts`)
+
+1. **Индексация документов (`executeKnowledgeReindex`):**
+   - Читает `content/knowledge.md` и опциональный `content/knowledge.pdf` с жёсткими лимитами: размер файла $\le 10\text{ MB}$, PDF $\le 50$ страниц, суммарно $\le 200$ чанков (`cl100k_base`, окно 500 токенов с перекрытием 50 токенов).
+   - Под защитой транзакционного замка `pg_try_advisory_xact_lock(hashtext('knowledge_reindex'))` пересоздаёт записи `KnowledgeChunk` с полнотекстовым индексом `to_tsvector(ftsConfig, content)`.
+2. **Ответы по базе знаний и эскалация (`askKnowledgeEngine`):**
+   - Фильтрует попытки prompt-injection (`ignore previous instructions`, `print the system prompt`) и запросы $> 2000$ символов.
+   - Выполняет FTS-поиск топ-5 релевантных чанков через `plainto_tsquery` (бюджет контекста $\le 8\,000$ токенов).
+   - Оркестрирует вызов LLM в рамках общего бюджета **8 секунд**: основная модель (`AI_MODEL`, таймаут 4с) $\to$ резервная модель (`AI_FALLBACK_MODEL`, таймаут до 3с). При отсутствии подтверждённого ответа или двойном сбое создаёт `EscalationTicket` и отправляет алерт администратору в `ADMIN_CHAT_ID`.
 
 ---
 
@@ -262,4 +308,4 @@ undreseller/
 | **Commerce Engine** | `undreseller` | **500 MB** | 200 MB | `web_gateway`, `backend_network` |
 | **PostgreSQL 16** | `postgres` | **4096 MB** | 2048 MB | `backend_network` |
 
-Бенчмарк `tests/unit/performance-benchmark.test.ts` подтверждает расчёт 7-дневной сетки слотов для корзины из 5 услуг с задержкой **p95 < 50 мс** и удержание RSS памяти процесса существенно ниже потолка **500 MB RAM** при одновременной работе двух инстансов ботов, обработчиков Inngest и очереди Telegram outbox.
+Бенчмарк `tests/unit/performance-benchmark.test.ts` подтверждает расчёт 7-дневной сетки слотов для корзины из 5 услуг с задержкой **p95 < 50 мс** и удержание RSS памяти процесса существенно ниже потолка **500 MB RAM** при одновременной работе двух инстансов ботов, встроенного `inboxPoller`, обработчиков Inngest и очереди Telegram outbox.
