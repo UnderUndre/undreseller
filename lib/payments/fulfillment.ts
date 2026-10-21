@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db/prisma';
-import { acquireItemSlotLock } from '@/lib/booking/advisoryLock';
+import { acquireResourceSlotLock, acquireItemSlotLock } from '@/lib/booking/advisoryLock';
 import { logger } from '@/lib/telemetry/logger';
 import { PaymentMethod } from '@prisma/client';
 
@@ -11,7 +11,9 @@ export interface FulfillPaymentParams {
   currency: string;
 }
 
-export async function fulfillPayment(params: FulfillPaymentParams): Promise<{ status: string; requiresOperatorAction: boolean }> {
+export async function fulfillPayment(
+  params: FulfillPaymentParams
+): Promise<{ status: string; requiresOperatorAction: boolean }> {
   const { orderId, provider, providerRef, amountMinor, currency } = params;
 
   return await prisma.$transaction(async (tx) => {
@@ -43,11 +45,15 @@ export async function fulfillPayment(params: FulfillPaymentParams): Promise<{ st
       throw new Error(`Order ${orderId} not found for fulfillment`);
     }
 
-    // 3. Multi-item lock: extract all unique itemIds and sort lexicographically (ORDER BY itemId ASC)
+    // 3. Resource-scoped advisory lock + item locks
+    if (order.reservation) {
+      await acquireResourceSlotLock(tx, order.reservation.resourceId || 'default_master');
+    }
+
     const uniqueItemIds = Array.from(
       new Set([
         ...order.items.map((i) => i.itemId),
-        ...(order.reservation ? [order.reservation.itemId] : []),
+        ...(order.reservation?.itemId ? [order.reservation.itemId] : []),
       ])
     ).sort();
 
@@ -55,7 +61,7 @@ export async function fulfillPayment(params: FulfillPaymentParams): Promise<{ st
       await acquireItemSlotLock(tx, itemId);
     }
 
-    // 4. Record PaymentEvent
+    // 4. Record immutable PaymentEvent
     await tx.paymentEvent.create({
       data: {
         orderId: order.id,
@@ -69,16 +75,20 @@ export async function fulfillPayment(params: FulfillPaymentParams): Promise<{ st
 
     let requiresOperatorAction = false;
     let operatorActionReason: string | null = null;
+    let targetOrderStatus: 'PAID' | 'PAID_REQUIRES_RESOLUTION' = 'PAID';
+    let targetRefundStatus: 'NONE' | 'REFUND_REQUESTED' = 'NONE';
+    const now = new Date();
 
-    // 5. Service Reservation fulfillment
+    // 5. Service Reservation fulfillment (including late payment webhook after PAYMENT_EXPIRED)
     if (order.reservation) {
       const res = order.reservation;
+      const resourceId = res.resourceId || 'default_master';
 
-      // Check for overlapping HELD or BOOKED reservation (excluding self)
+      // Check for overlapping HELD or BOOKED reservation on the same resource (excluding self)
       const collision = await tx.slotReservation.findFirst({
         where: {
           id: { not: res.id },
-          itemId: res.itemId,
+          OR: [{ resourceId }, ...(res.itemId ? [{ itemId: res.itemId }] : [])],
           status: { in: ['HELD', 'BOOKED'] },
           startTime: { lt: res.endTime },
           endTime: { gt: res.startTime },
@@ -86,9 +96,11 @@ export async function fulfillPayment(params: FulfillPaymentParams): Promise<{ st
       });
 
       if (collision) {
-        // Slot collision: leave RELEASED, do NOT rollback, flag operator action
+        // Late webhook or concurrent slot collision: transition to PAID_REQUIRES_RESOLUTION with 24h SLA
         requiresOperatorAction = true;
         operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION';
+        targetOrderStatus = 'PAID_REQUIRES_RESOLUTION';
+        targetRefundStatus = 'REFUND_REQUESTED';
 
         await tx.slotReservation.update({
           where: { id: res.id },
@@ -98,9 +110,32 @@ export async function fulfillPayment(params: FulfillPaymentParams): Promise<{ st
             operatorActionReason,
           },
         });
-        logger.warn('[SLOT_OVERBOOK_COLLISION]', { orderId: order.id, slotId: res.id });
+
+        await tx.refundOperation.create({
+          data: {
+            orderId: order.id,
+            kind:
+              provider === 'TELEGRAM_STARS'
+                ? 'TELEGRAM_STARS_REFUND'
+                : 'CRYPTO_REIMBURSEMENT',
+            status: 'REQUESTED',
+            idempotencyKey: `auto_refund_req_${order.id}_${providerRef}`,
+            providerRef,
+            amountMinor,
+            currency,
+            actor: 'SYSTEM_LATE_WEBHOOK_SLA',
+            reason: 'OVERBOOKED_MANUAL_RESOLUTION',
+            slaDueAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+          },
+        });
+
+        logger.warn('[SLOT_OVERBOOK_COLLISION]', {
+          orderId: order.id,
+          slotId: res.id,
+          targetOrderStatus,
+        });
       } else {
-        // Transition to BOOKED
+        // Slot is free -> transition reservation to BOOKED
         await tx.slotReservation.update({
           where: { id: res.id },
           data: {
@@ -123,20 +158,17 @@ export async function fulfillPayment(params: FulfillPaymentParams): Promise<{ st
       `;
 
       if (updateResult === 1) {
-        // Successfully decremented
         await tx.orderItem.update({
           where: { id: orderItem.id },
           data: { stockDecremented: orderItem.quantity },
         });
       } else {
-        // Check if item is physical product with stock
         const itemObj = await tx.item.findUnique({
           where: { id: orderItem.itemId },
           select: { itemType: true },
         });
 
         if (itemObj?.itemType === 'PRODUCT') {
-          // Out of stock collision: do NOT rollback, record 0 decremented, flag operator
           requiresOperatorAction = true;
           operatorActionReason = 'PAID_OUT_OF_STOCK';
 
@@ -144,26 +176,30 @@ export async function fulfillPayment(params: FulfillPaymentParams): Promise<{ st
             where: { id: orderItem.id },
             data: { stockDecremented: 0 },
           });
-          logger.warn('[PRODUCT_OUT_OF_STOCK_COLLISION]', { orderId: order.id, itemId: orderItem.itemId });
+          logger.warn('[PRODUCT_OUT_OF_STOCK_COLLISION]', {
+            orderId: order.id,
+            itemId: orderItem.itemId,
+          });
         }
       }
     }
 
-    // 7. Transition Order to PAID
+    // 7. Transition Order to PAID or PAID_REQUIRES_RESOLUTION
     await tx.order.update({
       where: { id: order.id },
       data: {
-        status: 'PAID',
+        status: targetOrderStatus,
         paymentMethod: provider,
         paymentRef: providerRef,
         requiresOperatorAction,
         operatorActionReason,
+        refundStatus: targetRefundStatus,
       },
     });
 
     // 8. Transactional Alert Outbox if operator action is required
     if (requiresOperatorAction && operatorActionReason) {
-      const alertTimestamp = new Date().toISOString();
+      const alertTimestamp = now.toISOString();
       const alertEventId = `alert_${order.id}_${operatorActionReason}_${Date.now()}`;
 
       await tx.inboxEvent.create({
@@ -183,6 +219,6 @@ export async function fulfillPayment(params: FulfillPaymentParams): Promise<{ st
       });
     }
 
-    return { status: 'PAID', requiresOperatorAction };
+    return { status: targetOrderStatus, requiresOperatorAction };
   });
 }

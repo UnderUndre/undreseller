@@ -68,7 +68,14 @@ export async function drainInbox(): Promise<{ drained: number; failed: number }>
   return { drained, failed };
 }
 
-if (require.main === module) {
+function isMainModule(): boolean {
+  if (typeof require !== 'undefined' && typeof module !== 'undefined') {
+    return require.main === module;
+  }
+  return Boolean(process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('/scripts/drain-inbox.ts'));
+}
+
+if (isMainModule()) {
   drainInbox()
     .then(() => process.exit(0))
     .catch((err) => {

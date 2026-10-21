@@ -5,11 +5,22 @@ import { handleStarsWebhookUpdate } from '@/lib/payments/stars';
 import { RAW_BODY_CAP_BYTES, validateCanonicalPayload } from '@/lib/inbox/schemas';
 import { logger } from '@/lib/telemetry/logger';
 import { checkRateLimit } from '@/lib/security/rateLimiter';
+import { bot } from '@/lib/bot/telegramBot';
+import { waitForBots } from '@/lib/bot/botManager';
 import { Prisma } from '@prisma/client';
+
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const secretHeader = req.headers.get('x-telegram-bot-api-secret-token');
   const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+
+  logger.info('[TELEGRAM_WEBHOOK_RECEIVED]', {
+    method: 'POST',
+    path: '/api/bot/telegram/webhook',
+    hasSecretHeader: !!secretHeader,
+    expectedSecret: !!expectedSecret,
+    timestamp: new Date().toISOString(),
+  });
 
   if (!expectedSecret || secretHeader !== expectedSecret) {
     logger.warn('Unauthorized Telegram webhook attempt');
@@ -70,6 +81,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   try {
+    // Store event for audit trail
     const inboxRow = await prisma.inboxEvent.create({
       data: {
         provider: 'TELEGRAM',
@@ -80,12 +92,49 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       },
     });
 
-    await inngest.send({
-      name: 'telegram/update.received',
-      data: {
-        eventId: inboxRow.id,
-      },
+    logger.info('[TELEGRAM_UPDATE_STORED]', {
+      inboxRowId: inboxRow.id,
+      updateId,
+      updateType,
+      messageText,
     });
+
+    // Process immediately via grammy bot (fire-and-forget to return response quickly)
+    // Wait for bots to be initialized (with timeout), then handle update
+    (async () => {
+      try {
+        const botsReady = await waitForBots(10000);
+        
+        if (botsReady) {
+          logger.info('[TELEGRAM_BOT_HANDLE_UPDATE_START]', {
+            updateId,
+            updateType,
+            hasUpdateBody: !!body,
+          });
+
+          await bot.handleUpdate(body as any);
+
+          logger.info('[BOT_UPDATE_HANDLED]', { updateId, chatId, messageText });
+        } else {
+          logger.warn('[BOT_INIT_TIMEOUT_ON_UPDATE]', { updateId, updateType });
+          // Queue for later processing
+          inngest.send({
+            name: 'telegram/update.received',
+            data: {
+              eventId: inboxRow.id,
+            },
+          }).catch((inngestErr: unknown) => {
+            logger.warn('[INNGEST_SEND_FAILED]', { error: String(inngestErr), eventId: inboxRow.id });
+          });
+        }
+      } catch (err: unknown) {
+        logger.error('[BOT_UPDATE_FAILED]', { 
+          updateId, 
+          error: String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        });
+      }
+    })().catch((err) => logger.error('[BOT_HANDLER_UNCAUGHT_ERROR]', { error: String(err) }));
 
     return new NextResponse('OK', { status: 200 });
   } catch (err: unknown) {
@@ -93,7 +142,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return new NextResponse('OK (duplicate)', { status: 200 });
     }
 
-    logger.error('Failed to enqueue Telegram update to Inngest', { error: String(err) });
+    logger.error('Failed to process Telegram update', { error: String(err) });
     return new NextResponse('Internal Server Error', { status: 500 });
   }
 }

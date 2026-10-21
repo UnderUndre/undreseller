@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db/prisma';
 import { authenticateAdmin } from '@/lib/security/adminAuth';
 import { logger } from '@/lib/telemetry/logger';
+import { enqueueStaffMessageRedaction } from '@/lib/bot/staffBot';
 import { Prisma } from '@prisma/client';
 
 const purgeUserSchema = z
@@ -29,15 +30,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const { customerTgId, phone } = parsed.data;
 
-    const result = await prisma.$transaction(async (tx) => {
-      // 1. Scrub Order records
-      const orderWhere: Prisma.OrderWhereInput = {
-        OR: [
-          ...(customerTgId ? [{ customerTgId }] : []),
-          ...(phone ? [{ customerPhone: phone }] : []),
-        ],
-      };
+    const orderWhere: Prisma.OrderWhereInput = {
+      OR: [
+        ...(customerTgId ? [{ customerTgId }] : []),
+        ...(phone ? [{ customerPhone: phone }] : []),
+      ],
+    };
 
+    const matchingOrders = await prisma.order.findMany({
+      where: orderWhere,
+      select: {
+        id: true,
+        orderNumber: true,
+        staffChatId: true,
+        staffMessageId: true,
+      },
+    });
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Scrub Order records (including customerNotes per FR-020 / NFR-004)
       const scrubbedOrders = await tx.order.updateMany({
         where: orderWhere,
         data: {
@@ -45,6 +56,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           customerPhone: null,
           customerEmail: null,
           customerTgId: null,
+          customerNotes: null,
         },
       });
 
@@ -109,12 +121,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       };
     });
 
+    // 4. Enqueue high-priority GDPR Telegram message redaction for any Staff Bot cards
+    let redactedStaffMessages = 0;
+    for (const ord of matchingOrders) {
+      if (ord.staffChatId && ord.staffMessageId) {
+        await enqueueStaffMessageRedaction({
+          orderId: ord.id,
+          orderNumber: ord.orderNumber,
+          staffChatId: ord.staffChatId,
+          staffMessageId: ord.staffMessageId,
+          finalStatusLabel: 'GDPR_PURGED',
+        });
+        redactedStaffMessages++;
+      }
+    }
+
     logger.adminAction('/api/admin/users/purge', 'POST', customerTgId || phone, 200);
     console.log(
-      `[USER_PII_PURGE] target=${customerTgId || phone} orders=${result.ordersCount} contacts=${result.contactsCount} inboxEvents=${result.inboxCount}`
+      `[USER_PII_PURGE] target=${customerTgId || phone} orders=${result.ordersCount} contacts=${result.contactsCount} inboxEvents=${result.inboxCount} staffRedacted=${redactedStaffMessages}`
     );
 
-    return NextResponse.json({ success: true, ...result }, { status: 200 });
+    return NextResponse.json({ success: true, ...result, redactedStaffMessages }, { status: 200 });
   } catch (err: unknown) {
     logger.error('Failed to purge user PII', { error: String(err) });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

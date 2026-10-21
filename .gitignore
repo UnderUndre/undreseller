@@ -151,3 +151,11 @@ vite.config.ts.timestamp-*
 # clai-helpers (auto-managed by `clai-helpers init`)
 # staging directory for atomic writes
 .helpers/
+
+# Universal ignore patterns
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/

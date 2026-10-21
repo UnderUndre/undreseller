@@ -17,6 +17,7 @@
   "dependencies": {
     "@prisma/client": "6.4.1",
     "@twa-dev/sdk": "8.0.2",
+    "@underundre/undesign": "^0.1.0",
     "grammy": "1.35.0",
     "inngest": "3.40.1",
     "js-tiktoken": "1.0.20",

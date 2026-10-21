@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { authenticateAdmin } from '@/lib/security/adminAuth';
+import { enqueueStaffMessageRedaction } from '@/lib/bot/staffBot';
 import { logger } from '@/lib/telemetry/logger';
 
 export async function POST(
@@ -27,8 +28,19 @@ export async function POST(
         customerPhone: null,
         customerEmail: null,
         customerTgId: null,
+        customerNotes: null,
       },
     });
+
+    if (updated.staffChatId && updated.staffMessageId) {
+      await enqueueStaffMessageRedaction({
+        orderId: updated.id,
+        orderNumber: updated.orderNumber,
+        staffChatId: updated.staffChatId,
+        staffMessageId: updated.staffMessageId,
+        finalStatusLabel: 'GDPR_PURGED',
+      });
+    }
 
     logger.adminAction(`/api/admin/orders/${id}/purge`, 'POST', id, 200);
     return NextResponse.json({ success: true, orderId: updated.id }, { status: 200 });

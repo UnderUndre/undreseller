@@ -1,9 +1,40 @@
 import { Bot, InlineKeyboard } from 'grammy';
 import { prisma } from '@/lib/db/prisma';
 import { logger } from '@/lib/telemetry/logger';
+import { handleClientConfirmationCallback } from './clientConfirmation';
 
 const token = process.env.TELEGRAM_BOT_TOKEN || 'DUMMY_TOKEN_FOR_BUILD';
-export const bot = new Bot(token);
+
+// Log bot initialization details
+const isDummy = token === 'DUMMY_TOKEN_FOR_BUILD';
+console.log('[TELEGRAM_BOT_INIT]', {
+  isDummyToken: isDummy,
+  tokenPrefix: isDummy ? 'N/A' : token.split(':')[0],
+  timestamp: new Date().toISOString(),
+});
+
+/**
+ * Get cached botInfo from globalThis if available.
+ * This survives Next.js module hot-reloads during development.
+ */
+function getCachedBotInfo(): any {
+  if (typeof globalThis !== 'undefined' && (globalThis as any).__clientBotInfo) {
+    return (globalThis as any).__clientBotInfo;
+  }
+  return undefined;
+}
+
+// Create bot with cached botInfo if available
+const cachedBotInfo = getCachedBotInfo();
+export const bot = new Bot(token, {
+  botInfo: cachedBotInfo,
+});
+
+// Log after bot is created
+console.log('[TELEGRAM_BOT_CREATED]', { 
+  timestamp: new Date().toISOString(),
+  hasCachedBotInfo: !!cachedBotInfo,
+});
 
 export async function sendWithRetry<T>(fn: () => Promise<T>, maxRetries = 3, initialDelayMs = 500): Promise<T> {
   let attempt = 0;
@@ -30,6 +61,11 @@ export async function sendWithRetry<T>(fn: () => Promise<T>, maxRetries = 3, ini
 }
 
 bot.command('start', async (ctx) => {
+  logger.info('[BOT_COMMAND_START]', { 
+    fromId: ctx.from?.id,
+    fromUsername: ctx.from?.username,
+  });
+
   if (!ctx.from) return;
 
   const externalId = String(ctx.from.id);
@@ -110,6 +146,42 @@ bot.callbackQuery('contact_manager', async (ctx) => {
   } catch (err) {
     logger.error('Failed to escalate to manager', { error: String(err) });
     await ctx.answerCallbackQuery({ text: 'Could not notify manager' });
+  }
+});
+
+// Handle client confirmation/decline callbacks: client:confirm:orderId or client:decline:orderId
+bot.callbackQuery(/^client:(confirm|decline):(.+)$/, async (ctx) => {
+  if (!ctx.from) return;
+
+  const match = ctx.match as RegExpExecArray;
+  const decision = match[1] as 'confirm' | 'decline';
+  const orderId = match[2];
+
+  try {
+    const result = await handleClientConfirmationCallback({
+      orderId,
+      decision,
+      customerTgId: String(ctx.from.id),
+    });
+
+    await ctx.answerCallbackQuery({ text: result.replyMessage });
+    await ctx.reply(result.replyMessage);
+    
+    logger.info('[CLIENT_CONFIRMATION_CALLBACK]', {
+      orderId,
+      decision,
+      outcome: result.outcome,
+      userId: ctx.from.id,
+    });
+  } catch (err) {
+    logger.error('Failed to process client confirmation callback', {
+      error: String(err),
+      orderId,
+      decision,
+    });
+    await ctx.answerCallbackQuery({
+      text: '❌ Ошибка при обработке. Пожалуйста, попробуйте позже.',
+    });
   }
 });
 

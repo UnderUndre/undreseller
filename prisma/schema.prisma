@@ -15,9 +15,12 @@ enum ItemType {
 
 enum OrderStatus {
   PENDING
+  AWAITING_PAYMENT
   PAID
+  PAID_REQUIRES_RESOLUTION
   CANCELLED
   FULFILLED
+  PAYMENT_EXPIRED
 }
 
 enum ReservationStatus {
@@ -27,8 +30,61 @@ enum ReservationStatus {
 }
 
 enum PaymentMethod {
+  PAY_ON_SITE
   TELEGRAM_STARS
   CRYPTO_GATEWAY
+}
+
+enum PaymentType {
+  PAY_ON_SITE
+  PREPAYMENT_ONLINE
+}
+
+enum PrepaymentTiming {
+  IMMEDIATE
+  AFTER_STAFF_APPROVAL
+}
+
+enum ExternalIntegration {
+  NONE
+  TELEGRAM_BUNDLE
+  WHATSAPP
+  NOWPAYMENTS
+}
+
+enum ConfirmationStatus {
+  PENDING_STAFF_REVIEW
+  STAFF_APPROVED
+  CLIENT_CONFIRMED
+  RESCHEDULE_OFFERED
+}
+
+enum CancellationReason {
+  CLIENT_DECLINED
+  STAFF_REJECTED
+  PAYMENT_EXPIRED
+  CLIENT_BLOCKED
+  AUTO_CANCELLED_NO_CONFIRMATION
+  ADMIN_CANCELLED
+}
+
+enum RefundStatus {
+  NONE
+  REFUND_REQUESTED
+  REFUNDED
+}
+
+enum RefundOperationKind {
+  TELEGRAM_STARS_REFUND
+  CRYPTO_REIMBURSEMENT
+}
+
+enum RefundOperationStatus {
+  REQUESTED
+  SUBMITTED
+  CONFIRMED
+  FAILED
+  UNKNOWN
 }
 
 enum MessengerPlatform {
@@ -48,14 +104,25 @@ enum InboxEventKind {
   WHATSAPP_MESSAGE
   NOWPAYMENTS_WEBHOOK
   SYSTEM_ALERT
+  TELEGRAM_OUTBOUND
+  STAFF_BOT_OUTBOUND
 }
 
 model ShopSettings {
-  id                   Int      @id @default(1)
-  currency             String   // ISO 4217
-  greeting             String
-  whatsappTemplateName String
-  updatedAt            DateTime @updatedAt
+  id                         Int                 @id @default(1)
+  currency                   String              // ISO 4217
+  greeting                   String
+  whatsappTemplateName       String
+  slotGridStepMin            Int                 @default(30)
+  confirmationNoticeHours    Int                 @default(24)
+  autoCancelDeadlineHours    Int?                @default(6)
+  autoCancelForNewClients    Boolean             @default(true)
+  allowPayOnSite             Boolean             @default(true)
+  prepaymentTiming           PrepaymentTiming    @default(IMMEDIATE)
+  enabledExternalIntegration ExternalIntegration @default(TELEGRAM_BUNDLE)
+  staffDestinationChatId     String?
+  authorizedStaffUserIds     String[]            @default([])
+  updatedAt                  DateTime            @updatedAt
 }
 
 model Item {
@@ -82,6 +149,7 @@ model WeeklyHours {
   id            String  @id @default(uuid())
   itemId        String?
   item          Item?   @relation(fields: [itemId], references: [id])
+  resourceId    String  @default("default_master")
   weekday       Int     // ISO 1–7
   startMin      Int
   endMin        Int
@@ -91,48 +159,72 @@ model WeeklyHours {
 
 model SlotReservation {
   id                     String            @id @default(uuid())
-  itemId                 String
-  item                   Item              @relation(fields: [itemId], references: [id])
+  resourceId             String            @default("default_master")
+  itemId                 String?
+  item                   Item?             @relation(fields: [itemId], references: [id])
   orderId                String            @unique
   order                  Order             @relation(fields: [orderId], references: [id])
   startTime              DateTime          @db.Timestamptz(3)
   endTime                DateTime          @db.Timestamptz(3)
+  totalDurationMin       Int
   status                 ReservationStatus
   holdExpiresAt          DateTime?         @db.Timestamptz(3)
   requiresOperatorAction Boolean           @default(false)
   operatorActionReason   String?
   createdAt              DateTime          @default(now())
+
+  @@index([resourceId, startTime, endTime])
 }
 
 model Order {
-  id                     String           @id @default(uuid())
-  orderNumber            String           @unique
-  status                 OrderStatus      @default(PENDING)
-  totalMinor             Int
-  currency               String
-  customerName           String?
-  customerPhone          String?
-  customerEmail          String?
-  customerTgId           String?
-  requiresOperatorAction Boolean          @default(false)
-  operatorActionReason   String?
-  items                  OrderItem[]
-  reservation            SlotReservation?
-  paymentMethod          PaymentMethod?
-  paymentRef             String?
-  createdAt              DateTime         @default(now())
-  updatedAt              DateTime         @updatedAt
+  id                         String              @id @default(uuid())
+  orderNumber                String              @unique
+  status                     OrderStatus         @default(PENDING)
+  totalMinor                 Int
+  currency                   String
+  customerName               String?
+  customerPhone              String?
+  customerEmail              String?
+  customerTgId               String?
+  customerTgUsername         String?
+  hasWhatsApp                Boolean             @default(false)
+  hasTelegram                Boolean             @default(false)
+  customerNotes              String?
+  paymentType                PaymentType         @default(PAY_ON_SITE)
+  confirmationStatus         ConfirmationStatus  @default(PENDING_STAFF_REVIEW)
+  cancellationReason         CancellationReason?
+  refundStatus               RefundStatus        @default(NONE)
+  autoCancelOnNoConfirmation Boolean             @default(false)
+  scheduleVersion            Int                 @default(1)
+  rescheduleTokenHash        String?
+  rescheduleTokenConsumedAt  DateTime?           @db.Timestamptz(3)
+  invoiceExpiresAt           DateTime?           @db.Timestamptz(3)
+  reminderSentAt             DateTime?           @db.Timestamptz(3)
+  staffMessageId             Int?
+  staffChatId                String?
+  requiresOperatorAction     Boolean             @default(false)
+  operatorActionReason       String?
+  items                      OrderItem[]
+  reservation                SlotReservation?
+  refundOperations           RefundOperation[]
+  paymentMethod              PaymentMethod?
+  paymentRef                 String?
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
 }
 
 model OrderItem {
-  id               String @id @default(uuid())
+  id               String  @id @default(uuid())
   orderId          String
-  order            Order  @relation(fields: [orderId], references: [id])
+  order            Order   @relation(fields: [orderId], references: [id])
   itemId           String
-  item             Item   @relation(fields: [itemId], references: [id])
+  item             Item    @relation(fields: [itemId], references: [id])
+  titleSnapshot    String?
+  currency         String  @default("USD")
+  durationMin      Int?
   quantity         Int
   priceMinor       Int
-  stockDecremented Int    @default(0)
+  stockDecremented Int     @default(0)
 }
 
 model PaymentEvent {
@@ -148,16 +240,54 @@ model PaymentEvent {
   @@unique([provider, providerRef])
 }
 
+model RefundOperation {
+  id              String                @id @default(uuid())
+  orderId         String
+  order           Order                 @relation(fields: [orderId], references: [id])
+  kind            RefundOperationKind
+  status          RefundOperationStatus @default(REQUESTED)
+  idempotencyKey  String                @unique
+  providerRef     String?
+  amountMinor     Int
+  currency        String
+  asset           String?
+  network         String?
+  destination     String?
+  networkFeeMinor Int?
+  txid            String?
+  actor           String
+  reason          String?
+  errorMessage    String?
+  reconciledAt    DateTime?             @db.Timestamptz(3)
+  slaDueAt        DateTime              @db.Timestamptz(3)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([orderId, status])
+}
+
 model MessengerContact {
-  id              String            @id @default(uuid())
-  platform        MessengerPlatform
-  externalId      String
-  lastAutoReplyAt DateTime?
-  isBlocked       Boolean           @default(false)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id                      String            @id @default(uuid())
+  platform                MessengerPlatform
+  externalId              String
+  customerId              String?
+  lastAutoReplyAt         DateTime?
+  isBlocked               Boolean           @default(false)
+  phoneVerifiedAt         DateTime?         @db.Timestamptz(3)
+  phoneVerificationMethod String?
+  phoneRiskExpiresAt      DateTime?         @db.Timestamptz(3)
+  otpCodeHash             String?
+  otpExpiresAt            DateTime?         @db.Timestamptz(3)
+  otpAttempts             Int               @default(0)
+  requiresManualReview    Boolean           @default(false)
+  unblockedBy             String?
+  unblockReason           String?
+  unblockedAt             DateTime?         @db.Timestamptz(3)
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
 
   @@unique([platform, externalId])
+  @@index([customerId])
 }
 
 model EscalationTicket {
@@ -180,17 +310,38 @@ model KnowledgeChunk {
 }
 
 model InboxEvent {
-  id           String         @id @default(uuid())
-  provider     String
-  eventId      String
-  kind         InboxEventKind
-  payloadJson  Json
-  status       InboxStatus    @default(PENDING)
-  attemptCount Int            @default(0)
-  lastErrorAt  DateTime?      @db.Timestamptz(3)
-  lockedAt     DateTime?      @db.Timestamptz(3)
-  lockedBy     String?
-  createdAt    DateTime       @default(now())
+  id                  String         @id @default(uuid())
+  provider            String
+  eventId             String
+  kind                InboxEventKind
+  botProfile          String?
+  chatId              String?
+  priority            Int            @default(10)
+  dedupeKey           String?        @unique
+  payloadJson         Json
+  status              InboxStatus    @default(PENDING)
+  attemptCount        Int            @default(0)
+  lastErrorAt         DateTime?      @db.Timestamptz(3)
+  lockedAt            DateTime?      @db.Timestamptz(3)
+  lockedBy            String?
+  leaseExpiresAt      DateTime?      @db.Timestamptz(3)
+  nextAttemptAt       DateTime?      @db.Timestamptz(3)
+  reconciliationState String?
+  createdAt           DateTime       @default(now())
 
   @@unique([provider, eventId])
+  @@index([status, priority, nextAttemptAt])
+  @@index([botProfile, chatId, status])
+}
+
+model TelegramRateState {
+  id            String    @id
+  botProfile    String
+  chatId        String?
+  cooldownUntil DateTime? @db.Timestamptz(3)
+  windowStart   DateTime  @default(now()) @db.Timestamptz(3)
+  sentCount     Int       @default(0)
+  updatedAt     DateTime  @updatedAt
+
+  @@index([botProfile, chatId])
 }

@@ -3,14 +3,15 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db/prisma';
 import { verifyTelegramInitData } from '@/lib/security/initData';
 import { checkRateLimit } from '@/lib/security/rateLimiter';
-import { PaymentMethod } from '@prisma/client';
 import { logger } from '@/lib/telemetry/logger';
+import { dispatchStaffOrderPagerCard } from '@/lib/bot/staffBot';
 
 const checkoutSchema = z
   .object({
     itemId: z.string().uuid().optional(),
     orderId: z.string().uuid().optional(),
-    paymentMethod: z.nativeEnum(PaymentMethod),
+    paymentMethod: z.enum(['PAY_ON_SITE', 'TELEGRAM_STARS', 'CRYPTO_GATEWAY']),
+    paymentType: z.enum(['PAY_ON_SITE', 'PREPAYMENT_ONLINE']).optional(),
     customerName: z.string().trim().min(1).max(100).optional().nullable(),
     customerPhone: z.string().trim().min(1).max(50).optional().nullable(),
     customerEmail: z.string().trim().email().optional().nullable(),
@@ -42,7 +43,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     let verifiedTgId: string | null = null;
 
-    // Security Check: initData validation
     if (initData) {
       const verified = verifyTelegramInitData(initData);
       if (!verified.valid || !verified.telegramUserId) {
@@ -58,7 +58,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         { status: 401 }
       );
     } else if (!orderId) {
-      // Browser checkout for new product order requires name & phone
       if (!customerName || !customerPhone) {
         return NextResponse.json(
           { error: 'Browser checkout requires customerName and customerPhone' },
@@ -67,8 +66,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // Rate Limiting
-    const rateLimitKey = verifiedTgId || customerPhone || req.headers.get('x-forwarded-for') || 'anon';
+    const rateLimitKey =
+      verifiedTgId || customerPhone || req.headers.get('x-forwarded-for') || 'anon';
     const rateCheck = checkRateLimit(`checkout_${rateLimitKey}`, 10);
     if (!rateCheck.allowed) {
       return NextResponse.json(
@@ -77,27 +76,104 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Scenario A: Attach payment rail to existing reservation order
+    const settings = await prisma.shopSettings.findUnique({ where: { id: 1 } });
+    const prepaymentTiming = settings?.prepaymentTiming || 'IMMEDIATE';
+    const staffChatId = settings?.staffDestinationChatId || process.env.STAFF_CHAT_ID || null;
+
+    // Scenario A: Existing reservation order
     if (orderId) {
       const existingOrder = await prisma.order.findUnique({
         where: { id: orderId },
         include: { reservation: true, items: { include: { item: true } } },
       });
 
-      if (!existingOrder || existingOrder.status !== 'PENDING') {
-        return NextResponse.json({ error: 'Order not found or no longer pending' }, { status: 404 });
+      if (
+        !existingOrder ||
+        (existingOrder.status !== 'PENDING' && existingOrder.status !== 'AWAITING_PAYMENT')
+      ) {
+        return NextResponse.json(
+          { error: 'Order not found or no longer payable' },
+          { status: 404 }
+        );
       }
+
+      const resolvedPaymentType =
+        paymentMethod === 'PAY_ON_SITE' ? 'PAY_ON_SITE' : 'PREPAYMENT_ONLINE';
 
       const updated = await prisma.order.update({
         where: { id: orderId },
-        data: { paymentMethod },
+        data: {
+          paymentMethod: paymentMethod as never,
+          paymentType: resolvedPaymentType,
+        },
       });
 
-      const invoiceData = generateInvoiceMetadata(updated.id, updated.totalMinor, paymentMethod);
+      // Notify Staff Bot pager card if configured
+      if (staffChatId && existingOrder.reservation) {
+        await dispatchStaffOrderPagerCard(
+          {
+            orderId: updated.id,
+            orderNumber: updated.orderNumber,
+            serviceTitles: existingOrder.items.map(
+              (i) => i.titleSnapshot || i.item?.title || 'Service'
+            ),
+            totalDurationMin: existingOrder.reservation.totalDurationMin || 60,
+            startTimeIso: existingOrder.reservation.startTime.toISOString(),
+            endTimeIso: existingOrder.reservation.endTime.toISOString(),
+            totalMinor: updated.totalMinor,
+            currency: updated.currency,
+            paymentType: resolvedPaymentType,
+            customerName: updated.customerName,
+            customerPhone: updated.customerPhone,
+            customerTgUsername: updated.customerTgUsername,
+            hasWhatsApp: updated.hasWhatsApp,
+            hasTelegram: updated.hasTelegram,
+            hasCustomerNotes: Boolean(updated.customerNotes),
+            customerNotes: updated.customerNotes,
+            isNewClient: updated.autoCancelOnNoConfirmation,
+          },
+          staffChatId
+        );
+      }
+
+      // 1. Pay on site -> no external gateway redirection
+      if (paymentMethod === 'PAY_ON_SITE') {
+        return NextResponse.json(
+          {
+            order: updated,
+            paymentMethod: 'PAY_ON_SITE',
+            paymentType: 'PAY_ON_SITE',
+          },
+          { status: 200 }
+        );
+      }
+
+      // 2. Online prepayment with AFTER_STAFF_APPROVAL while still waiting for staff review
+      if (
+        prepaymentTiming === 'AFTER_STAFF_APPROVAL' &&
+        updated.status === 'PENDING' &&
+        updated.confirmationStatus === 'PENDING_STAFF_REVIEW'
+      ) {
+        return NextResponse.json(
+          {
+            order: updated,
+            paymentMethod,
+            paymentType: 'PREPAYMENT_ONLINE',
+            deferredUntilStaffApproval: true,
+          },
+          { status: 200 }
+        );
+      }
+
+      const invoiceData = generateInvoiceMetadata(
+        updated.id,
+        updated.totalMinor,
+        paymentMethod
+      );
       return NextResponse.json({ order: updated, ...invoiceData }, { status: 200 });
     }
 
-    // Scenario B: Create a product PENDING order (no reservation)
+    // Scenario B: Product order
     const item = await prisma.item.findUnique({
       where: { id: itemId! },
     });
@@ -112,6 +188,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
     const orderNumber = `ORD-${Date.now()}-${randomSuffix}`;
+    const resolvedPaymentType =
+      paymentMethod === 'PAY_ON_SITE' ? 'PAY_ON_SITE' : 'PREPAYMENT_ONLINE';
 
     const newOrder = await prisma.order.create({
       data: {
@@ -123,10 +201,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         customerPhone: customerPhone ?? null,
         customerEmail: customerEmail ?? null,
         customerTgId: verifiedTgId,
-        paymentMethod,
+        paymentMethod: paymentMethod as never,
+        paymentType: resolvedPaymentType,
         items: {
           create: {
             itemId: item.id,
+            titleSnapshot: item.title,
+            currency: item.currency,
             quantity: 1,
             priceMinor: item.priceMinor,
             stockDecremented: 0,
@@ -135,7 +216,44 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       },
     });
 
-    const invoiceData = generateInvoiceMetadata(newOrder.id, newOrder.totalMinor, paymentMethod);
+    // Notify Staff Bot pager card if configured (FR-008)
+    if (staffChatId) {
+      await dispatchStaffOrderPagerCard(
+        {
+          orderId: newOrder.id,
+          orderNumber: newOrder.orderNumber,
+          serviceTitles: [item.title],
+          totalDurationMin: 0, // Product orders don't have duration
+          startTimeIso: new Date().toISOString(),
+          endTimeIso: new Date().toISOString(),
+          totalMinor: newOrder.totalMinor,
+          currency: newOrder.currency,
+          paymentType: resolvedPaymentType,
+          customerName: newOrder.customerName,
+          customerPhone: newOrder.customerPhone,
+          customerTgUsername: newOrder.customerTgUsername,
+          hasWhatsApp: newOrder.hasWhatsApp,
+          hasTelegram: newOrder.hasTelegram,
+          hasCustomerNotes: false, // Product orders don't have notes
+          customerNotes: null,
+          isNewClient: true, // Product orders are always new clients
+        },
+        staffChatId
+      );
+    }
+
+    if (paymentMethod === 'PAY_ON_SITE') {
+      return NextResponse.json(
+        { order: newOrder, paymentMethod: 'PAY_ON_SITE', paymentType: 'PAY_ON_SITE' },
+        { status: 201 }
+      );
+    }
+
+    const invoiceData = generateInvoiceMetadata(
+      newOrder.id,
+      newOrder.totalMinor,
+      paymentMethod
+    );
     return NextResponse.json({ order: newOrder, ...invoiceData }, { status: 201 });
   } catch (err: unknown) {
     logger.error('Failed to process checkout', { error: String(err) });
@@ -146,23 +264,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 function generateInvoiceMetadata(
   orderId: string,
   totalMinor: number,
-  method: PaymentMethod
-): { paymentMethod: PaymentMethod; invoiceUrl?: string; starsPrice?: number } {
-  if (method === PaymentMethod.TELEGRAM_STARS) {
-    // 1 Star ≈ 2 cents ($0.02)
+  method: 'TELEGRAM_STARS' | 'CRYPTO_GATEWAY'
+): {
+  paymentMethod: 'TELEGRAM_STARS' | 'CRYPTO_GATEWAY';
+  invoiceUrl?: string;
+  starsPrice?: number;
+} {
+  if (method === 'TELEGRAM_STARS') {
     const calculatedStars = Math.max(1, Math.round(totalMinor / 2));
     return {
-      paymentMethod: PaymentMethod.TELEGRAM_STARS,
+      paymentMethod: 'TELEGRAM_STARS',
       starsPrice: calculatedStars,
     };
   }
 
-  // CRYPTO_GATEWAY -> NOWPayments hosted invoice mock/URL
   const amountUsd = (totalMinor / 100).toFixed(2);
   const nowpaymentsUrl = `https://nowpayments.io/payment/?iid=${orderId}&amount=${amountUsd}`;
 
   return {
-    paymentMethod: PaymentMethod.CRYPTO_GATEWAY,
+    paymentMethod: 'CRYPTO_GATEWAY',
     invoiceUrl: nowpaymentsUrl,
   };
 }

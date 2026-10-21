@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db/prisma';
 import { ItemCard, CatalogItem } from '@/components/catalog/ItemCard';
+import { CartDrawer } from '@/components/catalog/CartDrawer';
 import { shopConfig } from '@/config/shop.config';
 
 export const dynamic = 'force-dynamic';
@@ -11,7 +12,7 @@ export default async function HomePage() {
   });
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-24">
       <div className="text-center max-w-2xl mx-auto py-6">
         <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-3">
           {shopConfig.brandName}
@@ -20,6 +21,8 @@ export default async function HomePage() {
           {shopConfig.tagline}
         </p>
       </div>
+
+      <CartDrawer items={items as CatalogItem[]} />
 
       {items.length === 0 ? (
         <div className="text-center py-16 border border-dashed border-gray-800 rounded-xl">

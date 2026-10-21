@@ -2,6 +2,8 @@ const DENYLIST_KEYS = new Set([
   'token',
   'bottoken',
   'bot_token',
+  'staffbottoken',
+  'staff_bot_token',
   'admintoken',
   'admin_token',
   'initdata',
@@ -21,6 +23,12 @@ const DENYLIST_KEYS = new Set([
   'email',
   'customeremail',
   'customer_email',
+  'customernotes',
+  'customer_notes',
+  'rescheduletoken',
+  'reschedule_token',
+  'otp',
+  'otpcode',
   'rawbody',
   'raw_body',
   'payload',
@@ -61,18 +69,23 @@ function sanitizeValue(key: string, value: unknown): unknown {
 }
 
 export const logger = {
-  info(event: string, fields?: Record<string, unknown>): void {
-    const sanitized = fields ? (sanitizeValue('fields', fields) as Record<string, unknown>) : {};
+  debug(event: string, fields?: unknown): void {
+    const sanitized = fields ? serializeFields(fields) : {};
+    console.log(JSON.stringify({ level: 'DEBUG', event, timestamp: new Date().toISOString(), ...sanitized }));
+  },
+
+  info(event: string, fields?: unknown): void {
+    const sanitized = fields ? serializeFields(fields) : {};
     console.log(JSON.stringify({ level: 'INFO', event, timestamp: new Date().toISOString(), ...sanitized }));
   },
 
-  warn(event: string, fields?: Record<string, unknown>): void {
-    const sanitized = fields ? (sanitizeValue('fields', fields) as Record<string, unknown>) : {};
+  warn(event: string, fields?: unknown): void {
+    const sanitized = fields ? serializeFields(fields) : {};
     console.warn(JSON.stringify({ level: 'WARN', event, timestamp: new Date().toISOString(), ...sanitized }));
   },
 
-  error(event: string, fields?: Record<string, unknown>): void {
-    const sanitized = fields ? (sanitizeValue('fields', fields) as Record<string, unknown>) : {};
+  error(event: string, fields?: unknown): void {
+    const sanitized = fields ? serializeFields(fields) : {};
     console.error(JSON.stringify({ level: 'ERROR', event, timestamp: new Date().toISOString(), ...sanitized }));
   },
 
@@ -86,3 +99,24 @@ export const logger = {
     console.log(`[COUNTER] name=${name} timestamp=${new Date().toISOString()}`);
   },
 };
+
+/**
+ * Сериализует поля для лога. Если в полях попадается объект Error, извлекаем
+ * message/name/stack — иначе JSON.stringify потеряет содержимое Error (его
+ * свойства不可перечислимы), и в лог останется только название события.
+ */
+function serializeFields(fields: unknown): Record<string, unknown> {
+  if (fields instanceof Error) {
+    return { error: fields.message, errorName: fields.name, stack: fields.stack };
+  }
+  if (fields === null || fields === undefined || typeof fields !== 'object') {
+    return { value: fields };
+  }
+  const sanitized = sanitizeValue('fields', fields) as Record<string, unknown>;
+  for (const [key, value] of Object.entries(fields as Record<string, unknown>)) {
+    if (value instanceof Error) {
+      sanitized[key] = { error: value.message, errorName: value.name, stack: value.stack };
+    }
+  }
+  return sanitized;
+}
