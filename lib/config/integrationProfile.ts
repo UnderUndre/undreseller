@@ -202,20 +202,20 @@ export interface CapabilityPackConfig {
 }
 
 export const CAPABILITY_PACKS_CONFIG: CapabilityPackConfig = {
-  version: '003.1',
-  tier: 'TIER_1_MVP',
+  version: '003.2',
+  tier: 'TIER_2_COMMERCE_PACKS',
   packs: {
     publicProfiles: true,
     serviceBooking: true,
     staffAccess: true,
-    productSales: false,
-    mixedCartFulfillment: false,
-    paymentPlans: false,
-    quotes: false,
-    partyTimeline: false,
-    changeRequests: false,
-    complianceAdapters: false,
-    redactedReadModels: false,
+    productSales: true,
+    mixedCartFulfillment: true,
+    paymentPlans: true,
+    quotes: true,
+    partyTimeline: true,
+    changeRequests: true,
+    complianceAdapters: true,
+    redactedReadModels: true,
     aiLab: false,
   },
 };

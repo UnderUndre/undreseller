@@ -179,3 +179,19 @@ Every new client installation is initialized with sovereign defaults in `config/
   node scripts/verify-licenses.mjs
   ```
 - Any presence of copyleft (`AGPLv3`, `GPLv3`, `MSCL`, `ELv2`) fails the gate per NIST SP 800-218 SSDF.
+
+---
+
+## 10. Commercial Tier 2 Capability Packs Unblocking Gate (T069)
+
+- **Date**: 2026-10-22
+- **Decision**: Booking demand validated through initial deployments; owner approved rollout of Tier 2 Capability Packs.
+- **Enabled Tier 2 Packs**:
+  - `Phase 15`: Product Sales & Inventory Ledger (`US1`)
+  - `Phase 5`: Mixed Goods-and-Services Orders & Segmented Fulfillment (`US3`)
+  - `Phase 6`: Deposit & Milestone Payment Plans (`US4`)
+  - `Phase 8`: Capacity-Aware Custom Quotes & Margin Guard (`US6`)
+  - `Phase 9`: Unified Party Timeline & Resumable Guest Journeys (`US7`)
+  - `Phase 10`: Order Change Requests & Document Reversals (`US8`)
+  - `Phase 11`: Jurisdiction Compliance SPI (`US9`)
+  - `Phase 12`: Redacted Read Models & Quarantined Staging (`US10`)

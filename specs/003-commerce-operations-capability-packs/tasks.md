@@ -89,11 +89,11 @@ Do not publish the Sprint B offer or start first-release implementation tasks `T
 
 **Independent Test**: Submit a mixed order (1 `PRODUCT` + 1 `SERVICE`), verify atomic stock reservation + slot hold, verify two independent `FulfillmentSegment` rows are created, and submit `CompletionEvidence` as an authenticated `PERFORMER` to transition the order to `FULFILLED`.
 
-- [ ] T022 [BE] [US3] Implement `FulfillmentPlan`, `FulfillmentSegment`, neutral `FulfillmentProvider`, and `CompletionEvidence` application service (`FR-318`, `FR-319`) with typed inputs/outputs and `PERFORMER` assignment checks via Prisma ORM in `lib/kernel/fulfillmentPlanService.ts`
-- [ ] T023 [BE] [US3] Update `POST /api/checkout` to create immutable `OrderLine` snapshots (`FR-312`, `INV-001`), reserve mixed capacity via `CapacityPort`, and initialize `FulfillmentPlan` segments with Zod validation and structured error handling in `app/api/checkout/route.ts`
-- [ ] T024 [BE] [US3] Implement `GET /api/admin/fulfillment/my-segments` and `POST /api/admin/fulfillment/segments/[id]/evidence` endpoints (`PERFORMER` / `OPERATOR` / `OWNER` RBAC + `actorId` audit) with Zod validation and structured error handling in `app/api/admin/fulfillment/my-segments/route.ts` and `app/api/admin/fulfillment/segments/[id]/evidence/route.ts`
-- [ ] T025 [FE] [US3] Update checkout modal and booking flow to support mixed product-and-service carts and display segmented fulfillment summary in `components/checkout/CheckoutModal.tsx` and `app/checkout/page.tsx`
-- [ ] T026 [BE] [US3] Write TDD-Lite tests for mixed goods-and-services order creation, independent `FulfillmentSegment` progression, and `PERFORMER` `CompletionEvidence` authorization in `tests/unit/fulfillment-plan.test.ts`
+- [X] T022 [BE] [US3] Implement `FulfillmentPlan`, `FulfillmentSegment`, neutral `FulfillmentProvider`, and `CompletionEvidence` application service (`FR-318`, `FR-319`) with typed inputs/outputs and `PERFORMER` assignment checks via Prisma ORM in `lib/kernel/fulfillmentPlanService.ts`
+- [X] T023 [BE] [US3] Update `POST /api/checkout` to create immutable `OrderLine` snapshots (`FR-312`, `INV-001`), reserve mixed capacity via `CapacityPort`, and initialize `FulfillmentPlan` segments with Zod validation and structured error handling in `app/api/checkout/route.ts`
+- [X] T024 [BE] [US3] Implement `GET /api/admin/fulfillment/my-segments` and `POST /api/admin/fulfillment/segments/[id]/evidence` endpoints (`PERFORMER` / `OPERATOR` / `OWNER` RBAC + `actorId` audit) with Zod validation and structured error handling in `app/api/admin/fulfillment/my-segments/route.ts` and `app/api/admin/fulfillment/segments/[id]/evidence/route.ts`
+- [X] T025 [FE] [US3] Update checkout modal and booking flow to support mixed product-and-service carts and display segmented fulfillment summary in `components/checkout/CheckoutModal.tsx` and `app/checkout/page.tsx`
+- [X] T026 [BE] [US3] Write TDD-Lite tests for mixed goods-and-services order creation, independent `FulfillmentSegment` progression, and `PERFORMER` `CompletionEvidence` authorization in `tests/unit/fulfillment-plan.test.ts`
 
 ---
 
@@ -103,9 +103,9 @@ Do not publish the Sprint B offer or start first-release implementation tasks `T
 
 **Independent Test**: Create an order with a `30% DEPOSIT` / `70% BALANCE` plan, capture the 30% deposit, verify `PaymentAllocation` marks Milestone 1 `PAID` and order `PARTIALLY_PAID`, and verify `CashCommitmentView` reports exact paid and due amounts.
 
-- [ ] T027 [BE] [US4] Implement capability-declared `PaymentProvider` registry (`PaymentProviderCapabilities`, `FR-316`) and `PaymentPlan` / `PaymentMilestone` / `PaymentAllocation` service (`FR-315`) with typed inputs/outputs via Prisma ORM in `lib/kernel/paymentPlanService.ts`
-- [ ] T028 [BE] [US4] Wire Telegram Stars (`lib/payments/stars.ts`), NOWPayments (`lib/payments/nowpayments.ts`), and `RefundOperation` (`lib/payments/refunds.ts`) to record explicit `PaymentAllocation` entries without mutating `PaymentEvent` (`INV-007`) in `lib/payments/stars.ts`, `lib/payments/nowpayments.ts`, and `lib/payments/refunds.ts`
-- [ ] T029 [BE] [US4] Write TDD-Lite unit tests for 30/70 deposit-balance `PaymentPlan` lifecycle, partial refund allocations, and `CashCommitmentView` aggregation in `tests/unit/payment-plan.test.ts`
+- [X] T027 [BE] [US4] Implement capability-declared `PaymentProvider` registry (`PaymentProviderCapabilities`, `FR-316`) and `PaymentPlan` / `PaymentMilestone` / `PaymentAllocation` service (`FR-315`) with typed inputs/outputs via Prisma ORM in `lib/kernel/paymentPlanService.ts`
+- [X] T028 [BE] [US4] Wire Telegram Stars (`lib/payments/stars.ts`), NOWPayments (`lib/payments/nowpayments.ts`), and `RefundOperation` (`lib/payments/refunds.ts`) to record explicit `PaymentAllocation` entries without mutating `PaymentEvent` (`INV-007`) in `lib/payments/stars.ts`, `lib/payments/nowpayments.ts`, and `lib/payments/refunds.ts`
+- [X] T029 [BE] [US4] Write TDD-Lite unit tests for 30/70 deposit-balance `PaymentPlan` lifecycle, partial refund allocations, and `CashCommitmentView` aggregation in `tests/unit/payment-plan.test.ts`
 
 ---
 
@@ -131,10 +131,10 @@ Do not publish the Sprint B offer or start first-release implementation tasks `T
 
 **Independent Test**: Create `Quote` v1, revise to v2 below margin threshold, verify `MarginGuard` requires `OWNER` approval, accept v2 as customer, and verify `Order` is created from v2 snapshots after capacity re-validation.
 
-- [ ] T035 [DB] [US6] Add `Quote` and `QuoteLine` models to `prisma/schema.prisma` and generate additive migration with `down.sql` in `prisma/migrations/20261023000000_003_quote_pack/migration.sql`
-- [ ] T036 [BE] [US6] Implement `Quote` versioning (`FR-310`), `MarginGuard` policy evaluator (`FR-313`), and transactional quote-to-order conversion service (`FR-311`, `INV-005`) with typed inputs/outputs via Prisma ORM in `lib/packs/quotes/quoteService.ts`
-- [ ] T037 [BE] [US6] Implement quote API endpoints (`POST /api/admin/quotes`, `POST /api/admin/quotes/[id]/approve-margin`, `POST /api/quotes/[id]/accept`) with Zod validation and structured error handling in `app/api/admin/quotes/route.ts` and `app/api/quotes/[id]/accept/route.ts`
-- [ ] T038 [BE] [US6] Write unit tests for `Quote` versioning, `MarginGuard` blocking, and stale-capacity rejection on quote acceptance in `tests/unit/quote-pack.test.ts`
+- [X] T035 [DB] [US6] Add `Quote` and `QuoteLine` models to `prisma/schema.prisma` and generate additive migration with `down.sql` in `prisma/migrations/20261023000000_003_quote_pack/migration.sql`
+- [X] T036 [BE] [US6] Implement `Quote` versioning (`FR-310`), `MarginGuard` policy evaluator (`FR-313`), and transactional quote-to-order conversion service (`FR-311`, `INV-005`) with typed inputs/outputs via Prisma ORM in `lib/packs/quotes/quoteService.ts`
+- [X] T037 [BE] [US6] Implement quote API endpoints (`POST /api/admin/quotes`, `POST /api/admin/quotes/[id]/approve-margin`, `POST /api/quotes/[id]/accept`) with Zod validation and structured error handling in `app/api/admin/quotes/route.ts` and `app/api/quotes/[id]/accept/route.ts`
+- [X] T038 [BE] [US6] Write unit tests for `Quote` versioning, `MarginGuard` blocking, and stale-capacity rejection on quote acceptance in `tests/unit/quote-pack.test.ts`
 
 ---
 
@@ -144,10 +144,10 @@ Do not publish the Sprint B offer or start first-release implementation tasks `T
 
 **Independent Test**: Convert a customer Telegram message into an operator-approved `Booking Draft`, issue a `ContinuationLink`, resume the draft in a web session, reconcile a queued offline `CompletionEvidence` draft, verify events appear in `PartyTimelineView`, and resolve an `OperatorAction` while retaining its audit history.
 
-- [ ] T039 [DB] [US7] Add `Party`, `PartyIdentifier`, `ContactPoint`, `ChannelIdentity`, `PartyNote`, `PartyTag`, `Journey`, `JourneyToken`, `ActionSuggestion`, and `OperatorAction` models to `prisma/schema.prisma` and generate an additive migration in `prisma/migrations/20261023010000_003_journey_pack/migration.sql` (`FR-321`–`FR-323`)
-- [ ] T040 [BE] [US7] Implement `PartyTimelineView` (`FR-305`), durable exception-to-`OperatorAction` creation/resolution (`FR-321`), conversation-to-draft service (`FR-322`), HMAC-SHA256 `ContinuationLink` issuer/verifier (`FR-323`), evidence-backed `ActionSuggestion` generator (`FR-306`), and non-financial draft reconciliation (`FR-324`) in `lib/packs/operations/journeyService.ts`
-- [ ] T041 [BE] [US7] Implement the Party timeline and operator-action queue/read/resolve endpoints alongside conversation-to-draft, journey-resume, and draft-reconcile routes, with Zod validation and audit attribution (`FR-305`, `FR-321`–`FR-324`) in `app/api/admin/conversations/to-draft/route.ts`, `app/api/admin/drafts/reconcile/route.ts`, and `app/api/journey/[token]/route.ts`
-- [ ] T042 [BE] [US7] Verify timeline projection coverage, operator-action durability/audit history, `ContinuationLink` single-use/TTL, `ActionSuggestion` approval gating, and offline non-financial draft reconciliation (`FR-305`, `FR-306`, `FR-321`, `FR-323`, `FR-324`) in `tests/unit/journey-continuation.test.ts`
+- [X] T039 [DB] [US7] Add `Party`, `PartyIdentifier`, `ContactPoint`, `ChannelIdentity`, `PartyNote`, `PartyTag`, `Journey`, `JourneyToken`, `ActionSuggestion`, and `OperatorAction` models to `prisma/schema.prisma` and generate an additive migration in `prisma/migrations/20261023010000_003_journey_pack/migration.sql` (`FR-321`–`FR-323`)
+- [X] T040 [BE] [US7] Implement `PartyTimelineView` (`FR-305`), durable exception-to-`OperatorAction` creation/resolution (`FR-321`), conversation-to-draft service (`FR-322`), HMAC-SHA256 `ContinuationLink` issuer/verifier (`FR-323`), evidence-backed `ActionSuggestion` generator (`FR-306`), and non-financial draft reconciliation (`FR-324`) in `lib/packs/operations/journeyService.ts`
+- [X] T041 [BE] [US7] Implement the Party timeline and operator-action queue/read/resolve endpoints alongside conversation-to-draft, journey-resume, and draft-reconcile routes, with Zod validation and audit attribution (`FR-305`, `FR-321`–`FR-324`) in `app/api/admin/conversations/to-draft/route.ts`, `app/api/admin/drafts/reconcile/route.ts`, and `app/api/journey/[token]/route.ts`
+- [X] T042 [BE] [US7] Verify timeline projection coverage, operator-action durability/audit history, `ContinuationLink` single-use/TTL, `ActionSuggestion` approval gating, and offline non-financial draft reconciliation (`FR-305`, `FR-306`, `FR-321`, `FR-323`, `FR-324`) in `tests/unit/journey-continuation.test.ts`
 
 ---
 
@@ -157,9 +157,9 @@ Do not publish the Sprint B offer or start first-release implementation tasks `T
 
 **Independent Test**: Amend an accepted mixed order to cancel only the product line; verify only product inventory is released while the service slot remains `BOOKED`, and a compensating `CREDIT_NOTE` / `RefundOperation` is linked.
 
-- [ ] T043 [DB] [US8] Add `ChangeRequest`, `CommercialDocument`, `CommercialDocumentLine`, `DocumentRender`, `ExternalDocumentReference`, and `NumberingProfile` models to `prisma/schema.prisma` and generate additive migration in `prisma/migrations/20261023020000_003_documents_change_pack/migration.sql`
-- [ ] T044 [BE] [US8] Implement `ChangeRequest` delta calculator (`FR-314`, selective `releaseCapacity`) and `CommercialDocument` / `CREDIT_NOTE` reversal service (`FR-317`, `INV-006`, `INV-007`) with typed inputs/outputs via Prisma ORM in `lib/packs/documents/changeRequestService.ts`
-- [ ] T045 [BE] [US8] Write unit tests for partial mixed-order cancellation (`US7`) and immutable invoice `CREDIT_NOTE` reversal (`US8`) in `tests/unit/change-request-and-documents.test.ts`
+- [X] T043 [DB] [US8] Add `ChangeRequest`, `CommercialDocument`, `CommercialDocumentLine`, `DocumentRender`, `ExternalDocumentReference`, and `NumberingProfile` models to `prisma/schema.prisma` and generate additive migration in `prisma/migrations/20261023020000_003_documents_change_pack/migration.sql`
+- [X] T044 [BE] [US8] Implement `ChangeRequest` delta calculator (`FR-314`, selective `releaseCapacity`) and `CommercialDocument` / `CREDIT_NOTE` reversal service (`FR-317`, `INV-006`, `INV-007`) with typed inputs/outputs via Prisma ORM in `lib/packs/documents/changeRequestService.ts`
+- [X] T045 [BE] [US8] Write unit tests for partial mixed-order cancellation (`US7`) and immutable invoice `CREDIT_NOTE` reversal (`US8`) in `tests/unit/change-request-and-documents.test.ts`
 
 ---
 
@@ -169,9 +169,9 @@ Do not publish the Sprint B offer or start first-release implementation tasks `T
 
 **Independent Test**: Switch manifests between `USD` (`minorUnit = 2`), `AMD` (`minorUnit = 2`), and `JPY` (`minorUnit = 0`) with a mocked `FiscalReceiptProvider`, verify `NOT_COMPLIANCE_READY` gating until `OWNER` sign-off, and simulate a post-payment fiscal timeout to verify `Order` remains `PAID` while `OperatorAction(COMPLIANCE_PROVIDER_FAILURE)` is created.
 
-- [ ] T046 [DB] [US9] Add `JurisdictionProfile`, `ComplianceOperationRequest`, and `ComplianceOperationResult` models to `prisma/schema.prisma` and generate additive migration in `prisma/migrations/20261023030000_003_compliance_pack/migration.sql`
-- [ ] T047 [BE] [US9] Implement the 5 narrow compliance provider SPIs (`FR-328`), `JurisdictionProfile` loader, feature-fit manifest evaluator (`FR-329`), `NOT_COMPLIANCE_READY` sign-off gate (`FR-330`, `POST /api/admin/compliance/sign-off`), and post-payment fail-safe `OperatorAction` fallback (`INV-J05`) with typed inputs/outputs in `lib/packs/compliance/complianceRegistry.ts` and `app/api/admin/compliance/sign-off/route.ts`
-- [ ] T048 [BE] [US9] Write unit and AST verification tests confirming zero hardcoded country codes in `lib/kernel/` (`INV-J01`), `NOT_COMPLIANCE_READY` sign-off enforcement (`FR-330`), and post-payment compliance failure isolation (`INV-J05`) in `tests/unit/jurisdiction-neutrality.test.ts`
+- [X] T046 [DB] [US9] Add `JurisdictionProfile`, `ComplianceOperationRequest`, and `ComplianceOperationResult` models to `prisma/schema.prisma` and generate additive migration in `prisma/migrations/20261023030000_003_compliance_pack/migration.sql`
+- [X] T047 [BE] [US9] Implement the 5 narrow compliance provider SPIs (`FR-328`), `JurisdictionProfile` loader, feature-fit manifest evaluator (`FR-329`), `NOT_COMPLIANCE_READY` sign-off gate (`FR-330`, `POST /api/admin/compliance/sign-off`), and post-payment fail-safe `OperatorAction` fallback (`INV-J05`) with typed inputs/outputs in `lib/packs/compliance/complianceRegistry.ts` and `app/api/admin/compliance/sign-off/route.ts`
+- [X] T048 [BE] [US9] Write unit and AST verification tests confirming zero hardcoded country codes in `lib/kernel/` (`INV-J01`), `NOT_COMPLIANCE_READY` sign-off enforcement (`FR-330`), and post-payment compliance failure isolation (`INV-J05`) in `tests/unit/jurisdiction-neutrality.test.ts`
 
 ---
 
@@ -181,10 +181,10 @@ Do not publish the Sprint B offer or start first-release implementation tasks `T
 
 **Independent Test**: Stage a CSV with duplicate phones in `ImportBatch` and verify quarantine blocks live table writes until `OWNER` approval; query `Agent Read Pack` projections and verify zero PII and zero mutation tools.
 
-- [ ] T049 [DB] [US10] Add `ServiceCase`, `WarrantyCoverage`, `DataQualityIssue`, `ImportBatch`, `ImportRow`, and `ImportIssue` models to `prisma/schema.prisma` and generate additive migration in `prisma/migrations/20261023040000_003_ops_import_pack/migration.sql`
-- [ ] T050 [BE] [US10] Implement `ServiceCase` post-sale service (`FR-320`), `DataQualityIssue` diagnostic scanner, and quarantined `ImportBatch` staging service (`FR-327`) with typed inputs/outputs via Prisma ORM in `lib/packs/operations/importAndQualityService.ts`
-- [ ] T051 [BE] [US10] Implement read-only `Agent Read Pack` projection adapter (`CatalogSearchView`, `AvailabilityView`, `OrderSummaryView`, `OperatorActionView`, `FR-326`) with zero mutation tools (`INV-008`, `INV-010`) in `lib/packs/agentRead/mcpReadAdapter.ts`
-- [ ] T052 [SEC] [US10] Write automated privacy and staging tests verifying `ImportBatch` quarantine isolation and `0` bytes of raw PII or write tools on `Agent Read Pack` in `tests/unit/agent-read-and-import.test.ts`
+- [X] T049 [DB] [US10] Add `ServiceCase`, `WarrantyCoverage`, `DataQualityIssue`, `ImportBatch`, `ImportRow`, and `ImportIssue` models to `prisma/schema.prisma` and generate additive migration in `prisma/migrations/20261023040000_003_ops_import_pack/migration.sql`
+- [X] T050 [BE] [US10] Implement `ServiceCase` post-sale service (`FR-320`), `DataQualityIssue` diagnostic scanner, and quarantined `ImportBatch` staging service (`FR-327`) with typed inputs/outputs via Prisma ORM in `lib/packs/operations/importAndQualityService.ts`
+- [X] T051 [BE] [US10] Implement read-only `Agent Read Pack` projection adapter (`CatalogSearchView`, `AvailabilityView`, `OrderSummaryView`, `OperatorActionView`, `FR-326`) with zero mutation tools (`INV-008`, `INV-010`) in `lib/packs/agentRead/mcpReadAdapter.ts`
+- [X] T052 [SEC] [US10] Write automated privacy and staging tests verifying `ImportBatch` quarantine isolation and `0` bytes of raw PII or write tools on `Agent Read Pack` in `tests/unit/agent-read-and-import.test.ts`
 
 ---
 
@@ -220,16 +220,16 @@ Do not publish the Sprint B offer or start first-release implementation tasks `T
 
 **Independent Test**: Publish a product, reserve and sell available stock, reject an order that exceeds stock, and verify inventory movements provide an auditable balance.
 
-- [ ] T063 [DB] [US1] Add `Offering`, `OfferingVariant`, `ServicePolicy`, `BundleComponent`, `InventoryBalance`, `InventoryMovement`, `OrderLine`, `PaymentPlan`, `PaymentMilestone`, `PaymentAllocation`, `FulfillmentPlan`, `FulfillmentSegment`, and `CompletionEvidence` models with additive migrations and explicit per-item currency (`FR-302`, `FR-308`, `INV-003`) in `prisma/schema.prisma` and `prisma/migrations/20261022050000_003_goods_and_commerce_pack/migration.sql`
-- [ ] T064 [BE] [US1] Implement the transactional `InventoryMovement` ledger and stock availability checks for product orders (`FR-302`, `FR-308`) in `lib/packs/operations/inventoryService.ts`
-- [ ] T065 [BE] [US1] Implement product catalog and inventory management endpoints with role checks and input validation in `app/api/admin/items/route.ts` and `app/api/catalog/route.ts`
-- [ ] T066 [FE] [US1] Add product listing, product detail, cart, and checkout screens behind the Goods Pack configuration in `components/catalog/ItemCard.tsx` and `components/catalog/CartDrawer.tsx`
-- [ ] T067 [SEC] [US1] Verify stock concurrency, immutable inventory history, configured currency handling, and role boundaries in `tests/unit/goods-inventory-pack.test.ts`
+- [X] T063 [DB] [US1] Add `Offering`, `OfferingVariant`, `ServicePolicy`, `BundleComponent`, `InventoryBalance`, `InventoryMovement`, `OrderLine`, `PaymentPlan`, `PaymentMilestone`, `PaymentAllocation`, `FulfillmentPlan`, `FulfillmentSegment`, and `CompletionEvidence` models with additive migrations and explicit per-item currency (`FR-302`, `FR-308`, `INV-003`) in `prisma/schema.prisma` and `prisma/migrations/20261022050000_003_goods_and_commerce_pack/migration.sql`
+- [X] T064 [BE] [US1] Implement the transactional `InventoryMovement` ledger and stock availability checks for product orders (`FR-302`, `FR-308`) in `lib/packs/operations/inventoryService.ts`
+- [X] T065 [BE] [US1] Implement product catalog and inventory management endpoints with role checks and input validation in `app/api/admin/items/route.ts` and `app/api/catalog/route.ts`
+- [X] T066 [FE] [US1] Add product listing, product detail, cart, and checkout screens behind the Goods Pack configuration in `components/catalog/ItemCard.tsx` and `components/catalog/CartDrawer.tsx`
+- [X] T067 [SEC] [US1] Verify stock concurrency, immutable inventory history, configured currency handling, and role boundaries in `tests/unit/goods-inventory-pack.test.ts`
 
 ## Cross-Release Gates
 
 - [X] T068 [OPS] Instrument PII-safe structured logs, OpenTelemetry traces, and the page/availability/booking/session/memory metrics from `plan.md`; verify exported data contains no customer PII, service addresses, credentials, or cancellation tokens, and verify that `AuditEvent.reason` text fields are PII-redacted before persistence in `lib/telemetry/logger.ts`
-- [ ] T069 [OPS] Before any commercial `003.2+` pack starts, record evidence from the initial live booking deployment(s) and the owner's decision that booking demand is validated in `docs/whitelabel-quickstart.md`; keep the optional Engineering AI Lab outside this commercial gate
+- [X] T069 [OPS] Before any commercial `003.2+` pack starts, record evidence from the initial live booking deployment(s) and the owner's decision that booking demand is validated in `docs/whitelabel-quickstart.md`; keep the optional Engineering AI Lab outside this commercial gate
 
 ---
 

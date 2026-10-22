@@ -435,6 +435,9 @@ model Order {
   items                      OrderItem[]
   reservation                SlotReservation?
   refundOperations           RefundOperation[]
+  orderLines                 OrderLine[]
+  paymentPlan                PaymentPlan?
+  fulfillmentPlan            FulfillmentPlan?
   paymentMethod              PaymentMethod?
   paymentRef                 String?
   createdAt                  DateTime            @default(now())
@@ -572,4 +575,328 @@ model TelegramRateState {
   updatedAt     DateTime  @updatedAt
 
   @@index([botProfile, chatId])
+}
+
+
+// -------------------------------------------------------------
+// Tier 2: Goods, Inventory & Commerce Models (003.2+ - T063)
+// -------------------------------------------------------------
+
+enum OfferingKind {
+  PRODUCT
+  SERVICE
+  BUNDLE
+  DIGITAL
+  CUSTOM_QUOTE
+}
+
+enum PriceMode {
+  FIXED
+  STARTING_FROM
+  QUOTE_REQUIRED
+}
+
+enum InventoryMovementKind {
+  INITIAL
+  RESERVE
+  COMMIT
+  RELEASE
+  ADJUSTMENT
+  RETURN
+  DAMAGE
+}
+
+enum PaymentPlanStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMilestoneKind {
+  DEPOSIT
+  MILESTONE
+  BALANCE
+  ON_SITE
+}
+
+enum PaymentMilestoneStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  WAIVED
+  REFUNDED
+}
+
+enum FulfillmentPlanStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  PARTIALLY_COMPLETED
+  CANCELLED
+  REQUIRES_ATTENTION
+}
+
+enum FulfillmentSegmentKind {
+  INVENTORY
+  APPOINTMENT
+  DIGITAL
+  DELIVERY
+  MANUAL_MILESTONE
+}
+
+enum FulfillmentSegmentStatus {
+  PENDING
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum OperatorActionSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum OperatorActionStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  DISMISSED
+}
+
+model Offering {
+  id            String            @id @default(uuid())
+  legacyItemId  String?           @unique
+  slug          String            @unique
+  kind          OfferingKind      @default(PRODUCT)
+  name          String
+  description   String?
+  active        Boolean           @default(true)
+  taxCategoryId String?
+  priceMode     PriceMode         @default(FIXED)
+  variants      OfferingVariant[]
+  servicePolicy ServicePolicy?
+  bundleItems   BundleComponent[] @relation("ParentBundle")
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([kind, active])
+}
+
+model OfferingVariant {
+  id                    String              @id @default(uuid())
+  offeringId            String
+  offering              Offering            @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  sku                   String              @unique
+  title                 String
+  attributesJson        Json                @default("{}")
+  unitAmountMinor       BigInt
+  currency              String
+  outCallPriceMinor     BigInt?
+  outCallTravelFeeMinor BigInt              @default(0)
+  starsPrice            Int?
+  active                Boolean             @default(true)
+  inventoryBalance      InventoryBalance?
+  inventoryMovements    InventoryMovement[]
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@index([offeringId, active])
+}
+
+model ServicePolicy {
+  id                      String   @id @default(uuid())
+  offeringId              String   @unique
+  offering                Offering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  durationMin             Int
+  bufferBeforeMin         Int      @default(0)
+  bufferAfterMin          Int      @default(0)
+  cancellationCutoffHours Int      @default(3)
+  inCallEnabled           Boolean  @default(true)
+  outCallEnabled          Boolean  @default(false)
+  outCallTravelBeforeMin  Int      @default(0)
+  outCallTravelAfterMin   Int      @default(0)
+}
+
+model BundleComponent {
+  id               String   @id @default(uuid())
+  bundleOfferingId String
+  bundleOffering   Offering @relation("ParentBundle", fields: [bundleOfferingId], references: [id], onDelete: Cascade)
+  childOfferingId  String
+  childVariantId   String?
+  quantity         Decimal  @default(1)
+}
+
+model InventoryBalance {
+  variantId String          @id
+  variant   OfferingVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  onHand    Int             @default(0)
+  reserved  Int             @default(0)
+  available Int             @default(0)
+  updatedAt DateTime        @updatedAt
+}
+
+model InventoryMovement {
+  id             String                @id @default(uuid())
+  variantId      String
+  variant        OfferingVariant       @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  orderId        String?
+  kind           InventoryMovementKind
+  quantityDelta  Int
+  reason         String?
+  markingCode    String?
+  actorStaffId   String?
+  idempotencyKey String                @unique
+  createdAt      DateTime              @default(now())
+
+  @@index([variantId, createdAt])
+  @@index([orderId])
+}
+
+model OrderLine {
+  id                   String       @id @default(uuid())
+  orderId              String
+  order                Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  legacyOrderItemId    String?      @unique
+  offeringId           String?
+  variantId            String?
+  offeringKindSnapshot OfferingKind @default(PRODUCT)
+  offeringNameSnapshot String
+  variantNameSnapshot  String?
+  quantity             Decimal      @default(1)
+  unitAmountMinor      BigInt
+  currency             String
+  discountMinor        BigInt       @default(0)
+  netAmountMinor       BigInt
+  taxAmountMinor       BigInt       @default(0)
+  grossAmountMinor     BigInt
+  taxCategoryCode      String?
+  taxRateSnapshot      Decimal?
+  taxProviderReference String?
+  durationMinSnapshot  Int?
+  createdAt            DateTime     @default(now())
+
+  @@index([orderId])
+}
+
+model PaymentPlan {
+  id               String             @id @default(uuid())
+  orderId          String             @unique
+  order            Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  currency         String
+  totalAmountMinor BigInt
+  paidAmountMinor  BigInt             @default(0)
+  status           PaymentPlanStatus  @default(PENDING)
+  milestones       PaymentMilestone[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+model PaymentMilestone {
+  id              String                 @id @default(uuid())
+  paymentPlanId   String
+  paymentPlan     PaymentPlan            @relation(fields: [paymentPlanId], references: [id], onDelete: Cascade)
+  sequence        Int                    @default(1)
+  kind            PaymentMilestoneKind
+  title           String
+  amountMinor     BigInt
+  paidAmountMinor BigInt                 @default(0)
+  dueAt           DateTime?
+  status          PaymentMilestoneStatus @default(PENDING)
+  allocations     PaymentAllocation[]
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@index([paymentPlanId, sequence])
+}
+
+model PaymentAllocation {
+  id                String           @id @default(uuid())
+  milestoneId       String
+  milestone         PaymentMilestone @relation(fields: [milestoneId], references: [id], onDelete: Restrict)
+  paymentEventId    String?
+  refundOperationId String?
+  allocatedMinor    BigInt
+  currency          String
+  createdAt         DateTime         @default(now())
+
+  @@index([milestoneId])
+  @@index([paymentEventId])
+  @@index([refundOperationId])
+}
+
+model FulfillmentPlan {
+  id        String                @id @default(uuid())
+  orderId   String                @unique
+  order     Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    FulfillmentPlanStatus @default(PENDING)
+  segments  FulfillmentSegment[]
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+}
+
+model FulfillmentSegment {
+  id                  String                   @id @default(uuid())
+  fulfillmentPlanId   String
+  fulfillmentPlan     FulfillmentPlan          @relation(fields: [fulfillmentPlanId], references: [id], onDelete: Cascade)
+  orderLineId         String?
+  kind                FulfillmentSegmentKind
+  providerMode        String                   @default("SERVICE_ON_SITE")
+  status              FulfillmentSegmentStatus @default(PENDING)
+  assignedStaffId     String?
+  reservationId       String?
+  inventoryMovementId String?
+  scheduledStartAt    DateTime?
+  scheduledEndAt      DateTime?
+  completedAt         DateTime?
+  evidence            CompletionEvidence[]
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  @@index([fulfillmentPlanId])
+  @@index([assignedStaffId, status])
+}
+
+model CompletionEvidence {
+  id                   String             @id @default(uuid())
+  fulfillmentSegmentId String
+  fulfillmentSegment   FulfillmentSegment @relation(fields: [fulfillmentSegmentId], references: [id], onDelete: Cascade)
+  performerStaffId     String
+  notes                String?
+  serialNumber         String?
+  mediaUrlsJson        Json               @default("[]")
+  checklistJson        Json               @default("{}")
+  customerConfirmedAt  DateTime?
+  createdAt            DateTime           @default(now())
+
+  @@index([fulfillmentSegmentId])
+}
+
+model OperatorAction {
+  id                    String                 @id @default(uuid())
+  dedupeKey             String                 @unique
+  reason                String
+  severity              OperatorActionSeverity @default(HIGH)
+  status                OperatorActionStatus   @default(OPEN)
+  affectedAggregateType String
+  affectedAggregateId   String
+  recommendedNextAction String
+  availableSafeActions  Json                   @default("[]")
+  ownerStaffId          String?
+  dueAt                 DateTime?
+  resolution            String?
+  resolvedByStaffId     String?
+  resolvedByRole        StaffRole?
+  resolvedAt            DateTime?
+  auditHistory          Json                   @default("[]")
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@index([status, severity, dueAt])
+  @@index([affectedAggregateType, affectedAggregateId])
 }
