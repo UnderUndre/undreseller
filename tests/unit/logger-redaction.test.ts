@@ -52,4 +52,24 @@ describe('logger redaction and denylist', () => {
     expect(logSpy.mock.calls[1][0]).toContain('[COUNTER] name=hold_expired');
     expect(logSpy.mock.calls[2][0]).toContain('[COUNTER] name=webhook_rejected');
   });
+
+  it("strictly redacts service addresses, cancellation tokens, and initial passwords (T060, INV-010)", () => {
+    logger.info("booking_event", {
+      serviceAddress: "123 Private Blvd, Apt 4B",
+      serviceAddressSnapshot: "456 Secret Way",
+      cancellationToken: "secret_32_byte_token_val",
+      initialPassword: "temporaryStaffPassword99!",
+      safeBookingId: "book-uuid-999",
+    });
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const output = logSpy.mock.calls[0][0];
+
+    expect(output).not.toContain("123 Private Blvd");
+    expect(output).not.toContain("456 Secret Way");
+    expect(output).not.toContain("secret_32_byte_token_val");
+    expect(output).not.toContain("temporaryStaffPassword99!");
+    expect(output).toContain("book-uuid-999");
+  });
+
 });

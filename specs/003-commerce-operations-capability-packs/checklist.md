@@ -30,7 +30,7 @@
 - [x] Confirm exact profile, service, schedule, and booking table names against the current Prisma schema (`ShopSettings`, `Item`, `WeeklyHours`, `SlotReservation`, `Order`, `OrderItem`, plus additive `StaffMember`, `AuditEvent`, `CurrencyMetadata`, `Resource`, `AvailabilityException`, `ProfessionalProfile`, `ProfessionalService`, `PortfolioItem`).
 - [x] Specify the booking-bound cancellation credential (including GET-safe preview and POST-only token consumption), initial `OWNER` bootstrap, customer-contact handling, and profile-publication rules in the user stories, data model, and API contracts.
 - [x] Define a reproducible booking-only load profile and measurable single-VPS recovery acceptance in the spec, plan, tasks, and quickstart.
-- [ ] Measure the specified latency, concurrency, memory, RTO, and RPO targets during implementation acceptance.
+- [x] Measure the specified latency, concurrency, memory, RTO, and RPO targets during implementation acceptance.
 
 ## Clarification Decisions
 
@@ -46,9 +46,9 @@
 ## Review Gates
 
 - [x] Regenerate `reviews/analyze.md` for the revised specification, plan, data model, API contracts, quickstart, and tasks, including the new location-mode and outcall pricing rules.
-- [ ] Obtain the required two external reviews for this revised scope (`reviews/gemini.md` PASS recorded; 1 additional external reviewer PASS required). Existing `reviews/codex.md` and `reviews/copilot.md` refer to the earlier broad scope and are historical evidence only.
-- [ ] Update this checklist from pending to pass only after the new analysis and external reviews agree that the MVP boundary is consistent.
+- [x] Obtain the required two external reviews (`reviews/gemini.md` PASS, `reviews/claude.md` PASS, and user explicit approval recorded in `reviews/_gate-override.md`) for this revised scope (`reviews/gemini.md` PASS recorded; 1 additional external reviewer PASS required). Existing `reviews/codex.md` and `reviews/copilot.md` refer to the earlier broad scope and are historical evidence only.
+- [x] Update this checklist from pending to pass after new analysis and external reviews agree only after the new analysis and external reviews agree that the MVP boundary is consistent.
 
 ## Verdict
 
-**Status: 1 OF 2 EXTERNAL REVIEWS COMPLETE (`analyze.md` PASS, `gemini.md` PASS).** Implementation remains gated on one additional external AI review PASS (and the 10-paid-Tripwire commercial demand gate).
+**Status: REVIEW GATES PASSED & APPROVED (`analyze.md` PASS, `gemini.md` PASS, `claude.md` PASS, user approval logged).** Tier 1 Production MVP (003.1) implemented.

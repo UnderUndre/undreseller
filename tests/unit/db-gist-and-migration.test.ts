@@ -171,4 +171,51 @@ describe('PostgreSQL GiST Exclusion, 4-Stage Expand/Contract & Restored-v1 Backf
     expect(failRes.attempts).toBe(5);
     expect(failRes.maintenanceFallbackTriggered).toBe(true);
   });
+
+  it("enforces 003.1 additive migrations (20261022000000 and 20261022010000) with bounded timeouts and reversible down.sql (T012, NFR-305)", () => {
+    const stage003a = fs.readFileSync(
+      path.join(migrationsRoot, "20261022000000_003_booking_template", "migration.sql"),
+      "utf-8"
+    );
+    const stage003aDown = fs.readFileSync(
+      path.join(migrationsRoot, "20261022000000_003_booking_template", "down.sql"),
+      "utf-8"
+    );
+
+    const stage003b = fs.readFileSync(
+      path.join(migrationsRoot, "20261022010000_003_service_locations", "migration.sql"),
+      "utf-8"
+    );
+    const stage003bDown = fs.readFileSync(
+      path.join(migrationsRoot, "20261022010000_003_service_locations", "down.sql"),
+      "utf-8"
+    );
+
+    // Timeout guards
+    expect(stage003a).toContain("SET statement_timeout = '5s'");
+    expect(stage003a).toContain("SET lock_timeout = '2s'");
+    expect(stage003b).toContain("SET statement_timeout = '5s'");
+    expect(stage003b).toContain("SET lock_timeout = '2s'");
+
+    // Additive tables
+    expect(stage003a).toContain("CREATE TABLE "StaffMember"");
+    expect(stage003a).toContain("CREATE TABLE "AuditEvent"");
+    expect(stage003a).toContain("CREATE TABLE "CurrencyMetadata"");
+    expect(stage003a).toContain("CREATE TABLE "ProfessionalProfile"");
+    expect(stage003a).toContain("CREATE TABLE "Resource"");
+
+    // Additive fields on SlotReservation
+    expect(stage003a).toContain("cancellationTokenHash");
+    expect(stage003b).toContain("fulfillmentMode");
+    expect(stage003b).toContain("serviceAddressSnapshot");
+    expect(stage003b).toContain("appointmentStartTime");
+
+    // Down migrations safely drop only new entities
+    expect(stage003aDown).toContain("DROP TABLE IF EXISTS "StaffMember"");
+    expect(stage003bDown).toContain("DROP TYPE IF EXISTS "ServiceFulfillmentMode"");
+    expect(stage003aDown).not.toContain("DROP TABLE "Order"");
+    expect(stage003aDown).not.toContain("DROP TABLE "Item"");
+    expect(stage003aDown).not.toContain("DROP TABLE "SlotReservation"");
+  });
+
 });

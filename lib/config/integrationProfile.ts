@@ -175,3 +175,51 @@ export function assertIntegrationProfileStartup(
   }
   return result;
 }
+
+// -------------------------------------------------------------
+// Typed Build-Time Capability-Pack Configuration Contract (T007, FR-325)
+// Zero runtime dynamic plugin registry; statically typed capabilities
+// -------------------------------------------------------------
+
+export interface CapabilityPackConfig {
+  version: '003.1';
+  tier: 'TIER_1_MVP';
+  packs: {
+    publicProfiles: boolean;     // US12: Public professional pages & portfolios
+    serviceBooking: boolean;     // US2: Appointment booking with buffers & location modes
+    staffAccess: boolean;        // US5: Better Auth & 3-role staff access control
+    // Tier 2 & Subsequent Packs (Disabled in 003.1 Booking-First MVP)
+    productSales: boolean;       // US1: Phase 15 product sales & inventory
+    mixedCartFulfillment: boolean;// US3: Phase 5 mixed carts & segmented fulfillment
+    paymentPlans: boolean;       // US4: Phase 6 deposit & milestone payment plans
+    quotes: boolean;             // US6: Phase 8 custom quotes & margin guard
+    partyTimeline: boolean;      // US7: Phase 9 unified party timeline & conversation drafts
+    changeRequests: boolean;     // US8: Phase 10 order change requests & credit notes
+    complianceAdapters: boolean; // US9: Phase 11 jurisdiction compliance SPI
+    redactedReadModels: boolean; // US10: Phase 12 redacted read models & staged imports
+    aiLab: boolean;              // US11: Phase 13 local LLM gateway & telemetry
+  };
+}
+
+export const CAPABILITY_PACKS_CONFIG: CapabilityPackConfig = {
+  version: '003.1',
+  tier: 'TIER_1_MVP',
+  packs: {
+    publicProfiles: true,
+    serviceBooking: true,
+    staffAccess: true,
+    productSales: false,
+    mixedCartFulfillment: false,
+    paymentPlans: false,
+    quotes: false,
+    partyTimeline: false,
+    changeRequests: false,
+    complianceAdapters: false,
+    redactedReadModels: false,
+    aiLab: false,
+  },
+};
+
+export function getCapabilityPackConfig(): CapabilityPackConfig {
+  return CAPABILITY_PACKS_CONFIG;
+}

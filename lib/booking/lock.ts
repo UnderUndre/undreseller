@@ -599,3 +599,62 @@ export async function createSlotHoldLock(params: CreateHoldParams): Promise<Hold
   delete (result as any)._validatedCart;
   return result;
 }
+
+// -------------------------------------------------------------
+// Customer Contact Validation & Retention Behavior (T009, FR-304)
+// Reuses existing Order booking customer fields without cross-channel Party
+// -------------------------------------------------------------
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const E164_STRICT_REGEX = /^\+[1-9]\d{1,14}$/;
+
+export interface CustomerContactValidationResult {
+  valid: boolean;
+  type?: 'PHONE' | 'EMAIL';
+  normalized?: string;
+  error?: string;
+}
+
+/**
+ * Validates and normalizes customer contact details (E.164 phone or email).
+ * Strictly strips/rejects HTML tags (INV-010).
+ */
+export function validateCustomerContact(contact: string | null | undefined): CustomerContactValidationResult {
+  if (!contact || typeof contact !== 'string') {
+    return { valid: false, error: 'Customer contact cannot be empty' };
+  }
+
+  const trimmed = contact.trim();
+  if (/<[^>]+>/.test(trimmed)) {
+    return { valid: false, error: 'HTML tags are strictly prohibited in contact info' };
+  }
+
+  // Check email
+  if (EMAIL_REGEX.test(trimmed)) {
+    if (trimmed.length > 160) {
+      return { valid: false, error: 'Email address exceeds maximum length of 160 characters' };
+    }
+    return { valid: true, type: 'EMAIL', normalized: trimmed.toLowerCase() };
+  }
+
+  // Check and normalize phone
+  const normalizedPhone = normalizePhoneE164(trimmed);
+  if (normalizedPhone && E164_STRICT_REGEX.test(normalizedPhone)) {
+    return { valid: true, type: 'PHONE', normalized: normalizedPhone };
+  }
+
+  return {
+    valid: false,
+    error: 'Contact must be a valid E.164 phone number (e.g. +37499123456) or email address',
+  };
+}
+
+/**
+ * Calculates customer contact data retention expiry date.
+ * Default retention is 365 days past the appointment date unless configured otherwise.
+ */
+export function calculateCustomerRetentionExpiry(appointmentDate: Date, retentionDays = 365): Date {
+  const expiry = new Date(appointmentDate.getTime());
+  expiry.setDate(expiry.getDate() + retentionDays);
+  return expiry;
+}

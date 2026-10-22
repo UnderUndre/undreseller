@@ -1,46 +1,90 @@
+/**
+ * Timezone- & Buffer-Aware Appointment Availability (T018)
+ * Requirements: FR-307, FR-309, FR-338, INV-004
+ * Standards: NIST SP 800-218 SSDF & ISO/IEC/IEEE 12207:2017
+ */
+
 import { prisma } from '@/lib/db/prisma';
 import { shopConfig } from '@/config/shop.config';
-import { validateAndBuildServiceCart, AuthoritativeServiceItem } from './cart';
 
 export interface AvailableSlot {
-  startTime: string; // ISO string
-  endTime: string;   // ISO string
-  totalDurationMin?: number;
-  resourceId?: string;
+  startsAt: string;          // ISO string (appointment start)
+  endsAt: string;            // ISO string (appointment end = startsAt + durationMin)
+  occupiedStartsAt: string;  // ISO string (startsAt - effectiveBufferBeforeMin)
+  occupiedEndsAt: string;    // ISO string (endsAt + effectiveBufferAfterMin)
+  durationMin: number;
+  resourceId: string;
 }
 
-export interface ContiguousWindowInput {
-  dateStr: string;
-  totalDurationMin: number;
+export interface AvailabilityWindowParams {
+  dateStr: string;           // YYYY-MM-DD
+  durationMin: number;
+  fulfillmentMode: 'IN_CALL' | 'OUT_CALL';
+  bufferBeforeMin?: number;
+  bufferAfterMin?: number;
+  outCallTravelBeforeMin?: number;
+  outCallTravelAfterMin?: number;
   slotGridStepMin?: number;
   minNoticeMin?: number;
-  now?: Date;
+  timeZone?: string;
   resourceId?: string;
-  workingHours: {
-    startMin: number;
-    endMin: number;
-    breakStartMin: number | null;
-    breakEndMin: number | null;
-  };
-  existingReservations: Array<{
-    startTime: Date;
-    endTime: Date;
-  }>;
+  now?: Date;
 }
 
-export function computeContiguousAvailableSlots(input: ContiguousWindowInput): AvailableSlot[] {
+/**
+ * Calculates effective buffers based on fulfillment mode (FR-309, FR-338).
+ */
+export function calculateEffectiveBuffers(params: {
+  fulfillmentMode: 'IN_CALL' | 'OUT_CALL';
+  bufferBeforeMin?: number;
+  bufferAfterMin?: number;
+  outCallTravelBeforeMin?: number;
+  outCallTravelAfterMin?: number;
+}): { effectiveBufferBeforeMin: number; effectiveBufferAfterMin: number } {
+  const baseBefore = Math.max(0, params.bufferBeforeMin || 0);
+  const baseAfter = Math.max(0, params.bufferAfterMin || 0);
+
+  if (params.fulfillmentMode === 'OUT_CALL') {
+    const travelBefore = Math.max(0, params.outCallTravelBeforeMin || 0);
+    const travelAfter = Math.max(0, params.outCallTravelAfterMin || 0);
+    return {
+      effectiveBufferBeforeMin: baseBefore + travelBefore,
+      effectiveBufferAfterMin: baseAfter + travelAfter,
+    };
+  }
+
+  return {
+    effectiveBufferBeforeMin: baseBefore,
+    effectiveBufferAfterMin: baseAfter,
+  };
+}
+
+/**
+ * Computes available slots for a resource, taking into account:
+ * - Resource weekly hours & availability exceptions (days off / hours overrides)
+ * - Service duration & effective buffers (mode-dependent)
+ * - Existing BOOKED or active HELD (holdExpiresAt is null or in the future)
+ * - GiST exclusion constraint alignment (buffer window)
+ */
+export async function computeAvailableSlots(
+  params: AvailabilityWindowParams
+): Promise<AvailableSlot[]> {
   const {
     dateStr,
-    totalDurationMin,
+    durationMin,
+    fulfillmentMode,
+    bufferBeforeMin = 0,
+    bufferAfterMin = 0,
+    outCallTravelBeforeMin = 0,
+    outCallTravelAfterMin = 0,
     slotGridStepMin = 30,
-    minNoticeMin = shopConfig.minNoticeMin,
-    now = new Date(),
+    minNoticeMin = 60,
+    timeZone = 'UTC',
     resourceId = 'default_master',
-    workingHours,
-    existingReservations,
-  } = input;
+    now = new Date(),
+  } = params;
 
-  if (totalDurationMin <= 0 || totalDurationMin > 480 || slotGridStepMin <= 0) {
+  if (durationMin <= 0 || durationMin > 480) {
     return [];
   }
 
@@ -49,145 +93,67 @@ export function computeContiguousAvailableSlots(input: ContiguousWindowInput): A
     return [];
   }
 
-  const minNoticeTimeMs = now.getTime() + minNoticeMin * 60 * 1000;
-  const reservationRanges = existingReservations.map((r) => ({
-    startMs: r.startTime.getTime(),
-    endMs: r.endTime.getTime(),
-  }));
-
-  const available: AvailableSlot[] = [];
-  const baseDayUtcMs = Date.UTC(year, month - 1, day, 0, 0, 0, 0);
-
-  for (
-    let startMin = workingHours.startMin;
-    startMin + totalDurationMin <= workingHours.endMin;
-    startMin += slotGridStepMin
-  ) {
-    const endMin = startMin + totalDurationMin;
-
-    // 1. Check break overlap
-    if (workingHours.breakStartMin !== null && workingHours.breakEndMin !== null) {
-      const overlapsBreak =
-        Math.max(startMin, workingHours.breakStartMin) < Math.min(endMin, workingHours.breakEndMin);
-      if (overlapsBreak) {
-        continue;
-      }
-    }
-
-    const slotStartMs = baseDayUtcMs + startMin * 60 * 1000;
-    const slotEndMs = baseDayUtcMs + endMin * 60 * 1000;
-
-    // 2. Check minimum notice window
-    if (slotStartMs < minNoticeTimeMs) {
-      continue;
-    }
-
-    // 3. Check overlap with any existing HELD/BOOKED reservation on the resource
-    let hasConflict = false;
-    for (let i = 0; i < reservationRanges.length; i++) {
-      const res = reservationRanges[i];
-      if (Math.max(slotStartMs, res.startMs) < Math.min(slotEndMs, res.endMs)) {
-        hasConflict = true;
-        break;
-      }
-    }
-
-    if (!hasConflict) {
-      available.push({
-        startTime: new Date(slotStartMs).toISOString(),
-        endTime: new Date(slotEndMs).toISOString(),
-        totalDurationMin,
-        resourceId,
-      });
-    }
-  }
-
-  return available;
-}
-
-export async function getAvailableSlots(
-  itemIdsInput: string | string[],
-  dateStr: string,
-  options?: {
-    resourceId?: string;
-    slotGridStepMin?: number;
-    now?: Date;
-  }
-): Promise<AvailableSlot[]> {
-  const itemIds = Array.isArray(itemIdsInput)
-    ? itemIdsInput
-    : String(itemIdsInput)
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-  if (itemIds.length === 0) {
-    return [];
-  }
-
-  const [year, month, day] = dateStr.split('-').map(Number);
-  if (!year || !month || !day) {
-    return [];
-  }
-
-  const items = await prisma.item.findMany({
-    where: { id: { in: itemIds } },
-    select: {
-      id: true,
-      title: true,
-      priceMinor: true,
-      starsPrice: true,
-      currency: true,
-      itemType: true,
-      durationMin: true,
-      isActive: true,
-    },
+  const { effectiveBufferBeforeMin, effectiveBufferAfterMin } = calculateEffectiveBuffers({
+    fulfillmentMode,
+    bufferBeforeMin,
+    bufferAfterMin,
+    outCallTravelBeforeMin,
+    outCallTravelAfterMin,
   });
 
-  let validatedCart;
-  try {
-    validatedCart = validateAndBuildServiceCart(itemIds, items as AuthoritativeServiceItem[]);
-  } catch {
-    return [];
-  }
-
-  const targetDate = new Date(Date.UTC(year, month - 1, day));
-  const jsDay = targetDate.getUTCDay();
-  const isoWeekday = jsDay === 0 ? 7 : jsDay;
-  const resourceId = options?.resourceId || 'default_master';
-
-  // Fetch working hours (prefer item-specific for primary service, fallback to global)
-  const hours = await prisma.weeklyHours.findFirst({
+  // 1. Check for day-off or schedule override in AvailabilityException
+  const exception = await prisma.availabilityException.findUnique({
     where: {
-      OR: [
-        { itemId: { in: validatedCart.itemIds }, weekday: isoWeekday },
-        { itemId: null, weekday: isoWeekday },
-      ],
+      resourceId_date: {
+        resourceId,
+        date: dateStr,
+      },
     },
-    orderBy: { itemId: 'desc' },
   });
 
-  if (!hours) {
-    return [];
+  if (exception?.isClosed) {
+    return []; // Resource is closed on this date
   }
 
-  let slotGridStepMin = options?.slotGridStepMin;
-  if (!slotGridStepMin) {
-    const settings = await prisma.shopSettings.findUnique({
-      where: { id: 1 },
-      select: { slotGridStepMin: true },
+  // 2. Resolve working hours
+  const targetDateUtc = new Date(Date.UTC(year, month - 1, day));
+  const jsDay = targetDateUtc.getUTCDay();
+  const isoWeekday = jsDay === 0 ? 7 : jsDay;
+
+  let startMin: number;
+  let endMin: number;
+  let breakStartMin: number | null = null;
+  let breakEndMin: number | null = null;
+
+  if (exception && exception.startMin != null && exception.endMin != null) {
+    startMin = exception.startMin;
+    endMin = exception.endMin;
+  } else {
+    const weeklyHour = await prisma.weeklyHours.findFirst({
+      where: {
+        resourceId,
+        weekday: isoWeekday,
+      },
     });
-    slotGridStepMin = settings?.slotGridStepMin || 30;
+
+    if (!weeklyHour) {
+      return []; // No working hours configured for this weekday
+    }
+
+    startMin = weeklyHour.startMin;
+    endMin = weeklyHour.endMin;
+    breakStartMin = weeklyHour.breakStartMin;
+    breakEndMin = weeklyHour.breakEndMin;
   }
 
-  const now = options?.now || new Date();
+  // 3. Query existing overlapping reservations on this resource
+  // HELD reservations are active if holdExpiresAt is NULL (pending outcall) or > now
   const dayStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
   const dayEnd = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
 
-  // Query active reservations by resourceId (plus legacy itemId fallback during Expand/Cutover)
   const existingReservations = await prisma.slotReservation.findMany({
     where: {
-      OR: [{ resourceId }, { itemId: { in: validatedCart.itemIds } }],
+      resourceId,
       startTime: { lt: dayEnd },
       endTime: { gt: dayStart },
       AND: [
@@ -196,7 +162,7 @@ export async function getAvailableSlots(
             { status: 'BOOKED' },
             {
               status: 'HELD',
-              holdExpiresAt: { gt: now },
+              OR: [{ holdExpiresAt: null }, { holdExpiresAt: { gt: now } }],
             },
           ],
         },
@@ -208,18 +174,59 @@ export async function getAvailableSlots(
     },
   });
 
-  return computeContiguousAvailableSlots({
-    dateStr,
-    totalDurationMin: validatedCart.totalDurationMin,
-    slotGridStepMin,
-    now,
-    resourceId,
-    workingHours: {
-      startMin: hours.startMin,
-      endMin: hours.endMin,
-      breakStartMin: hours.breakStartMin,
-      breakEndMin: hours.breakEndMin,
-    },
-    existingReservations,
-  });
+  const reservationIntervals = existingReservations.map((r) => ({
+    startMs: r.startTime.getTime(),
+    endMs: r.endTime.getTime(),
+  }));
+
+  const minNoticeTimeMs = now.getTime() + minNoticeMin * 60 * 1000;
+  const baseDayUtcMs = Date.UTC(year, month - 1, day, 0, 0, 0, 0);
+
+  const slots: AvailableSlot[] = [];
+
+  for (let sMin = startMin; sMin + durationMin <= endMin; sMin += slotGridStepMin) {
+    const eMin = sMin + durationMin;
+
+    // Check break window
+    if (breakStartMin !== null && breakEndMin !== null) {
+      const overlapsBreak = Math.max(sMin, breakStartMin) < Math.min(eMin, breakEndMin);
+      if (overlapsBreak) {
+        continue;
+      }
+    }
+
+    const apptStartMs = baseDayUtcMs + sMin * 60 * 1000;
+    const apptEndMs = baseDayUtcMs + eMin * 60 * 1000;
+
+    // Minimum notice check
+    if (apptStartMs < minNoticeTimeMs) {
+      continue;
+    }
+
+    // Full occupied window including buffers
+    const occupiedStartMs = apptStartMs - effectiveBufferBeforeMin * 60 * 1000;
+    const occupiedEndMs = apptEndMs + effectiveBufferAfterMin * 60 * 1000;
+
+    // Conflict check against occupied buffered windows of existing reservations
+    let conflict = false;
+    for (const r of reservationIntervals) {
+      if (Math.max(occupiedStartMs, r.startMs) < Math.min(occupiedEndMs, r.endMs)) {
+        conflict = true;
+        break;
+      }
+    }
+
+    if (!conflict) {
+      slots.push({
+        startsAt: new Date(apptStartMs).toISOString(),
+        endsAt: new Date(apptEndMs).toISOString(),
+        occupiedStartsAt: new Date(occupiedStartMs).toISOString(),
+        occupiedEndsAt: new Date(occupiedEndMs).toISOString(),
+        durationMin,
+        resourceId,
+      });
+    }
+  }
+
+  return slots;
 }

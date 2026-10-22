@@ -155,3 +155,27 @@ The founder conducts a strict 60-minute live handover call before escrow release
 - **Offer**: Sprint B (HERO) — 14 Calendar Days / $4,900 flat fee.
 - **Demand Gate**: The bureau operates under a strict Demand Gate requiring **10 closed Tripwire sales ($350–$490)** before opening new Sprint B client slots.
 - **Retainer**: Post-delivery 7-day bugfix SLA (P1/P2 only), followed by an optional $500–$650/month maintenance retainer.
+
+---
+
+## 9. Client Configuration Inputs & Supply-Chain Gate (003.1 Booking-First Template)
+
+### 9.1. Client-Supplied Business Settings
+Every new client installation is initialized with sovereign defaults in `config/shop.config.ts` and can be customized via the owner admin endpoint (`PUT /api/admin/settings`):
+- **Business Identity**: `businessName`, `businessDescription`, `logoUrl`, and `publicContactLinks`.
+- **Locale & IANA Timezone**: `defaultLocale` (e.g., `"en"`), `timeZone` (e.g., `"Asia/Yerevan"` or `"UTC"`). Wall-clock appointment booking queries convert working hours from this timezone.
+- **Currency & Confirmation**: New installations initialize to `currency = "USD"` with `currencyConfirmed = false`. The client owner must explicitly confirm or update the business currency before public service prices become visible.
+- **Service Fulfillment Modes**: Configure whether services allow customer visits (`IN_CALL`), professional outcalls (`OUT_CALL`), or both. If `IN_CALL` is enabled, an owner-approved `businessServiceAddress` is required; `businessServiceAddressPublic` controls whether this address is published or only revealed to confirmed bookings.
+- **Outcall Coverage**: `outCallCoverageDescription` defines the coverage area. Outcall bookings default to pending staff approval (`HELD` status with `holdExpiresAt = null`) until confirmed by staff.
+
+### 9.2. Staff Authentication & Sessions
+- **Better Auth Integration**: Requires `BETTER_AUTH_SECRET` (random 32-byte string) and `BETTER_AUTH_URL` (host URL) configured in the host environment.
+- **Initial Owner Bootstrap**: Run `npx tsx scripts/bootstrap-owner.ts` with optional `BOOTSTRAP_OWNER_EMAIL`, `BOOTSTRAP_OWNER_PASSWORD`, and `BOOTSTRAP_OWNER_NAME`.
+
+### 9.3. Supply Chain & Zero Copyleft Compliance
+- All production code strictly follows the permissive license registry (`config/oss-reuse-registry.json`).
+- Verify supply-chain compliance prior to release using:
+  ```bash
+  node scripts/verify-licenses.mjs
+  ```
+- Any presence of copyleft (`AGPLv3`, `GPLv3`, `MSCL`, `ELv2`) fails the gate per NIST SP 800-218 SSDF.

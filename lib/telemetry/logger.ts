@@ -32,6 +32,15 @@ const DENYLIST_KEYS = new Set([
   'rawbody',
   'raw_body',
   'payload',
+  'serviceaddress',
+  'service_address',
+  'serviceaddresssnapshot',
+  'service_address_snapshot',
+  'cancellationtoken',
+  'cancellation_token',
+  'initialpassword',
+  'initial_password',
+  'betterauth',
 ]);
 
 function sanitizeValue(key: string, value: unknown): unknown {

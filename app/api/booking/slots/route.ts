@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAvailableSlots } from '@/lib/booking/windows';
+import { prisma } from '@/lib/db/prisma';
+import { computeAvailableSlots } from '@/lib/booking/windows';
 import { logger } from '@/lib/telemetry/logger';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(req.url);
-  const itemIdsParam = searchParams.get('itemIds') || searchParams.get('itemId');
+  const serviceId = searchParams.get('serviceId') || searchParams.get('itemId');
   const date = searchParams.get('date');
-  const resourceId = searchParams.get('resourceId') || 'default_master';
+  const modeParam = (searchParams.get('mode') || 'IN_CALL').toUpperCase();
+  const professionalId = searchParams.get('professionalId') || searchParams.get('resourceId');
 
-  if (!itemIdsParam || !date) {
+  if (!serviceId || !date) {
     return NextResponse.json(
-      { error: 'Missing required query parameters: itemIds (or itemId) and date (YYYY-MM-DD)' },
+      { error: 'Missing required query parameters: serviceId and date (YYYY-MM-DD)' },
       { status: 400 }
     );
   }
@@ -22,32 +24,63 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const itemIds = itemIdsParam
-    .split(',')
-    .map((id) => id.trim())
-    .filter(Boolean);
-
-  if (itemIds.length === 0 || itemIds.length > 10) {
-    return NextResponse.json(
-      { error: 'itemIds must contain between 1 and 10 service IDs' },
-      { status: 400 }
-    );
-  }
+  const fulfillmentMode = modeParam === 'OUT_CALL' ? 'OUT_CALL' : 'IN_CALL';
 
   try {
-    const slots = await getAvailableSlots(itemIds, date, { resourceId });
+    const [item, settings] = await Promise.all([
+      prisma.item.findFirst({
+        where: { id: serviceId, itemType: 'SERVICE', isActive: true },
+      }),
+      prisma.shopSettings.findUnique({ where: { id: 1 } }),
+    ]);
+
+    if (!item) {
+      return NextResponse.json({ error: 'Service not found or inactive' }, { status: 404 });
+    }
+
+    // Resolve resource
+    let resourceId = 'default_master';
+    if (professionalId) {
+      const profile = await prisma.professionalProfile.findFirst({
+        where: {
+          OR: [{ id: professionalId }, { slug: professionalId }],
+          isPublished: true,
+          staffMember: { active: true },
+        },
+        include: { staffMember: true },
+      });
+      if (profile?.staffMember?.resourceId) {
+        resourceId = profile.staffMember.resourceId;
+      }
+    }
+
+    const slots = await computeAvailableSlots({
+      dateStr: date,
+      durationMin: item.durationMin || 60,
+      fulfillmentMode,
+      bufferBeforeMin: item.bufferBeforeMin,
+      bufferAfterMin: item.bufferAfterMin,
+      outCallTravelBeforeMin: item.outCallTravelBeforeMin,
+      outCallTravelAfterMin: item.outCallTravelAfterMin,
+      slotGridStepMin: settings?.slotGridStepMin || 30,
+      timeZone: settings?.timeZone || 'UTC',
+      resourceId,
+    });
+
     return NextResponse.json(
       {
-        itemId: itemIds[0],
-        itemIds,
+        serviceId: item.id,
+        serviceTitle: item.title,
+        fulfillmentMode,
         resourceId,
         date,
+        timeZone: settings?.timeZone || 'UTC',
         slots,
       },
       { status: 200 }
     );
   } catch (err: unknown) {
-    logger.error('Failed to get booking slots', { error: String(err), itemIds, date, resourceId });
+    logger.error('Failed to get booking slots', { error: String(err), serviceId, date });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

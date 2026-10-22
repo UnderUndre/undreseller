@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OSS Attribution and License Compliance Registry",
+  "description": "Path-level permissive OSS attribution manifest and license gate (NIST SP 800-218 SSDF / ISO 12207)",
+  "policy": {
+    "allowedLicenses": [
+      "MIT",
+      "BSD-3-Clause",
+      "BSD-2-Clause",
+      "Apache-2.0",
+      "ISC",
+      "0BSD",
+      "CC0-1.0",
+      "Unlicense"
+    ],
+    "prohibitedCopyleftLicenses": [
+      "AGPL-3.0",
+      "AGPL-3.0-only",
+      "AGPL-3.0-or-later",
+      "GPL-3.0",
+      "GPL-3.0-only",
+      "GPL-3.0-or-later",
+      "GPL-2.0",
+      "GPL-2.0-only",
+      "GPL-2.0-or-later",
+      "LGPL-3.0",
+      "LGPL-2.1",
+      "MSCL",
+      "ELv2",
+      "SSPL-1.0",
+      "BSL-1.1"
+    ],
+    "cleanRoomDesignReferencesOnly": [
+      {
+        "name": "Directus",
+        "license": "MSCL",
+        "usage": "Design and architectural reference only. Zero direct source code reuse."
+      },
+      {
+        "name": "Twenty",
+        "license": "AGPL-3.0",
+        "usage": "Design and architectural reference only. Zero direct source code reuse."
+      },
+      {
+        "name": "Invoice Ninja",
+        "license": "ELv2",
+        "usage": "Design and architectural reference only. Zero direct source code reuse."
+      },
+      {
+        "name": "Dolibarr",
+        "license": "GPL-3.0",
+        "usage": "Design and architectural reference only. Zero direct source code reuse."
+      }
+    ]
+  },
+  "attributions": [
+    {
+      "component": "Medusa Core Architecture Patterns",
+      "license": "MIT",
+      "sourceRepo": "https://github.com/medusajs/medusa",
+      "adaptedFiles": [
+        "lib/kernel/serviceService.ts",
+        "lib/kernel/fulfillmentPlanService.ts"
+      ],
+      "complianceNote": "Permissive MIT license. Clean-room TypeScript implementation matching project requirements."
+    },
+    {
+      "component": "Spree Commerce Workflow Concepts",
+      "license": "BSD-3-Clause",
+      "sourceRepo": "https://github.com/spree/spree",
+      "adaptedFiles": [
+        "lib/kernel/paymentPlanService.ts"
+      ],
+      "complianceNote": "Permissive BSD-3-Clause license. Pattern reference only."
+    },
+    {
+      "component": "Apache OFBiz Universal Data Model Concepts",
+      "license": "Apache-2.0",
+      "sourceRepo": "https://github.com/apache/ofbiz-framework",
+      "adaptedFiles": [
+        "specs/003-commerce-operations-capability-packs/data_model.md"
+      ],
+      "complianceNote": "Permissive Apache-2.0 license. Entity relationship design patterns."
+    }
+  ]
+}

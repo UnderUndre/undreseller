@@ -108,6 +108,193 @@ enum InboxEventKind {
   STAFF_BOT_OUTBOUND
 }
 
+enum StaffRole {
+  OWNER
+  OPERATOR
+  PERFORMER
+}
+
+enum ServiceFulfillmentMode {
+  IN_CALL
+  OUT_CALL
+}
+
+// -------------------------------------------------------------
+// Better Auth Core Tables (Library-managed identity and sessions)
+// -------------------------------------------------------------
+
+model User {
+  id            String    @id @default(uuid())
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(uuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+
+  @@map("verification")
+}
+
+// -------------------------------------------------------------
+// Staff, Access Control & Audit
+// -------------------------------------------------------------
+
+model StaffMember {
+  id                  String               @id @default(uuid())
+  authUserId          String               @unique // Better Auth user ID
+  displayName         String
+  role                StaffRole            @default(PERFORMER)
+  telegramUserId      String?              @unique // Reserved for a later messaging integration
+  resourceId          String?              @unique // Any bookable staff member can own a Resource, including OWNER
+  resource            Resource?            @relation(fields: [resourceId], references: [id])
+  professionalProfile ProfessionalProfile?
+  invitedById         String?
+  active              Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([role, active])
+}
+
+model AuditEvent {
+  id            String     @id @default(uuid())
+  action        String     // e.g. "STAFF_MEMBER_PROVISIONED", "STAFF_SESSIONS_REVOKED", "BOOKING_STATUS_UPDATED"
+  actorId       String     // StaffMember.id, "BREAK_GLASS_ADMIN_TOKEN", or "CUSTOMER_CANCELLATION_LINK"
+  actorRole     StaffRole?
+  aggregateType String     // "STAFF_MEMBER" | "SHOP_SETTINGS" | "PROFESSIONAL_PROFILE" | "SERVICE" | "BOOKING"
+  aggregateId   String
+  reason        String?    // PII-redacted before persistence (INV-010)
+  metadataJson  Json       @default("{}") // PII-redacted
+  createdAt     DateTime   @default(now())
+
+  @@index([aggregateType, aggregateId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+model CurrencyMetadata {
+  code      String   @id // ISO 4217 code or explicitly configured non-ISO code, e.g., XTR
+  minorUnit Int      // ISO 4217 exponent (e.g., JPY=0, USD=2, AMD=2, KWD=3)
+  symbol    String
+  active    Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
+
+model Resource {
+  id          String                  @id
+  name        String
+  kind        String                  @default("STAFF") // "STAFF" | "ROOM" | "EQUIPMENT"
+  active      Boolean                 @default(true)
+  staffMember StaffMember?
+  exceptions  AvailabilityException[]
+  createdAt   DateTime                @default(now())
+}
+
+model AvailabilityException {
+  id         String   @id @default(uuid())
+  resourceId String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  date       String   // YYYY-MM-DD in ShopSettings.timeZone
+  isClosed   Boolean  @default(false)
+  startMin   Int?
+  endMin     Int?
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  @@unique([resourceId, date])
+}
+
+model ProfessionalProfile {
+  id             String                @id @default(uuid())
+  staffMemberId  String                @unique
+  staffMember    StaffMember           @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+  slug           String                @unique
+  headline       String?
+  biography      String?
+  photoUrl       String?
+  isPublished    Boolean               @default(false)
+  services       ProfessionalService[]
+  portfolioItems PortfolioItem[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@index([isPublished, slug])
+}
+
+model ProfessionalService {
+  professionalProfileId String
+  professionalProfile   ProfessionalProfile @relation(fields: [professionalProfileId], references: [id], onDelete: Cascade)
+  itemId                String
+  item                  Item                @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@id([professionalProfileId, itemId])
+  @@index([itemId])
+}
+
+model PortfolioItem {
+  id                    String              @id @default(uuid())
+  professionalProfileId String
+  professionalProfile   ProfessionalProfile @relation(fields: [professionalProfileId], references: [id], onDelete: Cascade)
+  title                 String
+  description           String?
+  mediaUrl              String
+  sortOrder             Int                 @default(0)
+  isPublished           Boolean             @default(false)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@index([professionalProfileId, isPublished, sortOrder])
+}
+
+// -------------------------------------------------------------
+// Existing Models with Additive Deltas
+// -------------------------------------------------------------
+
 model ShopSettings {
   id                         Int                 @id @default(1)
   currency                   String              // ISO 4217
@@ -123,6 +310,19 @@ model ShopSettings {
   staffDestinationChatId     String?
   authorizedStaffUserIds     String[]            @default([])
   updatedAt                  DateTime            @updatedAt
+
+  // 003.1 Additive business settings fields (FR-335, FR-338)
+  businessName                  String?
+  businessDescription           String?
+  logoUrl                       String?
+  publicContactLinksJson        Json                @default("[]")
+  defaultLocale                 String              @default("en")
+  timeZone                      String              @default("UTC")
+  currencyConfirmed             Boolean             @default(false)
+  businessServiceAddress        String?
+  businessServiceAddressPublic  Boolean             @default(false)
+  outCallCoverageDescription    String?
+  requireStaffApprovalForInCall Boolean             @default(false)
 }
 
 model Item {
@@ -143,6 +343,18 @@ model Item {
   orderItems   OrderItem[]
   reservations SlotReservation[]
   hours        WeeklyHours[]
+
+  // 003.1 Additive service fields (FR-338, FR-339)
+  bufferBeforeMin        Int                   @default(0)
+  bufferAfterMin         Int                   @default(0)
+  cancellationCutoffHours Int                  @default(3)
+  inCallEnabled          Boolean               @default(true)
+  outCallEnabled         Boolean               @default(false)
+  outCallPriceMinor      Int?
+  outCallTravelFeeMinor  Int                   @default(0)
+  outCallTravelBeforeMin Int                   @default(0)
+  outCallTravelAfterMin  Int                   @default(0)
+  professionalServices   ProfessionalService[]
 }
 
 model WeeklyHours {
@@ -155,6 +367,8 @@ model WeeklyHours {
   endMin        Int
   breakStartMin Int?
   breakEndMin   Int?
+
+  @@index([resourceId, weekday])
 }
 
 model SlotReservation {
@@ -172,6 +386,20 @@ model SlotReservation {
   requiresOperatorAction Boolean           @default(false)
   operatorActionReason   String?
   createdAt              DateTime          @default(now())
+
+  // 003.1 Additive cancellation credential & location snapshot fields (T005, T070)
+  cancellationTokenHash       String?                 @unique
+  cancellationTokenExpiresAt  DateTime?               @db.Timestamptz(3)
+  cancellationTokenConsumedAt DateTime?               @db.Timestamptz(3)
+  cancellationTokenRevokedAt  DateTime?               @db.Timestamptz(3)
+  fulfillmentMode             ServiceFulfillmentMode?
+  servicePriceMinor           Int?
+  travelFeeMinor              Int?
+  serviceAddressSnapshot      String?
+  appointmentStartTime        DateTime?               @db.Timestamptz(3)
+  appointmentEndTime          DateTime?               @db.Timestamptz(3)
+  bufferBeforeMin             Int                     @default(0)
+  bufferAfterMin              Int                     @default(0)
 
   @@index([resourceId, startTime, endTime])
 }
