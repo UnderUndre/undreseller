@@ -3,7 +3,7 @@
 **Feature Branch**: `specs/003-commerce-operations-capability-packs`  
 **Date**: 2026-10-22
 **Spec**: `specs/003-commerce-operations-capability-packs/spec.md`  
-**Database Engine**: PostgreSQL 16 + `btree_gist` (Single-Tenant Dedicated Database per Client Deployment — `Q4 Option A`)  
+**Database Engine**: PostgreSQL 16 + `btree_gist` (Single-Tenant Dedicated Database per Client Deployment — `Q4 Option A`; `btree_gist` extension is established in the `20261018000000_init` migration at `prisma/migrations/20261018000000_init/migration.sql` line 2: `CREATE EXTENSION IF NOT EXISTS btree_gist`, and `003.1` additive migrations depend on it)  
 **ORM**: Prisma 6.4.1 (`DATABASE_URL` pooled `connection_limit=10`, `DIRECT_URL` for guarded migrations)
 
 ---
@@ -60,7 +60,7 @@ model AuditEvent {
   actorRole     StaffRole?
   aggregateType String    // "STAFF_MEMBER" | "SHOP_SETTINGS" | "PROFESSIONAL_PROFILE" | "SERVICE" | "BOOKING"
   aggregateId   String
-  reason        String?
+  reason        String?   // PII-redacted before persistence (INV-010); staff must not write raw customer PII (phone/email/address) here
   metadataJson  Json      @default("{}") // Strictly PII-redacted (INV-010, INV-014)
   createdAt     DateTime  @default(now())
 
@@ -678,7 +678,7 @@ model OperatorAction {
 
 ## 4. Booking-First Migration Strategy
 
-Release `003.1` uses additive migrations (`20261022000000_003_booking_template` in `T005` and `20261022010000_003_service_locations` in `T070`) for the Better Auth schema, `StaffMember`, `AuditEvent`, `CurrencyMetadata`, `Resource`, `AvailabilityException`, `ProfessionalProfile`, `ProfessionalService`, `PortfolioItem`, additive business/location settings on `ShopSettings`, additive location/price/buffer fields on `Item`, and additive snapshot/buffer/cancellation-token fields on `SlotReservation`. It MUST preserve existing services, bookings, customers, and order history. Existing `Item` and `SlotReservation` records remain canonical; no broad `001`/`002` commerce-kernel conversion is part of this release.
+Release `003.1` uses additive migrations (`20261022000000_003_booking_template` in `T005` and `20261022010000_003_service_locations` in `T070`) for the Better Auth schema, `StaffMember`, `AuditEvent`, `CurrencyMetadata`, `Resource`, `AvailabilityException`, `ProfessionalProfile`, `ProfessionalService`, `PortfolioItem`, additive business/location settings on `ShopSettings`, additive location/price/buffer fields on `Item`, and additive snapshot/buffer/cancellation-token fields on `SlotReservation`. It MUST preserve existing services, bookings, customers, and order history. The `btree_gist` extension (required for the `slot_resource_no_overlap` GiST exclusion constraint) is already established in the `20261018000000_init` migration; `003.1` additive migrations depend on it. Existing `Item` and `SlotReservation` records remain canonical; no broad `001`/`002` commerce-kernel conversion is part of this release.
 
 1. **Expand**: Add new tables and nullable/defaulted fields; keep the current and prior application versions compatible. Use non-blocking index creation where supported and bounded DDL timeouts (`lock_timeout = '2s'`, `statement_timeout = '5s'`).
 2. **Dual-Write & Backfill**: Ensure default `Resource` records exist for distinct `WeeklyHours.resourceId` and `SlotReservation.resourceId` values (`"default_master"`) and seed the ISO 4217 `CurrencyMetadata` table (including `USD` `minorUnit = 2`, `AMD` `minorUnit = 2`, `JPY` `minorUnit = 0`, `KWD` `minorUnit = 3`, and configured `XTR`). Backfill only deterministic existing service-to-resource associations with an idempotent, rate-limited job and reconcile the result (`T011`). Leave `fulfillmentMode`, `servicePriceMinor`, `travelFeeMinor`, `serviceAddressSnapshot`, `appointmentStartTime`, and `appointmentEndTime` null on historical reservations.
