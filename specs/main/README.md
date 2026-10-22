@@ -35,12 +35,12 @@
 ---
 
 ## 1. Tutorials (Обучение, быстрый старт и ручной QA)
-- **\[suspicious link removed\]**:
+- **[`docs/whitelabel-quickstart.md`](../../docs/whitelabel-quickstart.md)**:
   - Пошаговое развёртывание витрины с нуля за 15 минут.
   - Настройка брендинга, логотипа и цветовой палитры в `config/shop.config.ts`.
   - Выбор профиля внешней интеграции (`ENABLED_EXTERNAL_INTEGRATION`: `TELEGRAM_BUNDLE`, `WHATSAPP`, `NOWPAYMENTS`, `NONE`).
   - Запуск базы данных, выполнение миграций (`npm run db:migrate`) и наполнение демо-магазина (`npm run db:seed`).
-- **\[suspicious link removed\]** и **[specs/002-service-cart-and-staff-bot/checklists/00-START-HERE.md](https://www.google.com/search?q=../002-service-cart-and-staff-bot/checklists/00-START-HERE.md)**:
+- **[`docs/manual-qa-test-cases.md`](../../docs/manual-qa-test-cases.md)** и **[specs/002-service-cart-and-staff-bot/checklists/00-START-HERE.md](../002-service-cart-and-staff-bot/checklists/00-START-HERE.md)**:
   - Полный регламент ручного и автоматизированного регрессионного тестирования (35 тест-кейсов: 5 браузерных `TC-WEB-01..05`, 11 Telegram-кейсов `TC-BOT-CLIENT-01..04` и `TC-BOT-STAFF-01..06`, возвраты `TC-PAY-01` и 19 bash-скриптов в `specs/002-service-cart-and-staff-bot/checklists/scripts/`).
   - Автоматическая регистрация вебхуков обоих ботов через `specs/002-service-cart-and-staff-bot/checklists/scripts/_setup-webhooks.sh` или `setup-webhooks.ps1`.
 
@@ -72,14 +72,14 @@
    ```
    Атомарно захватывает и обрабатывает до 100 записей `PENDING`, возвращая JSON-отчёт `{ summary: { total, drained, failed }, results }`.
 
-*Подробный регламент восстановления дедлайнов напоминаний, автоотмен и 15-минутных счетов, а также миграции на self-hosted Inngest приведён в \[suspicious link removed\].*
+*Подробный регламент восстановления дедлайнов напоминаний, автоотмен и 15-минутных счетов, а также миграции на self-hosted Inngest приведён в [`docs/inngest-continuity-runbook.md`](../../docs/inngest-continuity-runbook.md).*
 
 ### 🗄 Безопасный накат миграций БД (`.specify/scripts/bash/migrate-safe.sh`)
 Все изменения схемы выполняются по 4-фазному стандарту **Expand $\to$ Backfill $\to$ Validate/Cutover $\to$ Contract** с барьерами `SET lock_timeout = '2s'` и `SET statement_timeout = '5s'` и до 5 ретраев с экспоненциальным backoff (`scripts/migrate.ts`), включая миграцию контактных полей клиента `20261020140000_add_client_contact_fields`:
 ```bash
 DIRECT_URL="postgresql://..." .specify/scripts/bash/migrate-safe.sh
 ```
-*Матрица обратной совместимости и результаты бенчмарка на снимке v1 задокументированы в [specs/002-service-cart-and-staff-bot/migration-compatibility-matrix.md](https://www.google.com/search?q=../002-service-cart-and-staff-bot/migration-compatibility-matrix.md).*
+*Матрица обратной совместимости и результаты бенчмарка на снимке v1 задокументированы в [specs/002-service-cart-and-staff-bot/migration-compatibility-matrix.md](../002-service-cart-and-staff-bot/migration-compatibility-matrix.md).*
 
 ### 🔓 Разблокировка клиента, GDPR-зачистка и проведение возвратов
 - **Аудируемый разбан клиента**: `POST /api/admin/users/unblock` (требует Bearer `ADMIN_TOKEN`, `actor`, `reason`, `customerTgId` или `phone`). Сбрасывает `isBlocked` и записывает событие `[CLIENT_UNBLOCKED]`.
@@ -97,10 +97,10 @@ DIRECT_URL="postgresql://..." .specify/scripts/bash/migrate-safe.sh
 
 ## 3. Reference (Технические справочники)
 - **[`specs/main/requirements.md`](requirements.md)**: Свод функциональных требований (`FR-01`–`FR-16` и `FR-101`–`FR-124`), нефункциональных требований (`NFR-01`–`NFR-07`), матрицы конечного автомата заказов, честного SLA и модели угроз STRIDE.
-- **\[suspicious link removed\]**: Полная реляционная схема базы данных с перечислениями, `Order` (`customerTgUsername`, `hasWhatsApp`, `hasTelegram`), `SlotReservation` (`resourceId`), `RefundOperation`, `TelegramRateState` и констрейнтами.
-- **\[suspicious link removed\]**: Справочник всех переменных окружения (включая `STAFF_CHAT_ID`, `STAFF_AUTHORIZED_IDS`, `INNGEST_EVENT_KEY`, `ENABLED_EXTERNAL_INTEGRATION`).
-- **\[suspicious link removed\]**: Конфигурация брендинга, таймзоны (`Asia/Yerevan`), FTS (`simple`) и правил санитизации приветствия.
-- **[specs/003-commerce-operations-capability-packs/spec.md](https://www.google.com/search?q=../003-commerce-operations-capability-packs/spec.md)**: Спецификация развития продукта в модульное операционное ядро малого бизнеса (Capability Packs, нейтральность к юрисдикции, портфельный AI Gateway с LM Studio и OmniRoute).
+- **[`prisma/schema.prisma`](../../prisma/schema.prisma)**: Полная реляционная схема базы данных с перечислениями, `Order` (`customerTgUsername`, `hasWhatsApp`, `hasTelegram`), `SlotReservation` (`resourceId`), `RefundOperation`, `TelegramRateState` и констрейнтами.
+- **[`.env.example`](../../.env.example)**: Справочник всех переменных окружения (включая `STAFF_CHAT_ID`, `STAFF_AUTHORIZED_IDS`, `INNGEST_EVENT_KEY`, `ENABLED_EXTERNAL_INTEGRATION`).
+- **[`config/shop.config.ts`](../../config/shop.config.ts)**: Конфигурация брендинга, таймзоны (`Asia/Yerevan`), FTS (`simple`) и правил санитизации приветствия.
+- **[specs/003-commerce-operations-capability-packs/spec.md](../003-commerce-operations-capability-packs/spec.md)**: Спецификация развития продукта в модульное операционное ядро малого бизнеса (Capability Packs, нейтральность к юрисдикции, портфельный AI Gateway с LM Studio и OmniRoute).
 
 ---
 

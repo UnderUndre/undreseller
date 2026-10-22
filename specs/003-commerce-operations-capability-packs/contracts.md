@@ -9,17 +9,28 @@
 
 ## 1. Staff Authentication, Session & Three-Role Access Contract (`[MVP-CORE]` — `FR-325a`, `FR-325b`)
 
-### 1.1. Authentication & Session Endpoints
-- **Better Auth route mounting**: `app/api/auth/[...all]/route.ts` delegates the library's supported handlers to Next.js App Router. The application does not implement password hashing, session tokens, cookies, or session persistence itself.
-- **Better Auth sign-in/sign-out**: Use the library's email/password endpoints. Better Auth verifies credentials, stores database-backed sessions through its PostgreSQL/Prisma adapter, and issues secure HTTP-only cookies. Configure a finite session lifetime and login rate limiting. Authentication errors are returned without revealing whether an email exists.
-- **Staff identity mapping**: After Better Auth validates the request session, the application resolves the library user ID to exactly one `StaffMember.authUserId`, then checks `StaffMember.active` and applies the local three-role policy. A missing or inactive staff mapping rejects the request; no role is trusted from the auth request body or session metadata.
-- **`POST /api/admin/staff`** (`OWNER` only):
-  - **Input (Zod)**: `{ email: z.string().email(), displayName: z.string().min(2), role: z.enum(['OWNER', 'OPERATOR', 'PERFORMER']), resourceId: z.string().optional() }`
-  - **Behavior**: Provisions a Better Auth identity through a server-side library API, creates its linked `StaffMember`, and emits `AuditEvent` (`STAFF_MEMBER_PROVISIONED`). If either write fails, the operation compensates so there is no orphaned identity or staff record. Public sign-up remains disabled.
+### 1.1. Authentication, Initial Bootstrap & Session Endpoints
+- **Better Auth route mounting**: `app/api/auth/[...all]/route.ts` delegates the library's supported handlers to Next.js App Router (`lib/security/staffAuth.ts`). The application does not implement password hashing, session tokens, cookies, or session persistence itself.
+- **Better Auth sign-in/sign-out**: Use the library's email/password endpoints (`/api/auth/sign-in/email`, `/api/auth/sign-out`). Better Auth verifies credentials, stores database-backed sessions through its PostgreSQL/Prisma adapter, and issues secure HTTP-only cookies. Configure a finite session lifetime and login rate limiting. Authentication errors are returned without revealing whether an email exists.
+- **Initial `OWNER` Bootstrap (`scripts/bootstrap-owner.ts` or break-glass `ADMIN_TOKEN`)**:
+  - Public sign-up is disabled at all times. On a fresh deployment with zero `OWNER` records, the initial `OWNER` is provisioned either via the idempotent CLI bootstrap script (`npx tsx scripts/bootstrap-owner.ts`) or by calling `POST /api/admin/staff` authenticated with `Authorization: Bearer <ADMIN_TOKEN>`.
+- **Staff identity mapping**: After Better Auth validates the request session, `lib/security/staffAuth.ts` resolves the library user ID to exactly one `StaffMember.authUserId`, then checks `StaffMember.active` and applies the local three-role policy (`lib/security/staffRbac.ts`). A missing or inactive staff mapping rejects the request with `401 Unauthorized`; no role is trusted from the auth request body or session metadata.
+- **`POST /api/admin/staff`** (`OWNER` only, or break-glass `ADMIN_TOKEN`):
+  - **Input (Zod)**:
+    ```typescript
+    const ProvisionStaffSchema = z.object({
+      email: z.string().email(),
+      displayName: z.string().trim().min(2).max(120),
+      role: z.enum(['OWNER', 'OPERATOR', 'PERFORMER']),
+      resourceId: z.string().trim().min(1).max(64).optional(),
+      initialPassword: z.string().min(12).max(128).optional(),
+    });
+    ```
+  - **Behavior**: Provisions a Better Auth identity through its server-side API (using `initialPassword` when supplied or generating a cryptographically random 24-character temporary password returned once in the `201 Created` response for out-of-band handoff when no email integration is configured), creates its linked `StaffMember` (and optional `Resource` if `resourceId` is specified), and emits `AuditEvent` (`STAFF_MEMBER_PROVISIONED`). If either write fails, the operation compensates so there is no orphaned identity or staff record.
 - **`POST /api/admin/staff/[id]/revoke-sessions`** (`OWNER` only):
-  - **Input (Zod)**: `{ deactivateAccount: z.boolean().default(false), reason: z.string().min(3) }`
-  - **Behavior**: Uses Better Auth's server-side session-revocation API for the linked identity; sets `StaffMember.active = false` when requested; emits `STAFF_SESSIONS_REVOKED`. The next staff request is rejected even if a stale client cookie remains.
-- Every successful staff mutation records the mapped `StaffMember.id` and its fixed `StaffRole`. Better Auth credentials, session values, cookies, and raw cancellation credentials are excluded from logs.
+  - **Input (Zod)**: `{ deactivateAccount: z.boolean().default(false), reason: z.string().trim().min(3).max(500) }`
+  - **Behavior**: Uses Better Auth's server-side session-revocation API for the linked identity; sets `StaffMember.active = false` (and unpublishes any linked `ProfessionalProfile`) when `deactivateAccount = true`; emits `AuditEvent` (`STAFF_SESSIONS_REVOKED`). Subsequent staff requests from that identity are immediately rejected (`401`). Existing future `HELD`/`BOOKED` appointments assigned to that staff member's resource are preserved and surfaced in the staff booking view for `OWNER`/`OPERATOR` reassignment or customer-notified cancellation.
+- Every successful staff mutation records the mapped `StaffMember.id` and its fixed `StaffRole` in `AuditEvent`. Better Auth credentials, temporary passwords, session values, cookies, and raw cancellation credentials are excluded from logs.
 
 ### 1.2. Static 3-Role Authorization Matrix (`requireStaffRole`)
 
@@ -39,37 +50,41 @@ export const ROLE_RANK: Record<StaffActorContext['actorRole'], number> = {
 ```
 
 - **`PERFORMER` (`rank >= 1`)**:
-  - `GET /api/admin/profile/me` and profile/portfolio update commands for the authenticated member only;
-  - View own availability and assigned appointments; update booking status only where allowed by business policy.
+  - `GET /api/admin/profiles` (returns own profile when `PERFORMER`), `PATCH /api/admin/profiles/[id]` (own profile and portfolio items only; cannot toggle business-level settings or edit another staff member's profile);
+  - `GET /api/admin/bookings` (filtered to appointments assigned to the performer's `resourceId`); `PATCH /api/admin/bookings/[id]` only for status updates permitted on own assigned appointments (cannot approve/reject `OUT_CALL` coverage area, which requires `OPERATOR` or `OWNER`).
 - **`OPERATOR` (`rank >= 2`)**:
   - All `PERFORMER` endpoints +
-  - Manage services, public professional pages, portfolio entries, schedules, and business appointments within assigned business permissions.
+  - `POST /api/admin/profiles`, `PATCH /api/admin/profiles/[id]` (all professional profiles, publication toggles, and portfolio items);
+  - `GET /api/admin/services`, `POST /api/admin/services`, `PATCH /api/admin/services/[id]`, `PUT /api/admin/hours`;
+  - `GET /api/admin/bookings`, `PATCH /api/admin/bookings/[id]` (including `OUT_CALL` coverage confirmation/rejection, rescheduling, and cancellation across all business appointments).
 - **`OWNER` (`rank === 3`)**:
   - All `OPERATOR` endpoints +
   - `POST /api/admin/staff`, `POST /api/admin/staff/[id]/revoke-sessions`
-  - `PUT /api/admin/settings` (business branding, locale, timezone, currency, and booking defaults)
-  - Manage every staff member, professional page, service, schedule, and appointment for the business.
+  - `PUT /api/admin/settings` (business branding, locale, timezone, currency confirmation/change, `IN_CALL` service address and public visibility flag, `OUT_CALL` coverage description, and `requireStaffApprovalForInCall`)
+  - Manage every staff member, professional page, service, schedule, and appointment for the business; may also own a bookable `Resource` and `ProfessionalProfile`.
 - **Break-Glass `ADMIN_TOKEN`**:
-  - Accepted only via `Authorization: Bearer <ADMIN_TOKEN>` header; resolves to `{ actorId: "BREAK_GLASS_ADMIN_TOKEN", actorRole: "OWNER", isBreakGlass: true }` and writes an immutable `AuditEvent` (`action = "BREAK_GLASS_ADMIN_TOKEN_USED"`, `severity = "CRITICAL"`).
+  - Accepted only via `Authorization: Bearer <ADMIN_TOKEN>` header (`lib/security/adminAuth.ts`); resolves to `{ actorId: "BREAK_GLASS_ADMIN_TOKEN", actorRole: "OWNER", isBreakGlass: true }` and writes an immutable `AuditEvent` (`action = "BREAK_GLASS_ADMIN_TOKEN_USED"`).
 
 ---
 
-## 2. Appointment Availability Contract (`[MVP-CORE]` — `FR-307`, `FR-309`)
+## 2. Appointment Availability Contract (`[MVP-CORE]` — `FR-307`, `FR-309`, `FR-338`)
 
 ```typescript
 export type AvailabilityRequest = {
   serviceId: string;
   professionalId?: string;
-  from: string; // ISO-8601 date/time
+  fulfillmentMode: 'IN_CALL' | 'OUT_CALL';
+  from: string; // YYYY-MM-DD or ISO-8601 date in business timeZone
   to: string;
 };
 
 export interface BookingPort {
   listAvailability(input: AvailabilityRequest): Promise<Array<{
     professionalId: string;
+    resourceId: string;
     fulfillmentMode: 'IN_CALL' | 'OUT_CALL';
-    startsAt: string;
-    endsAt: string;
+    startsAt: string; // Customer-facing appointment start (UTC ISO-8601)
+    endsAt: string;   // Customer-facing appointment end (UTC ISO-8601)
   }>>;
 
   createBooking(input: {
@@ -80,6 +95,7 @@ export interface BookingPort {
     startsAt: string;
     customerName: string;
     customerContact: string;
+    customerNote?: string;
     idempotencyKey: string;
   }): Promise<{
     bookingId: string;
@@ -100,14 +116,17 @@ export interface BookingPort {
 ## 3. Public Pages & Appointment Endpoints (`[MVP-CORE]`)
 
 ### 3.1. Public Business & Professional Pages
-- `GET /api/public/business` returns published business details, active services, configured locale/timezone/currency, and public contact links. It returns the exact `IN_CALL` address only when the owner enabled public display; it may return the customer-facing `OUT_CALL` coverage description.
-- `GET /api/public/professionals/[slug]` returns only a published profile, published portfolio items, and services associated with that professional, including the enabled location modes and corresponding price breakdowns. It never returns a customer's service address.
-- Unpublished profiles, drafts, customer identities, and appointment records MUST never appear in public responses.
+- `GET /api/public/business` returns published business details, active services (when `ShopSettings.currencyConfirmed = true`), configured locale/timezone/currency + `CurrencyMetadata`, and public contact links. It returns the exact `IN_CALL` address (`businessServiceAddress`) only when `businessServiceAddressPublic = true`; it returns `outCallCoverageDescription` when configured.
+- `GET /api/public/professionals/[slug]` returns only an active staff member's published profile (`isPublished = true`, `staffMember.active = true`), published portfolio items (`isPublished = true`), and active services associated with that professional, including enabled location modes and corresponding price breakdowns. It never returns a customer's service address or private `IN_CALL` address.
+- Unpublished profiles, deactivated staff profiles, drafts, customer identities, and appointment records MUST never appear in public responses (`404 Not Found` for unpublished/inactive profile slugs).
 
 ### 3.2. Appointment Availability (`GET /api/booking/slots`)
-- **Input**: `serviceId`, date range, optional `professionalId`, and enabled `fulfillmentMode`.
-- **Behavior**: Resolves duration and mode-specific buffers from the service, working hours and exceptions from the professional's resource, and timezone from business settings. For `OUT_CALL`, includes the configured travel buffers in the occupied resource interval. Returns only slots that remain available after existing bookings.
-- **Concurrency**: `POST /api/booking` MUST acquire the resource/slot lock and return `409 SLOT_UNAVAILABLE` if another request has already booked the interval.
+- **Input**: `serviceId`, date/range (`date` or `from`/`to`), optional `professionalId` (or `resourceId`), and enabled `fulfillmentMode` (`IN_CALL` | `OUT_CALL`).
+- **Timezone & Buffer Behavior**:
+  - Resolves `ShopSettings.timeZone` (IANA timezone) and converts the professional resource's `WeeklyHours` (`startMin`, `endMin`, `breakStartMin`, `breakEndMin`) and `AvailabilityException` (`date` in `YYYY-MM-DD` local business date, `isClosed`, `startMin`, `endMin`) from local business wall-clock minutes into UTC instants (skipping nonexistent spring-forward DST gaps and disambiguating fall-back overlaps deterministically).
+  - Computes effective buffers: for `IN_CALL`, `effectiveBufferBeforeMin = bufferBeforeMin` and `effectiveBufferAfterMin = bufferAfterMin`; for `OUT_CALL`, `effectiveBufferBeforeMin = bufferBeforeMin + outCallTravelBeforeMin` and `effectiveBufferAfterMin = bufferAfterMin + outCallTravelAfterMin`.
+  - Candidate appointment window `[startsAt, endsAt]` (where `endsAt = startsAt + durationMin`) requires the occupied resource window `[startsAt - effectiveBufferBeforeMin, endsAt + effectiveBufferAfterMin]` to fit within the working window without overlapping breaks or any active reservation (`status = 'BOOKED'` or `status = 'HELD' AND (holdExpiresAt IS NULL OR holdExpiresAt > now)`).
+- **Concurrency**: `POST /api/booking` MUST acquire `acquireResourceSlotLock(tx, resourceId)` and enforce the PostgreSQL GiST exclusion constraint `slot_resource_no_overlap` across the buffered interval `[startsAt - effectiveBufferBeforeMin, endsAt + effectiveBufferAfterMin]`, returning `409 SLOT_UNAVAILABLE` if another request has already claimed an overlapping interval.
 
 ### 3.3. Create or Cancel a Booking
 - **`POST /api/booking` input (Zod)**:
@@ -118,26 +137,30 @@ export interface BookingPort {
     fulfillmentMode: z.enum(['IN_CALL', 'OUT_CALL']),
     serviceAddress: z.string().trim().min(5).max(500).optional(),
     startsAt: z.string().datetime(),
-    customerName: z.string().min(1).max(120),
-    customerContact: z.string().min(3).max(160),
-    customerNote: z.string().max(500).optional(),
-    idempotencyKey: z.string().min(8).max(128),
+    customerName: z.string().trim().min(1).max(120),
+    customerContact: z.string().trim().min(3).max(160),
+    customerNote: z.string().trim().max(500).optional(),
+    idempotencyKey: z.string().trim().min(8).max(128),
   });
   ```
-  - **Validation**: `serviceAddress` is required for `OUT_CALL` and forbidden for `IN_CALL`. The server validates the mode is enabled for that service, recomputes the current price from trusted settings, and does not accept amounts or currency from the browser.
-  - **Behavior**: validates that the service and professional are active, the profile is published or the business accepts direct bookings, the requested slot is still available, and the customer accepted the displayed mode and price; creates the booking and writes its mode, service-price snapshot, travel-fee snapshot, configured currency, and service-address snapshot. For `IN_CALL`, it takes the address from business settings. Since the first release cannot automatically check outcall coverage, it creates `OUT_CALL` bookings as `PENDING`; this maps to the existing `Order.confirmationStatus = PENDING_STAFF_REVIEW` and `SlotReservation.status = HELD`. An authenticated `OWNER` or `OPERATOR` confirms that the address is within coverage or rejects the request. Confirmation maps to `STAFF_APPROVED` and a `BOOKED` reservation; rejection sets `Order.status = CANCELLED` and `cancellationReason = STAFF_REJECTED`, then releases the reservation. The linked `Order.totalMinor` equals service price plus travel fee. This flow does not create a product order or require payment.
-  - **Price rules**: `IN_CALL` uses the configured service price and no travel fee. `OUT_CALL` uses the configured outcall service-price override or falls back to the standard service price, then adds the configured fixed travel fee for the booking. The response displays the service price, travel fee, total, and currency separately. A fee or price change after booking does not rewrite the stored snapshot.
+  - **Validation**: `serviceAddress` is required for `OUT_CALL` and forbidden for `IN_CALL` (`400 Bad Request`). The server validates that `ShopSettings.currencyConfirmed = true`, the service and professional (`StaffMember.active = true`, `ProfessionalProfile.isPublished = true`) are active, the mode is enabled on that service, and `ShopSettings.businessServiceAddress` is configured when `fulfillmentMode === 'IN_CALL'`. It recomputes the current price from trusted database settings and never accepts amounts or currency from the browser.
+  - **Behavior**: Inside a serializable/locked transaction (`acquireResourceSlotLock`), verifies slot + buffer availability, creates the `Order` and `OrderItem` snapshot, and creates the `SlotReservation` with `fulfillmentMode`, `servicePriceMinor`, `travelFeeMinor`, `serviceAddressSnapshot`, `appointmentStartTime = startsAt`, `appointmentEndTime = endsAt`, `bufferBeforeMin = effectiveBufferBeforeMin`, `bufferAfterMin = effectiveBufferAfterMin`, `startTime = startsAt - effectiveBufferBeforeMin`, and `endTime = endsAt + effectiveBufferAfterMin`.
+    - For `OUT_CALL`: always creates the booking as `status = 'PENDING'` (`Order.confirmationStatus = PENDING_STAFF_REVIEW`, `SlotReservation.status = HELD`, `holdExpiresAt = null`). An authenticated `OWNER` or `OPERATOR` confirms that the address is within coverage (`PATCH /api/admin/bookings/[id]` $\to$ `Order.confirmationStatus = STAFF_APPROVED`, `SlotReservation.status = BOOKED`) or rejects the request (`Order.status = CANCELLED`, `cancellationReason = STAFF_REJECTED`, `SlotReservation.status = RELEASED`, `cancellationTokenRevokedAt = now()`).
+    - For `IN_CALL`: creates the booking directly as `status = 'CONFIRMED'` (`Order.confirmationStatus = STAFF_APPROVED`, `SlotReservation.status = BOOKED`, `holdExpiresAt = null`) unless `ShopSettings.requireStaffApprovalForInCall = true` (in which case it uses the same `PENDING` / `HELD` staff-approval state).
+  - **Price rules**: `IN_CALL` uses `Item.priceMinor` and `travelFeeMinor = 0`. `OUT_CALL` uses `Item.outCallPriceMinor ?? Item.priceMinor`, then adds `Item.outCallTravelFeeMinor`. `Order.totalMinor` equals `servicePriceMinor + travelFeeMinor` in `ShopSettings.currency`. The response displays `servicePriceMinor`, `travelFeeMinor`, `totalMinor`, and `currency` separately. Later price or fee edits never rewrite stored booking snapshots (`INV-015`).
 
-### 3.4. Business Location & Service Price Configuration
-- `PATCH /api/admin/settings` is available to `OWNER` and updates the configured currency, `IN_CALL` service address, whether that exact address is public, and customer-facing `OUT_CALL` coverage description. An active service with `IN_CALL` enabled cannot be published until the business service address is set.
-- `PATCH /api/admin/services/[id]` is available to authorized service managers (`OWNER` or `OPERATOR`) and updates enabled modes, the standard service price, optional `OUT_CALL` price override, fixed per-booking travel fee, and outcall travel buffers. The standard price is used for `IN_CALL` and as the `OUT_CALL` fallback; every enabled mode must resolve to a non-negative price in the configured business currency before the service is published.
-- Price changes and location settings affect future bookings only. All amounts use the configured business currency; the client cannot submit or override prices when creating a booking.
+### 3.4. Business Location, Service Price & Booking Cancellation Endpoints
+- **`PUT /api/admin/settings`** (`OWNER` only): updates business branding, locale, IANA `timeZone`, `currency` + `currencyConfirmed`, `businessServiceAddress`, `businessServiceAddressPublic`, `outCallCoverageDescription`, and `requireStaffApprovalForInCall`. An active service with `inCallEnabled = true` cannot be published until `businessServiceAddress` is non-empty, and no live service prices are exposed publicly until `currencyConfirmed = true`.
+- **`PATCH /api/admin/services/[id]`** (`OWNER` or `OPERATOR`): updates enabled location modes (`inCallEnabled`, `outCallEnabled` — at least one must be `true` on an active service), standard `priceMinor`, optional `outCallPriceMinor`, `outCallTravelFeeMinor`, `bufferBeforeMin`, `bufferAfterMin`, `outCallTravelBeforeMin`, `outCallTravelAfterMin`, and `cancellationCutoffHours`. Every enabled mode must resolve to a non-negative integer amount in `ShopSettings.currency`.
+- **`PATCH /api/admin/bookings/[id]`** (`OWNER`, `OPERATOR`, or assigned `PERFORMER` within role bounds):
+  - `OWNER` and `OPERATOR` can confirm or reject pending `OUT_CALL` coverage (`action: 'APPROVE_COVERAGE' | 'REJECT_COVERAGE'`), reschedule, mark completed (`FULFILLED`), or cancel any booking.
+  - `PERFORMER` can view only bookings on their own `resourceId` and mark their assigned confirmed booking completed, but cannot approve/reject `OUT_CALL` coverage or access other staff bookings (`403 Forbidden`).
 - **`POST /api/booking/[id]/cancel`**:
-  - **Customer input**: `{ token: string }`; a booking ID by itself never authorizes cancellation.
+  - **Customer input**: `{ token: string }`; a booking ID by itself never authorizes cancellation (`401`/`403`).
   - **Staff input**: an authenticated staff session with role authorization; no customer token is required.
-  - **Credential rules**: Generate a cryptographically random 32-byte token for one booking and the `CANCEL` action. Store only its SHA-256 hash in nullable fields on the existing `SlotReservation`; set expiry to the appointment start time. On cancellation, verify the token hash matches that booking, has not expired or been consumed/revoked, the booking is cancellable under its configured cutoff, then consume the credential in the same transaction as the cancellation. Revoke it when the booking is rescheduled, completed, or cancelled. Return a generic invalid/expired response and rate-limit attempts.
-  - **Link handling**: The confirmation page submits the token in the POST body, then removes it from the address bar. Cancellation responses use `Cache-Control: no-store` and `Referrer-Policy: no-referrer`; the page loads no third-party analytics or assets. Redact the token from access logs and error reports.
-  - **Audit**: Staff cancellation records the staff actor; public cancellation records a customer-link action without logging the token. Replays do not change the booking.
+  - **Credential & Link-Preview Safety Rules (`INV-014`)**: Generate a cryptographically random 32-byte token for one booking and the `CANCEL` action. Store only its SHA-256 hash in `SlotReservation.cancellationTokenHash` and set `cancellationTokenExpiresAt = appointmentStartTime`. Opening the customer `cancellationUrl` via `GET` MUST be strictly side-effect-free (rendering a confirmation UI without consuming the token or cancelling the booking, preventing accidental cancellation by Telegram/WhatsApp/email link-preview bots). On `POST /api/booking/[id]/cancel`, verify the token hash matches that booking, has not expired or been consumed/revoked, and `now <= appointmentStartTime - cancellationCutoffHours`, then transition the booking to `CANCELLED` / `RELEASED` and set `cancellationTokenConsumedAt = now()` in the same transaction. Revoke the token (`cancellationTokenRevokedAt = now()`) whenever the booking is rescheduled, completed, or cancelled by staff. Return a generic invalid/expired response and rate-limit attempts (`lib/security/rateLimiter.ts`).
+  - **Link handling**: The confirmation/cancellation page submits the token in the `POST` JSON body, removes any token fragment from the address bar via `history.replaceState`, sets `Cache-Control: no-store` and `Referrer-Policy: no-referrer`, and loads no third-party analytics or scripts. Redact `token` and `cancellationUrl` from all logs and error reports.
+  - **Audit**: Staff cancellation writes `AuditEvent` with `actorId = StaffMember.id` and `actorRole`; public cancellation writes `AuditEvent` with `actorId = "CUSTOMER_CANCELLATION_LINK"` without logging the raw token. Replays are idempotent/rejected without mutating state.
 
 ---
 
@@ -150,15 +173,19 @@ export type StaffBookingView = {
   bookingId: string;
   serviceName: string;
   professionalId: string;
-  startsAt: string;
-  endsAt: string;
+  resourceId: string;
+  startsAt: string; // appointmentStartTime ?? startTime
+  endsAt: string;   // appointmentEndTime ?? endTime
+  occupiedStartsAt: string; // startTime (includes effective before-buffer)
+  occupiedEndsAt: string;   // endTime (includes effective after-buffer)
   status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED';
   customerName: string;
   customerContact: string;
   fulfillmentMode: 'IN_CALL' | 'OUT_CALL' | null; // Null for legacy bookings with no recorded mode
-  serviceAddress: string | null; // Confidential; returned only to authorized staff for this assigned booking
+  serviceAddress: string | null; // Confidential; returned only to authorized staff for this booking
   servicePriceMinor: string | null; // Null for legacy bookings without a snapshot
   travelFeeMinor: string | null; // Null for legacy bookings without a snapshot
+  totalMinor: string;
   currency: string | null; // Null only when the legacy booking has no linked currency value
 };
 
@@ -168,10 +195,12 @@ export type PublicProfessionalView = {
   headline: string | null;
   biography: string | null;
   photoUrl: string | null;
-  portfolioItems: Array<{ title: string; description: string | null; mediaUrl: string }>;
+  portfolioItems: Array<{ id: string; title: string; description: string | null; mediaUrl: string; sortOrder: number }>;
   services: Array<{
     id: string;
+    slug: string;
     name: string;
+    description: string | null;
     durationMin: number;
     priceOptions: Array<{
       fulfillmentMode: 'IN_CALL' | 'OUT_CALL';
@@ -184,7 +213,7 @@ export type PublicProfessionalView = {
 };
 ```
 
-The staff-view `PENDING` status maps to `Order.confirmationStatus = PENDING_STAFF_REVIEW`; `CONFIRMED` maps to a staff-approved or client-confirmed booking; `CANCELLED` maps to the existing cancelled order state. Do not add a separate location-review status enum for `003.1`.
+The staff-view `PENDING` status maps to `Order.confirmationStatus = PENDING_STAFF_REVIEW` (with `SlotReservation.status = HELD`); `CONFIRMED` maps to `STAFF_APPROVED` or `CLIENT_CONFIRMED` (with `SlotReservation.status = BOOKED`); `CANCELLED` maps to `Order.status = CANCELLED` (`SlotReservation.status = RELEASED`); `COMPLETED` maps to `Order.status = FULFILLED`. Do not add a separate location-review status enum for `003.1`.
 
 ---
 

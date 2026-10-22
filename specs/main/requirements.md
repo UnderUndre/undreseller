@@ -1,9 +1,9 @@
 # System Requirements: Modular E-Commerce & Multi-Service Booking Engine (Track 1)
 
 **Repository**: `UnderUndre/undreseller`  
-**Version**: 2.1.0 (`001-modular-commerce-template` + `002-service-cart-and-staff-bot` actualized)  
+**Version**: 2.1.0 (`001-modular-commerce-template` + `002-service-cart-and-staff-bot` actualized; `003.1` Booking-First Service Template planned)  
 **Standard Compliance**: ISO/IEC/IEEE 29148:2018 (Requirements Engineering), ISO/IEC/IEEE 12207:2017 & NIST SP 800-218 SSDF  
-**Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v18.3**
+**Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v18.4**
 
 ---
 
@@ -45,7 +45,7 @@
    - Публичные посетители не имеют паролей и личных кабинетов (аутентификация через HMAC `initData` в Telegram либо телефон E.164 с опциональным `@username` и OTP-верификацией на вебе).
    - Администратор аутентифицируется через ротируемый Bearer-токен `ADMIN_TOKEN`, а мастера в Telegram — через проверку `staffDestinationChatId` (`STAFF_CHAT_ID`) и трёхуровневую авторизацию актора (`ShopSettings.authorizedStaffUserIds`, `.env` `STAFF_AUTHORIZED_IDS` / `STAFF_ADMIN_IDS` или личный чат 1-на-1).
 4. **Фиксированный объем Sprint B и матрица внешних интеграций (`lib/config/integrationProfile.ts`)**:
-   - На один клиентский SOW разрешено: максимум **2 роли**, **1 ключевой бизнес-процесс** (комплексная корзина $\to$ холд $\to$ согласование/оплата) и **1 активный контур внешней интеграции** (`ShopSettings.enabledExternalIntegration`):
+   - На один клиентский SOW разрешено: фиксированная модель ролей (**до 3 ролей в `003.1`: `OWNER`, `OPERATOR`, `PERFORMER`**), **1 ключевой бизнес-процесс** (комплексная корзина $\to$ холд $\to$ согласование/оплата) и **1 активный контур внешней интеграции** (`ShopSettings.enabledExternalIntegration`):
      - `TELEGRAM_BUNDLE`: разрешает ровно два токена (`BOT_TOKEN` / `TELEGRAM_BOT_TOKEN` и `STAFF_BOT_TOKEN`) в едином Telegram-контуре и запрещает учётные данные `WHATSAPP_*` и `NOWPAYMENTS_*`;
      - `WHATSAPP`: разрешает `WHATSAPP_*` и запрещает оба Telegram-токена и `NOWPAYMENTS_*`;
      - `NOWPAYMENTS`: разрешает `NOWPAYMENTS_*` и запрещает оба Telegram-токена и `WHATSAPP_*`;

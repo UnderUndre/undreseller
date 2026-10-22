@@ -1,9 +1,9 @@
 # System Architecture: Modular E-Commerce & Multi-Service Booking Engine (Track 1)
 
 **Repository**: `UnderUndre/undreseller`  
-**Version**: 2.1.0 (Production Architecture — `001-modular-commerce-template` + `002-service-cart-and-staff-bot` actualized)  
+**Version**: 2.1.0 (Production Architecture — `001-modular-commerce-template` + `002-service-cart-and-staff-bot` actualized; `003.1` Booking-First Service Template planned)  
 **Standard Compliance**: ISO/IEC/IEEE 29148:2018, ISO/IEC/IEEE 12207:2017 & NIST SP 800-218 SSDF  
-**Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v18.3**
+**Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v18.4**
 
 ---
 
