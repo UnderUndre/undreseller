@@ -1,27 +1,25 @@
-# Phase 1 Interface & API Contracts (`003-commerce-operations-capability-packs`)
+# Booking-First Service Template API Contracts (`003.1`)
 
 **Feature Branch**: `specs/003-commerce-operations-capability-packs`  
-**Date**: 2026-10-21  
+**Date**: 2026-10-22
 **Spec**: `specs/003-commerce-operations-capability-packs/spec.md`  
 **Transport**: Next.js 15 App Router Route Handlers (`app/api/**`) + Internal Application Command/Query Ports (`lib/**`)
 
 ---
 
-## 1. Staff Authentication, Session & 3-Role RBAC Contract (`[MVP-CORE]` — `FR-325a`, `FR-325b`)
+## 1. Staff Authentication, Session & Three-Role Access Contract (`[MVP-CORE]` — `FR-325a`, `FR-325b`)
 
 ### 1.1. Authentication & Session Endpoints
-- **`POST /api/admin/auth/login`**:
-  - **Input (Zod)**: `{ email: z.string().email(), password: z.string().min(8).max(128) }`
-  - **Behavior**: Verifies `StaffMember.active === true` and `scrypt` password hash; creates `StaffSession` (`tokenHash = sha256(token)`, 14-day TTL); sets `HttpOnly; Secure; SameSite=Lax; Path=/` cookie `undre_staff_session`; writes `AuditEvent` (`STAFF_LOGIN_SUCCESS`, `actorId = staffMember.id`, `actorRole = staffMember.role`).
-  - **Errors**: `401 INVALID_CREDENTIALS`, `403 STAFF_ACCOUNT_INACTIVE`, `429 RATE_LIMITED`.
-- **`POST /api/admin/auth/logout`**:
-  - **Behavior**: Sets `StaffSession.revokedAt = now()`, clears cookie, writes `AuditEvent` (`STAFF_LOGOUT`).
+- **Better Auth route mounting**: `app/api/auth/[...all]/route.ts` delegates the library's supported handlers to Next.js App Router. The application does not implement password hashing, session tokens, cookies, or session persistence itself.
+- **Better Auth sign-in/sign-out**: Use the library's email/password endpoints. Better Auth verifies credentials, stores database-backed sessions through its PostgreSQL/Prisma adapter, and issues secure HTTP-only cookies. Configure a finite session lifetime and login rate limiting. Authentication errors are returned without revealing whether an email exists.
+- **Staff identity mapping**: After Better Auth validates the request session, the application resolves the library user ID to exactly one `StaffMember.authUserId`, then checks `StaffMember.active` and applies the local three-role policy. A missing or inactive staff mapping rejects the request; no role is trusted from the auth request body or session metadata.
 - **`POST /api/admin/staff`** (`OWNER` only):
-  - **Input (Zod)**: `{ email: z.string().email(), displayName: z.string().min(2), role: z.enum(['OWNER', 'OPERATOR', 'PERFORMER']), telegramUserId: z.string().optional(), resourceId: z.string().optional(), initialPassword: z.string().min(10) }`
-  - **Behavior**: Creates or updates `StaffMember` (no public self-registration allowed); emits `AuditEvent` (`STAFF_MEMBER_PROVISIONED`).
+  - **Input (Zod)**: `{ email: z.string().email(), displayName: z.string().min(2), role: z.enum(['OWNER', 'OPERATOR', 'PERFORMER']), resourceId: z.string().optional() }`
+  - **Behavior**: Provisions a Better Auth identity through a server-side library API, creates its linked `StaffMember`, and emits `AuditEvent` (`STAFF_MEMBER_PROVISIONED`). If either write fails, the operation compensates so there is no orphaned identity or staff record. Public sign-up remains disabled.
 - **`POST /api/admin/staff/[id]/revoke-sessions`** (`OWNER` only):
   - **Input (Zod)**: `{ deactivateAccount: z.boolean().default(false), reason: z.string().min(3) }`
-  - **Behavior**: Immediately sets `revokedAt = now()` on all active `StaffSession` rows for `staffMemberId` (and `active = false` if `deactivateAccount === true`). Subsequent HTTP calls return `401 SESSION_REVOKED`, and Telegram Staff Bot callbacks from `telegramUserId` return `403 ACCESS_DENIED`.
+  - **Behavior**: Uses Better Auth's server-side session-revocation API for the linked identity; sets `StaffMember.active = false` when requested; emits `STAFF_SESSIONS_REVOKED`. The next staff request is rejected even if a stale client cookie remains.
+- Every successful staff mutation records the mapped `StaffMember.id` and its fixed `StaffRole`. Better Auth credentials, session values, cookies, and raw cancellation credentials are excluded from logs.
 
 ### 1.2. Static 3-Role Authorization Matrix (`requireStaffRole`)
 
@@ -41,171 +39,114 @@ export const ROLE_RANK: Record<StaffActorContext['actorRole'], number> = {
 ```
 
 - **`PERFORMER` (`rank >= 1`)**:
-  - `GET /api/admin/fulfillment/my-segments` (view assigned `FulfillmentSegment` & `WorkingSchedule`)
-  - `POST /api/admin/fulfillment/segments/[id]/evidence` (upload `CompletionEvidence` & mark assigned segment completed)
-  - `POST /api/admin/drafts/reconcile` (reconcile offline non-financial drafts for assigned segments/notes — `FR-324`)
-  - Staff Bot callback: `staff:fulfill:<orderId>:<scheduleVersion>` (only for orders/segments assigned to this performer's `resourceId` or if `actorRole >= OPERATOR`).
+  - `GET /api/admin/profile/me` and profile/portfolio update commands for the authenticated member only;
+  - View own availability and assigned appointments; update booking status only where allowed by business policy.
 - **`OPERATOR` (`rank >= 2`)**:
   - All `PERFORMER` endpoints +
-  - `GET /api/admin/operator-actions` (`OperatorActionView` work queue)
-  - `POST /api/admin/operator-actions/[id]/resolve` (execute safe resolution actions)
-  - `GET /api/admin/orders` (`OrderSummaryView`), `GET /api/admin/parties/[id]/timeline` (`PartyTimelineView`), `GET /api/admin/cash-commitments` (`CashCommitmentView`)
-  - `POST /api/admin/catalog/offerings` & `PATCH /api/admin/catalog/offerings/[id]`
-  - `POST /api/admin/inventory/movements` (`ADJUSTMENT`, `RETURN`, `DAMAGE`)
-  - `POST /api/admin/orders/[id]/refund` (policy-bounded refunds)
-  - `POST /api/admin/conversations/to-draft` (`FR-322`), `POST /api/admin/suggestions/[id]/approve` (`FR-306`)
-  - Staff Bot callbacks: `staff:approve`, `staff:reject`, `staff:reschedule`, `staff:blacklist`, `staff:copy_contacts`.
+  - Manage services, public professional pages, portfolio entries, schedules, and business appointments within assigned business permissions.
 - **`OWNER` (`rank === 3`)**:
   - All `OPERATOR` endpoints +
   - `POST /api/admin/staff`, `POST /api/admin/staff/[id]/revoke-sessions`
-  - `PUT /api/admin/settings` (deployment & capability pack configuration)
-  - `POST /api/admin/compliance/sign-off` (`FR-330` Client Compliance Readiness Gate sign-off `NOT_COMPLIANCE_READY -> COMPLIANCE_READY`)
-  - `POST /api/admin/users/purge`, `POST /api/admin/orders/[id]/purge`, `POST /api/admin/users/unblock`
-  - `POST /api/admin/quotes/[id]/approve-margin` (`MarginGuard` override in `Phase C`)
-  - `POST /api/admin/imports/[id]/commit` (`ImportBatch` commit in `Phase E`).
+  - `PUT /api/admin/settings` (business branding, locale, timezone, currency, and booking defaults)
+  - Manage every staff member, professional page, service, schedule, and appointment for the business.
 - **Break-Glass `ADMIN_TOKEN`**:
   - Accepted only via `Authorization: Bearer <ADMIN_TOKEN>` header; resolves to `{ actorId: "BREAK_GLASS_ADMIN_TOKEN", actorRole: "OWNER", isBreakGlass: true }` and writes an immutable `AuditEvent` (`action = "BREAK_GLASS_ADMIN_TOKEN_USED"`, `severity = "CRITICAL"`).
 
 ---
 
-## 2. Unified Capacity Contract (`[MVP-CORE]` — `FR-307`–`FR-309`)
+## 2. Appointment Availability Contract (`[MVP-CORE]` — `FR-307`, `FR-309`)
 
 ```typescript
-export type CapacityItemRequest = {
-  offeringId: string;
-  variantId?: string;
-  quantity: number;
-  resourceId?: string;
-  desiredStartTime?: string; // ISO-8601 for SERVICE / APPOINTMENT
+export type AvailabilityRequest = {
+  serviceId: string;
+  professionalId?: string;
+  from: string; // ISO-8601 date/time
+  to: string;
 };
 
-export interface CapacityPort {
-  checkCapacity(input: {
-    items: CapacityItemRequest[];
-    date?: string;
-    resourceId?: string;
-  }): Promise<{
-    available: boolean;
-    stockStatus: Array<{ variantId: string; availableQty: number; sufficient: boolean }>;
-    candidateWindows: Array<{ startTime: string; endTime: string; resourceId: string; totalDurationMin: number }>;
-  }>;
+export interface BookingPort {
+  listAvailability(input: AvailabilityRequest): Promise<Array<{
+    professionalId: string;
+    startsAt: string;
+    endsAt: string;
+  }>>;
 
-  reserveCapacity(input: {
-    orderId: string;
-    items: CapacityItemRequest[];
-    actorId: string;
+  createBooking(input: {
+    serviceId: string;
+    professionalId: string;
+    startsAt: string;
+    customerName: string;
+    customerContact: string;
     idempotencyKey: string;
-  }): Promise<{
-    inventoryMovements: string[];
-    reservations: string[];
-  }>;
+  }): Promise<{ bookingId: string; status: 'PENDING' | 'CONFIRMED'; cancellationUrl: string }>;
 
-  commitCapacity(input: {
-    orderId: string;
-    actorId: string;
-    idempotencyKey: string;
-  }): Promise<void>;
-
-  releaseCapacity(input: {
-    orderId: string;
-    segmentIds?: string[]; // Supports partial cancellation (US7 / FR-314)
-    reason: string;
-    actorId: string;
-    idempotencyKey: string;
-  }): Promise<void>;
+  cancelBooking(input: { bookingId: string; actorId?: string; cancellationToken?: string; reason?: string }): Promise<void>;
 }
 ```
 
+`createBooking` returns `{ bookingId, status, cancellationUrl }`. The random cancellation token is returned only once for the confirmation page; if an external notification is part of the signed client scope, that configured integration may deliver the same link. The raw token is never stored or logged.
+
 ---
 
-## 3. Checkout, PaymentPlan & Segmented Fulfillment Endpoints (`[MVP-CORE]`)
+## 3. Public Pages & Appointment Endpoints (`[MVP-CORE]`)
 
-### 3.1. Mixed Basket Checkout (`POST /api/checkout`)
-- **Input (Zod)**:
+### 3.1. Public Business & Professional Pages
+- `GET /api/public/business` returns published business details, active services, configured locale/timezone/currency, and public contact links.
+- `GET /api/public/professionals/[slug]` returns only a published profile, published portfolio items, and services associated with that professional.
+- Unpublished profiles, drafts, customer identities, and appointment records MUST never appear in public responses.
+
+### 3.2. Appointment Availability (`GET /api/booking/slots`)
+- **Input**: `serviceId`, date range, optional `professionalId`.
+- **Behavior**: Resolves duration and buffers from the service, working hours and exceptions from the professional's resource, and timezone from business settings. Returns only slots that remain available after existing bookings.
+- **Concurrency**: `POST /api/booking` MUST acquire the resource/slot lock and return `409 SLOT_UNAVAILABLE` if another request has already booked the interval.
+
+### 3.3. Create or Cancel a Booking
+- **`POST /api/booking` input (Zod)**:
   ```typescript
-  const CheckoutRequestSchema = z.object({
-    orderId: z.string().uuid().optional(), // Existing service hold orderId or omitted for pure product/mixed cart
-    items: z.array(z.object({
-      offeringId: z.string().uuid(),
-      variantId: z.string().uuid().optional(),
-      quantity: z.number().int().min(1).max(100),
-    })).min(1).max(10).optional(),
-    customerName: z.string().min(1).max(120).optional(),
-    customerPhone: z.string().min(5).max(32).optional(),
-    customerEmail: z.string().email().optional(),
-    customerTgUsername: z.string().max(64).optional(),
-    hasWhatsApp: z.boolean().optional(),
-    hasTelegram: z.boolean().optional(),
-    customerNotes: z.string().max(1000).optional(),
-    paymentMethod: z.enum(['STARS', 'CRYPTO', 'PAY_ON_SITE']),
-    paymentPlanMode: z.enum(['FULL', 'DEPOSIT_30_70']).default('FULL'),
+  const CreateBookingSchema = z.object({
+    serviceId: z.string().uuid(),
+    professionalId: z.string().uuid(),
+    startsAt: z.string().datetime(),
+    customerName: z.string().min(1).max(120),
+    customerContact: z.string().min(3).max(160),
+    customerNote: z.string().max(500).optional(),
     idempotencyKey: z.string().min(8).max(128),
   });
   ```
-- **Transactional Guarantees**:
-  1. Resolves or creates `Party`, `PartyIdentifier`, `ContactPoint`, and `ChannelIdentity`; checks `Party.isBlocked` (returns `403` if blocked).
-  2. Snapshots `OrderLine` rows (`unitAmountMinor`, `currency` via `CurrencyMetadata`, `offeringNameSnapshot`, `durationMinSnapshot`).
-  3. Reserves capacity via `CapacityPort.reserveCapacity` (`InventoryMovement(RESERVE)` for goods + GiST-guarded `SlotReservation` for services).
-  4. Creates `PaymentPlan` and `PaymentMilestone` rows (`FULL` = 1 milestone; `DEPOSIT_30_70` = `30% DEPOSIT` + `70% BALANCE`).
-  5. Creates `FulfillmentPlan` and independent `FulfillmentSegment` rows (`INVENTORY` / `DELIVERY` for goods; `APPOINTMENT` for services; `DIGITAL` for digital offerings).
-  6. Enqueues Staff Bot pager notification (`STAFF_BOT_OUTBOUND`) via durable `InboxEvent`.
-
-### 3.2. Segment Completion Evidence (`POST /api/admin/fulfillment/segments/[id]/evidence`)
-- **Role**: `PERFORMER` (must match `segment.assignedStaffId === actor.actorId` or `actor.actorRole !== 'PERFORMER'`), `OPERATOR`, or `OWNER`.
-- **Input (Zod)**:
-  ```typescript
-  const CompletionEvidenceSchema = z.object({
-    notes: z.string().max(1000).optional(),
-    serialNumber: z.string().max(128).optional(),
-    mediaUrls: z.array(z.string().url()).max(10).default([]),
-    checklist: z.record(z.string(), z.boolean()).default({}),
-    markSegmentCompleted: z.boolean().default(true),
-  });
-  ```
-- **Behavior**: Appends `CompletionEvidence`, transitions `FulfillmentSegment` to `COMPLETED` (if `markSegmentCompleted`), commits `InventoryMovement(COMMIT)` for inventory segments, and if all segments in `FulfillmentPlan` are `COMPLETED`, transitions `FulfillmentPlan` to `COMPLETED` and `Order` to `FULFILLED`.
+  - **Behavior**: validates that the service and professional are active, the profile is published or the business accepts direct bookings, and the requested slot is still available; creates the booking and writes a staff audit event. This flow does not create a product order or require payment.
+- **`POST /api/booking/[id]/cancel`**:
+  - **Customer input**: `{ token: string }`; a booking ID by itself never authorizes cancellation.
+  - **Staff input**: an authenticated staff session with role authorization; no customer token is required.
+  - **Credential rules**: Generate a cryptographically random 32-byte token for one booking and the `CANCEL` action. Store only its SHA-256 hash in nullable fields on the existing `SlotReservation`; set expiry to the appointment start time. On cancellation, verify the token hash matches that booking, has not expired or been consumed/revoked, the booking is cancellable under its configured cutoff, then consume the credential in the same transaction as the cancellation. Revoke it when the booking is rescheduled, completed, or cancelled. Return a generic invalid/expired response and rate-limit attempts.
+  - **Link handling**: The confirmation page submits the token in the POST body, then removes it from the address bar. Cancellation responses use `Cache-Control: no-store` and `Referrer-Policy: no-referrer`; the page loads no third-party analytics or assets. Redact the token from access logs and error reports.
+  - **Audit**: Staff cancellation records the staff actor; public cancellation records a customer-link action without logging the token. Replays do not change the booking.
 
 ---
 
-## 4. Redacted Read Model Contracts (`[MVP-CORE]` — `FR-326`, `INV-008`, `INV-010`)
+## 4. Staff Booking & Profile Views (`[MVP-CORE]` — `FR-326`, `INV-010`)
 
-All read models strip raw PII (`customerPhone`, `customerEmail`, `customerNotes`) so they are safe for operational dashboards, telemetry, and the optional `Agent Read Pack`:
+Staff views return customer contact details only to roles that need them to manage the booking. Public responses and structured logs contain no raw customer contact details. `PERFORMER` views are filtered to the authenticated professional's own profile and assigned bookings.
 
 ```typescript
-export type OrderSummaryView = {
-  orderId: string;
-  status: string;
-  partyId: string;
-  partyMaskedRef: string; // e.g., "P-8f2a (Verified TG)" — never raw phone/email
-  currency: string;
-  grossAmountMinor: string;
-  paidAmountMinor: string;
-  paymentPlanStatus: 'PENDING' | 'PARTIALLY_PAID' | 'PAID' | 'OVERDUE' | 'CANCELLED';
-  fulfillmentPlanStatus: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'PARTIALLY_COMPLETED' | 'CANCELLED' | 'REQUIRES_ATTENTION';
-  lineCount: number;
-  hasOpenOperatorAction: boolean;
-  createdAt: string;
+export type StaffBookingView = {
+  bookingId: string;
+  serviceName: string;
+  professionalId: string;
+  startsAt: string;
+  endsAt: string;
+  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED';
+  customerName: string;
+  customerContact: string;
 };
 
-export type OperatorActionView = {
-  id: string;
-  reason: string;
-  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'DISMISSED';
-  affectedAggregateType: string;
-  affectedAggregateId: string;
-  recommendedNextAction: string;
-  availableSafeActions: string[];
-  dueAt: string | null;
-  createdAt: string;
-};
-
-export type CashCommitmentView = {
-  currency: string;
-  paidMinor: string;
-  dueThisWeekMinor: string;
-  overdueMinor: string;
-  promisedRefundsMinor: string;
-  disputedMinor: string;
+export type PublicProfessionalView = {
+  slug: string;
+  displayName: string;
+  headline: string | null;
+  biography: string | null;
+  photoUrl: string | null;
+  portfolioItems: Array<{ title: string; description: string | null; mediaUrl: string }>;
+  services: Array<{ id: string; name: string; durationMin: number; priceMinor: string; currency: string }>;
 };
 ```
 

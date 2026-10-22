@@ -1,84 +1,88 @@
-# Tasks: Small-Business Commerce Operations Kernel & Capability Packs (`003`)
+# Tasks: Booking-First Service Template (`003.1`)
 
 > "Never half-ass two things. Whole-ass one thing." («Никогда не делай два дела вполсилы. Делай одно дело на всю катушку.») — Рон Свонсон (_Parks and Recreation_)  
 > "Чё там с сосисками, Чарли? — Пять минут, Турецкий. — Пять минут назад ты сказал, что будет готово через две минуты!" — _Большой куш / Snatch_  
 > "Первые 90% проекта занимают 90% времени. Оставшиеся 10% — другие 90%." — The 90-90 rule
 
-**Input**: Design documents from `/specs/003-commerce-operations-capability-packs/` (`spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/api-contracts.md`, `quickstart.md`)  
-**Prerequisites**: `plan.md` (completed), `spec.md` (clarified 5/5: `Q1 Option B`, `Q2 Option B`, `Q3 Option B`, `Q4 Option A`, `Q5 Option B`), `research.md`, `data-model.md`, `contracts/api-contracts.md`  
+**Input**: Updated booking-first `spec.md`, `plan.md`, `research.md`, `data_model.md`, `contracts.md`, and `quickstart.md`
+**Prerequisites**: Cross-artifact analysis and external reviews must be rerun for this scope before implementation.
 **Standard Compliance**: ISO/IEC/IEEE 29148:2018, ISO/IEC/IEEE 12207:2017 & NIST SP 800-218 SSDF
+
+## Business Gate
+
+Do not publish the Sprint B offer or start tasks `T001`–`T062` until the business plan's demand gate is met: 10 paid Tripwire audits (`$350`–`$490` each) within the first 60 days. Record the completion date and evidence in the canonical commercial tracker before unblocking the sprint. This plan does not claim that the gate has already been met.
 
 ---
 
 ## Format: `- [ ] [TaskID] [AGENT] [Story?] Description with file path`
 
 - **[AGENT]**: Specialist agent responsible for the task (`[SETUP]`, `[DB]`, `[BE]`, `[FE]`, `[OPS]`, `[E2E]`, `[SEC]`, `[PERF]`, `[DOC]`)
-- **[Story]**: User story label (`[US1]`..`[US11]`) — required on all User Story phase tasks (`Phase 3`–`Phase 13`), omitted on Setup (`Phase 1`), Foundational (`Phase 2`), and Polish (`Phase 14`) phases
-- **Delivery Tier Mapping (`Q1 Option B`)**:
-  - **Tier 1 — Mandatory Production MVP (`Release 003.1`)**: `Phase 1 (Setup)` + `Phase 2 (Foundational)` + `Phase 3 (US1)` + `Phase 4 (US2)` + `Phase 5 (US3)` + `Phase 6 (US4)` + `Phase 7 (US5)` + `Phase 14 (Polish & Single-VPS Gate)`
-  - **Tier 2 — Subsequent Capability Pack Phases (`Releases 003.2+`)**: `Phase 8 (US6)` + `Phase 9 (US7)` + `Phase 10 (US8)` + `Phase 11 (US9)` + `Phase 12 (US10)`
-  - **Tier 3 — Portfolio Engineering AI Lab Workstream (`Phase H`)**: `Phase 13 (US11)`
+- **[Story]**: User story label (`[US1]`..`[US12]`) — required on all User Story phase tasks; omitted on Setup, Foundational, and Polish phases
+- **Delivery Tier Mapping (Updated 2026-10-22)**:
+  - **Tier 1 — Production MVP (`003.1`)**: `Phase 1`, `Phase 2`, `Phase 3 (US12: public professional pages)`, `Phase 4 (US2: appointment booking)`, `Phase 7 (US5: staff access)`, and `Phase 14 (production readiness)`.
+  - **Tier 2 — Commerce and Operations Packs (`003.2+`)**: product sales, mixed carts, payment plans, and `Phases 8–12`.
+  - **Tier 3 — Optional AI Lab**: `Phase 13 (US11)`.
 
 ---
 
 ## Phase 1: Setup (Shared Infrastructure & Supply-Chain Governance)
 
-**Purpose**: Shared configuration schemas, OSS attribution manifest, dependency license verification, and spike disposal check before foundational DB/service work begins.
+**Purpose**: Business page settings, locale/timezone/currency configuration, OSS attribution, and dependency license verification.
 
-- [ ] T001 [SETUP] Create Zod client customization manifest, feature-fit validator (`FR-329`), and capability pack toggle schema with typed inputs/outputs in `config/client-manifest.schema.ts`
+- [ ] T001 [SETUP] Define validated business page settings for name, description, branding, contact links, locale, timezone, and currency (`FR-335`); initialize a new setup to editable `USD` and require owner confirmation or change before live prices are published in `config/shop.config.ts`
 - [ ] T002 [SETUP] Create permissive OSS attribution registry (`MIT`, `BSD-3-Clause`, `Apache-2.0` allowlist) and automated path-level license gate in `config/oss-reuse-registry.json`
-- [ ] T003 [OPS] Run dependency vulnerability scan (`npm audit`) and copyleft license check (`zero AGPLv3/GPLv3/MSCL/ELv2`) in `scripts/verify-licenses.mjs`
-- [ ] T004 [SETUP] Spike disposal verification: ensure zero temporary prototype branches or unredacted spike fixtures exist in repository root per `specs/003-commerce-operations-capability-packs/research.md`
+- [ ] T003 [OPS] Run dependency vulnerability scan (`npm audit`) and copyleft license check (`zero AGPLv3/GPLv3/MSCL/ELv2`) against the lockfile in `scripts/verify-licenses.mjs`
+- [ ] T004 [SETUP] Confirm no required integration credentials or country-specific values are committed to the template; document client-supplied configuration inputs.
 
 ---
 
-## Phase 2: Foundational — Tier 1 Production MVP Kernel Prerequisites (`003.1` Phase A)
+## Phase 2: Foundation — Staff Access, Services & Booking Schema (`003.1`)
 
-**Purpose**: Core single-tenant schema expansion (`Q4 Option A`), 3-role session-based staff authentication (`Q2/Q3 Option B`), `CurrencyMetadata`, unified `Party` & `Offering` foundation, `CapabilityModule` registry, and bounded 4-stage backfill (`NFR-305`).
+**Purpose**: Add only the staff access, professional, service, schedule, and booking data missing from the current application. Preserve existing customer and appointment history.
 
 **⚠️ CRITICAL**: No user story phase can begin until this phase is complete (sync barrier).
 
-- [ ] T005 [DB] Stage 1 Expand DDL: add `StaffMember`, `StaffSession`, `Party`, `PartyIdentifier`, `ContactPoint`, `ChannelIdentity`, `PartyNote`, `PartyTag`, `CurrencyMetadata`, `Offering`, `OfferingVariant`, `ServicePolicy`, `BundleComponent`, `InventoryBalance`, `InventoryMovement`, `Resource`, `AvailabilityException`, `OrderLine`, `PaymentPlan`, `PaymentMilestone`, `PaymentAllocation`, `FulfillmentPlan`, `FulfillmentSegment`, `CompletionEvidence`, `OperatorAction`, `AuditEvent`, and nullable `Order.partyId` via Prisma ORM with `lock_timeout = '2s'`, `statement_timeout = '5s'`, and `down.sql` in `prisma/schema.prisma` and `prisma/migrations/20261022000000_003_kernel_expand/migration.sql`
-- [ ] T006 [BE] Implement `CurrencyMetadata` minor-unit resolver and formatter with typed inputs/outputs (eliminating hardcoded `/ 100` assumptions, `FR-303`) in `lib/kernel/currency.ts`
-- [ ] T007 [BE] Implement compiled `CapabilityModule` registry (`id`, `version`, `requiredCapabilities`, `registerRoutes`, `registerJobs`, `registerPolicies`, `registerReadModels`) with typed inputs/outputs and `INV-011` historical read preservation (`FR-325`) in `lib/kernel/capabilityRegistry.ts`
-- [ ] T008 [BE] Implement individual `StaffMember` `scrypt` authentication, `StaffSession` (`sha256` token hash) cookie management, fixed 3-role policy guard (`OWNER > OPERATOR > PERFORMER`, `FR-325a`), per-user session revocation, and audited break-glass `ADMIN_TOKEN` fallback (`BREAK_GLASS_ADMIN_TOKEN_USED`, `FR-325b`) with typed inputs/outputs in `lib/security/staffSession.ts`, `lib/security/staffRbac.ts`, and `lib/security/adminAuth.ts`
-- [ ] T009 [BE] Implement unified `Party` resolution and dual-write service (`PERSON | ORGANIZATION`, `PartyIdentifier`, `ContactPoint`, `ChannelIdentity`, `MessengerContact` sync, `FR-304`) with typed inputs/outputs via Prisma ORM in `lib/kernel/partyService.ts`
-- [ ] T010 [BE] Implement unified `Offering` and `OfferingVariant` catalog service (`PRODUCT | SERVICE | BUNDLE | DIGITAL | CUSTOM_QUOTE`, `ServicePolicy`, `BundleComponent`, `Item` dual-write, `FR-301`, `FR-302`) with typed inputs/outputs via Prisma ORM in `lib/kernel/offeringService.ts`
-- [ ] T011 [DB] Stage 2 Bounded Backfill: implement idempotent batch migration script (`LIMIT 500 FOR UPDATE SKIP LOCKED`) populating `CurrencyMetadata`, `Resource`, bootstrap `OWNER` `StaffMember`, `Offering`/`OfferingVariant`, `Party`, `OrderLine`, `PaymentPlan`, and `FulfillmentPlan` from `001`/`002` data via Prisma ORM in `scripts/backfill-003-kernel.ts` and `prisma/migrations/20261022010000_003_kernel_backfill/migration.sql`
-- [ ] T012 [DB] Stage 3 Validate & Cutover DDL: add `CHECK ("partyId" IS NOT NULL) NOT VALID` on `Order`, execute separate `VALIDATE CONSTRAINT`, and provide `down.sql` (`NFR-305`) in `prisma/migrations/20261022020000_003_kernel_validate_cutover/migration.sql`
+- [ ] T005 [DB] Add only missing `StaffMember` (linked to a Better Auth identity), `ProfessionalProfile`, `ProfessionalService`, `PortfolioItem`, `Resource`, schedule fields, and nullable booking-cancellation credential fields using an additive migration; preserve existing customer and appointment tables and generate Better Auth's schema from its selected version in `prisma/schema.prisma` and `prisma/migrations/20261022000000_003_booking_template/migration.sql`
+- [ ] T006 [BE] Resolve all new service-price display and booking-price writes from the installation's configured currency; use generic ISO 4217 metadata or explicit non-ISO metadata, and never rely on the legacy `OrderItem.currency` default for a new amount (`FR-303`, `FR-335`)
+- [ ] T007 [BE] Implement validation/loading for public business settings and service defaults, and define a typed build-time capability-pack configuration contract without a runtime plugin registry (`FR-325`)
+- [ ] T008 [BE] Pin a supported Better Auth release exactly in the package manifest and lockfile, then integrate it for staff identity, password verification, PostgreSQL-backed sessions, secure cookies, expiry and revocation; map each authenticated identity to one active `StaffMember`, apply the fixed 3-role policy guard (`OWNER > OPERATOR > PERFORMER`, `FR-325a`), and retain audited break-glass `ADMIN_TOKEN` recovery (`FR-325b`) in `lib/security/auth.ts`, `lib/security/staffRbac.ts`, and `lib/security/adminAuth.ts`
+- [ ] T009 [BE] Reuse existing booking customer fields and add only missing contact validation and retention behavior; do not introduce cross-channel Party resolution in the booking release (`FR-304`)
+- [ ] T010 [BE] Implement service listings, professional-to-service associations, profile ownership, publication state, and portfolio item management (`FR-301`, `FR-336`)
+- [ ] T011 [DB] Implement the migration's dual-write/backfill only for existing values that move to a new representation; use an idempotent, rate-limited backfill and reconcile counts/values, or record verified zero applicable rows for new independent tables (`NFR-305`)
+- [ ] T012 [DB] Verify Expand, applicable Dual-Write/Backfill, Cutover, and deferred Contract decisions; test rollback to the prior application version against a restored database and prove no historical or new booking data is lost (`NFR-305`)
 
-**Checkpoint**: Foundation ready — Production MVP User Stories (`US1`–`US5`) can now proceed.
-
----
-
-## Phase 3: User Story 1 — Selling Physical Goods with Auditable Inventory Movements (Priority: P1) 🎯 Production MVP (`003.1`)
-
-**Goal**: Enable selling physical goods (`OfferingKind.PRODUCT`) with SKU variants where stock is modified exclusively via immutable `InventoryMovement` ledger entries (`FR-308`, `INV-003`) and post-payment stock depletion creates an `OperatorAction` without rolling back accepted payments (`INV-002`).
-
-**Independent Test**: Seed a `PRODUCT` variant with `+5` stock via `InventoryMovement(INITIAL)`, reserve `2` units on checkout, commit on fulfillment, and simulate a concurrent payment on `0` stock to verify `PAID_REQUIRES_RESOLUTION` + `OperatorAction(OUT_OF_STOCK_AFTER_PAYMENT)`.
-
-- [ ] T013 [BE] [US1] Implement transactional `InventoryMovement` ledger (`INITIAL`, `RESERVE`, `COMMIT`, `RELEASE`, `ADJUSTMENT`, `RETURN`, `DAMAGE`) and `InventoryBalance` updater (`FR-308`, `INV-003`) with typed inputs/outputs via Prisma ORM in `lib/kernel/inventoryLedger.ts`
-- [ ] T014 [BE] [US1] Implement post-payment stock depletion guard (`INV-002`) transitioning depleted paid orders to `PAID_REQUIRES_RESOLUTION` and enqueuing `OperatorAction(OUT_OF_STOCK_AFTER_PAYMENT)` with typed inputs/outputs in `lib/payments/fulfillment.ts`
-- [ ] T015 [BE] [US1] Implement admin catalog offering and inventory movement endpoints (`POST /api/admin/catalog/offerings`, `POST /api/admin/inventory/movements`) with Zod validation, `OPERATOR`/`OWNER` role check, and structured error handling in `app/api/admin/catalog/offerings/route.ts` and `app/api/admin/inventory/movements/route.ts`
-- [ ] T016 [FE] [US1] Update product card and catalog drawer to display variant SKU availability and support `OfferingKind.PRODUCT` selection in `components/catalog/ItemCard.tsx` and `components/catalog/CartDrawer.tsx`
-- [ ] T017 [BE] [US1] Write TDD-Lite unit and concurrency tests for `InventoryMovement` ledger invariance (`available == onHand - reserved`) and `OUT_OF_STOCK_AFTER_PAYMENT` fallback in `tests/unit/inventory-ledger.test.ts`
+**Checkpoint**: Foundation ready — professional pages, appointment booking, and three-role staff access can proceed.
 
 ---
 
-## Phase 4: User Story 2 — Single & Multi-Service Booking with Staff, Resource & Buffer Capacity (Priority: P1) 🎯 Production MVP (`003.1`)
+## Phase 3: User Story 12 — Public Professional Pages & Portfolio (Priority: P1) 🎯 Production MVP (`003.1`)
 
-**Goal**: Generalize single and multi-service booking behind the unified `CapacityPort` (`checkCapacity`, `reserveCapacity`, `commitCapacity`, `releaseCapacity`, `FR-307`) enforcing `WorkingSchedule`, `AvailabilityException`, `bufferBeforeMin`/`bufferAfterMin`, `acquireResourceSlotLock`, and PostgreSQL GiST `slot_resource_no_overlap` (`FR-309`, `INV-004`).
+**Goal**: Publish the business page and each professional's own profile, portfolio, and active services under a stable URL on the business site, with publication and edit permissions enforced (`FR-335`, `FR-336`).
 
-**Independent Test**: Configure a 60-min service with 15-min `bufferAfterMin` and a 30-min add-on; verify `checkCapacity` returns only 105-min contiguous windows excluding `AvailabilityException` dates, and concurrent overlapping locks on the same `resourceId` return HTTP 409 (`23P01`).
+**Independent Test**: Publish a business page and two professional pages; verify each page shows only its own published portfolio and services, an unpublished page is inaccessible, and a performer cannot edit another professional's profile.
 
-- [ ] T018 [BE] [US2] Extend contiguous window generator to evaluate `AvailabilityException`, `ServicePolicy.bufferBeforeMin`, and `ServicePolicy.bufferAfterMin` (`FR-309`) with typed inputs/outputs in `lib/booking/windows.ts`
-- [ ] T019 [BE] [US2] Implement unified `CapacityPort` (`checkCapacity`, `reserveCapacity`, `commitCapacity`, `releaseCapacity`, `FR-307`) combining `InventoryMovement` and resource-locked `SlotReservation` with typed inputs/outputs via Prisma ORM in `lib/kernel/capacityPort.ts`
-- [ ] T020 [BE] [US2] Update `/api/booking/slots` and `/api/booking/lock` route handlers to invoke `CapacityPort` and `Party` blacklist checks with Zod validation and structured error handling in `app/api/booking/slots/route.ts` and `app/api/booking/lock/route.ts`
-- [ ] T021 [BE] [US2] Write TDD-Lite unit and integration tests for `CapacityPort` buffer intervals, `AvailabilityException` filtering, and GiST `23P01` collision rejection in `tests/unit/capacity-port.test.ts`
+- [ ] T013 [DB] [US12] Add only the public-page lookup indexes and stable slug uniqueness constraints to the profile models created by T005; do not recreate their tables or base migration (`FR-336`)
+- [ ] T014 [BE] [US12] Implement public business and professional page queries that return only published profiles, portfolio items, active associated services, and prices formatted from validated business settings (`FR-335`, `FR-336`)
+- [ ] T015 [BE] [US12] Implement owner/operator profile management and performer self-edit endpoints with strict profile ownership checks and audit attribution
+- [ ] T016 [FE] [US12] Build responsive public business and professional pages, portfolio gallery, service list, and booking entry point under `/professionals/{slug}`
+- [ ] T017 [SEC] [US12] Verify unpublished profile data and customer/booking data never appear in public page responses; verify `PERFORMER` cannot modify another professional's page
 
 ---
 
-## Phase 5: User Story 3 — Mixed Goods-and-Services Order & Segmented Fulfillment Plan (Priority: P1) 🎯 Production MVP (`003.1`)
+## Phase 4: User Story 2 — Appointment Booking with Staff, Resource & Buffer Capacity (Priority: P1) 🎯 Production MVP (`003.1`)
+
+**Goal**: Deliver one booking journey: select a service and professional, choose an available time, create or cancel the appointment, and prevent overlapping bookings. A booking contains one service in `003.1`.
+
+**Independent Test**: Configure one professional's hours and a 60-minute service; verify unavailable times are excluded, two overlapping requests cannot both succeed, and a successful booking appears in the staff view with the right timezone and customer details.
+
+- [ ] T018 [BE] [US2] Compute available appointment slots from service duration, business timezone, staff working hours, days off, existing bookings, and configured buffers (`FR-307`, `FR-309`)
+- [ ] T019 [BE] [US2] Create a booking under a transaction/slot lock and reject stale or overlapping slot requests with a clear unavailable response (`FR-337`, `INV-004`)
+- [ ] T020 [BE] [US2] Implement public slot lookup and booking create/cancel endpoints with input validation and idempotency; issue a cryptographically random booking-scoped cancellation token, store only its hash, enforce expiry and cancellation policy, rate-limit attempts, and consume/revoke it on use or booking changes (`FR-337`, `INV-014`)
+- [ ] T021 [FE] [US2] Implement the customer booking flow from service and professional selection through slot selection, contact details, confirmation, and cancellation; show the one-time cancellation link on confirmation and submit the credential without retaining it in logs or analytics.
+
+---
+
+## Phase 5: User Story 3 — Mixed Goods-and-Services Order & Segmented Fulfillment Plan (Priority: P2 — Commerce Pack `003.2+`)
 
 **Goal**: Support mixed baskets (physical goods + scheduled services/bundles) in one `Order` with immutable `OrderLine` snapshots (`FR-312`, `INV-001`), segmented `FulfillmentPlan` (`INVENTORY`, `APPOINTMENT`, `DIGITAL`, `DELIVERY`, `MANUAL_MILESTONE`, `FR-318`), and `PERFORMER`-submitted `CompletionEvidence` (`FR-319`).
 
@@ -92,7 +96,7 @@
 
 ---
 
-## Phase 6: User Story 4 — Deposit, Milestone & Balance Payment Plans with Explicit Allocations (Priority: P1) 🎯 Production MVP (`003.1`)
+## Phase 6: User Story 4 — Deposit, Milestone & Balance Payment Plans with Explicit Allocations (Priority: P2 — Payments Pack `003.2+`)
 
 **Goal**: Replace binary payment flags with `PaymentPlan`, `PaymentMilestone` (`DEPOSIT`, `MILESTONE`, `BALANCE`, `ON_SITE`), capability-declared `PaymentProvider` adapters, and explicit `PaymentAllocation` records linking `PaymentEvent` and `RefundOperation` rows (`FR-315`, `FR-316`).
 
@@ -104,19 +108,19 @@
 
 ---
 
-## Phase 7: User Story 5 — Exception-Driven Operator Work Queue, Session Auth & Role-Bounded Resolution (Priority: P1) 🎯 Production MVP (`003.1`)
+## Phase 7: User Story 5 — Staff Access & Role-Bounded Booking Operations (Priority: P1) 🎯 Production MVP (`003.1`)
 
-**Goal**: Provide the exception-driven `OperatorAction` work queue (`FR-321`), core PII-redacted read models (`FR-305`, `FR-326`), individual staff login/logout/provisioning/revocation endpoints (`FR-325b`), and role-gated Telegram Staff Bot callbacks (`FR-325a`).
+**Goal**: Provide individual staff login/logout/provisioning/revocation, three-role permissions, profile ownership, and staff booking views (`FR-325a`, `FR-325b`, `FR-326`). No Telegram bot or advanced exception queue is required.
 
-**Independent Test**: Login as `OWNER`, create `OPERATOR` and `PERFORMER` accounts, trigger an operational exception, resolve it as `OPERATOR` via `/api/admin/operator-actions/[id]/resolve`, verify `AuditEvent` records `actorId` + `actorRole`, verify `PERFORMER` is blocked from refund/config routes (`403`), and verify session revocation immediately returns `401`.
+**Independent Test**: Login as each role, verify the permitted profile and booking operations, confirm a performer cannot view another professional's bookings or edit their page, and confirm session revocation immediately returns `401`.
 
-- [ ] T030 [BE] [US5] Implement `OperatorAction` lifecycle service (`enqueueOperatorAction`, `resolveOperatorAction`, `FR-321`) and PII-redacted read models (`OperatorActionView`, `OrderSummaryView`, `PartyTimelineView`, `AvailabilityView`, `CatalogSearchView`, `PaymentStatusView`, `CashCommitmentView`, `FR-305`, `FR-326`) with typed inputs/outputs via Prisma ORM in `lib/kernel/operatorActionService.ts` and `lib/kernel/readModels.ts`
-- [ ] T031 [BE] [US5] Implement staff auth and management endpoints (`POST /api/admin/auth/login`, `POST /api/admin/auth/logout`, `POST /api/admin/staff`, `POST /api/admin/staff/[id]/revoke-sessions`, `FR-325b`) with Zod validation and structured error handling in `app/api/admin/auth/login/route.ts`, `app/api/admin/auth/logout/route.ts`, `app/api/admin/staff/route.ts`, and `app/api/admin/staff/[id]/revoke-sessions/route.ts`
-- [ ] T032 [BE] [US5] Implement `GET /api/admin/operator-actions` and `POST /api/admin/operator-actions/[id]/resolve` endpoints with Zod validation, `OPERATOR`/`OWNER` RBAC, and structured error handling in `app/api/admin/operator-actions/route.ts` and `app/api/admin/operator-actions/[id]/resolve/route.ts`
-- [ ] T033 [BE] [US5] Update Telegram Staff Bot callback authorization (`lib/bot/staffActions.ts`) to resolve `StaffMember` by `telegramUserId`, enforce `OWNER | OPERATOR | PERFORMER` permissions (`FR-325a`), reject deactivated/revoked staff, and record `actorId` + `actorRole` in `AuditEvent`
-- [ ] T034 [SEC] [US5] Write TDD-Lite security and RBAC tests covering `StaffSession` login/revocation (`401`), `PERFORMER`/`OPERATOR`/`OWNER` permission boundaries (`403`), break-glass `ADMIN_TOKEN` audit logging, and `OperatorAction` resolution in `tests/unit/staff-rbac-and-sessions.test.ts`
+- [ ] T030 [BE] [US5] Implement role-filtered staff booking and profile views; restrict `PERFORMER` results to their own profile and assigned appointments (`FR-326`)
+- [ ] T031 [BE] [US5] Mount Better Auth's supported Next.js App Router handlers for sign-in/sign-out; implement owner-only staff provisioning and session-revocation routes using Better Auth server APIs, with no custom password or session lifecycle (`FR-325b`) in `app/api/auth/[...all]/route.ts` and `app/api/admin/staff/**`
+- [ ] T032 [BE] [US5] Implement staff booking updates and cancellation with Zod validation, policy checks, and role-aware authorization in the admin booking routes
+- [ ] T033 [BE] [US5] Ensure all staff mutations record actor ID and role; allow an `OWNER` to be linked to a bookable resource and operate their own professional profile
+- [ ] T034 [SEC] [US5] Verify Better Auth login, session expiry/revocation, disabled-account rejection, the three role boundaries, profile ownership, booking privacy, and break-glass `ADMIN_TOKEN` audit logging
 
-**Checkpoint — Tier 1 Production MVP (`003.1`) Complete**: All mandatory Production MVP requirements (`Q1–Q5`) are implemented and independently testable.
+**Checkpoint — Tier 1 Production MVP (`003.1`) Complete**: Public business and professional pages, service listings, appointment booking, three-role staff access, privacy controls, and the agreed production readiness checks are ready for client handoff.
 
 ---
 
@@ -135,14 +139,14 @@
 
 ## Phase 9: User Story 7 — Unified Party Timeline, Conversation-to-Draft & Resumable Guest Journeys (Priority: P2 — Subsequent Phase Pack `Phase E`)
 
-**Goal**: Deliver operator-approved conversation-to-draft conversion (`FR-322`), HMAC-signed cross-channel `ContinuationLink` guest journeys (`Journey`, `JourneyToken`, `FR-323`), operator-facing `ActionSuggestion` records (`FR-306`), and limited-connectivity non-financial draft reconciliation (`FR-324`).
+**Goal**: Deliver a `PartyTimelineView` (`FR-305`), a durable exception-driven `OperatorAction` queue (`FR-321`), operator-approved conversation-to-draft conversion (`FR-322`), HMAC-signed cross-channel `ContinuationLink` guest journeys (`Journey`, `JourneyToken`, `FR-323`), operator-facing `ActionSuggestion` records (`FR-306`), and limited-connectivity non-financial draft reconciliation (`FR-324`).
 
-**Independent Test**: Convert a customer Telegram message into an operator-approved `Booking Draft`, issue a `ContinuationLink`, resume the draft in a web session, reconcile a queued offline `CompletionEvidence` draft, and verify all events appear in `PartyTimelineView`.
+**Independent Test**: Convert a customer Telegram message into an operator-approved `Booking Draft`, issue a `ContinuationLink`, resume the draft in a web session, reconcile a queued offline `CompletionEvidence` draft, verify events appear in `PartyTimelineView`, and resolve an `OperatorAction` while retaining its audit history.
 
-- [ ] T039 [DB] [US7] Add `Journey`, `JourneyToken`, and `ActionSuggestion` models to `prisma/schema.prisma` and generate additive migration with `down.sql` in `prisma/migrations/20261023010000_003_journey_pack/migration.sql`
-- [ ] T040 [BE] [US7] Implement operator-approved conversation-to-draft service (`FR-322`), HMAC-SHA256 `ContinuationLink` token issuer/verifier (`FR-323`), evidence-backed `ActionSuggestion` generator (`FR-306`), and limited-connectivity non-financial draft reconciliation service (`FR-324`) with typed inputs/outputs in `lib/packs/operations/journeyService.ts`
-- [ ] T041 [BE] [US7] Implement `POST /api/admin/conversations/to-draft`, `GET /api/journey/[token]`, and `POST /api/admin/drafts/reconcile` endpoints with Zod validation and structured error handling in `app/api/admin/conversations/to-draft/route.ts`, `app/api/journey/[token]/route.ts`, and `app/api/admin/drafts/reconcile/route.ts`
-- [ ] T042 [BE] [US7] Write unit tests for `ContinuationLink` single-use/TTL verification, `ActionSuggestion` approval gating (`FR-306`), and offline non-financial draft reconciliation (`FR-324`) in `tests/unit/journey-continuation.test.ts`
+- [ ] T039 [DB] [US7] Add `Journey`, `JourneyToken`, `ActionSuggestion`, and `OperatorAction` models to `prisma/schema.prisma` and generate an additive migration in `prisma/migrations/20261023010000_003_journey_pack/migration.sql` (`FR-321`–`FR-323`)
+- [ ] T040 [BE] [US7] Implement `PartyTimelineView` (`FR-305`), durable exception-to-`OperatorAction` creation/resolution (`FR-321`), conversation-to-draft service (`FR-322`), HMAC-SHA256 `ContinuationLink` issuer/verifier (`FR-323`), evidence-backed `ActionSuggestion` generator (`FR-306`), and non-financial draft reconciliation (`FR-324`) in `lib/packs/operations/journeyService.ts`
+- [ ] T041 [BE] [US7] Implement the Party timeline and operator-action queue/read/resolve endpoints alongside conversation-to-draft, journey-resume, and draft-reconcile routes, with Zod validation and audit attribution (`FR-305`, `FR-321`–`FR-324`) in `app/api/admin/**` and `app/api/journey/[token]/route.ts`
+- [ ] T042 [BE] [US7] Verify timeline projection coverage, operator-action durability/audit history, `ContinuationLink` single-use/TTL, `ActionSuggestion` approval gating, and offline non-financial draft reconciliation (`FR-305`, `FR-306`, `FR-321`, `FR-323`, `FR-324`) in `tests/unit/journey-continuation.test.ts`
 
 ---
 
@@ -196,16 +200,35 @@
 
 ---
 
-## Phase 14: Polish, Stage 4 Contract & Single-VPS Operational Readiness Gate
+## Phase 14: Production Readiness & Client Handoff
 
-**Purpose**: Finalize Stage 4 Contract migration, verify Single-VPS concurrency/memory/DR baseline (`Q5 Option B`: `99.0% uptime`, `RTO <= 60m`, `RPO <= 24h`, `100 concurrent reqs`, `app RSS <= 500 MB`), audit PII redaction, and update living documentation.
+**Purpose**: Verify the booking-first release, staff role boundaries, customer privacy, database backup/restore, and single-VPS operating limits. The release does not include a commerce-kernel cutover.
 
-- [ ] T057 [DB] Stage 4 Contract migration: promote validated constraints, retire temporary dual-write shims while preserving historical order readability (`INV-011`), and verify `down.sql` rollback in `prisma/migrations/20261022030000_003_kernel_contract/migration.sql`
-- [ ] T058 [PERF] Execute Single-VPS 100-concurrency load and memory benchmark (`checkCapacity` p95 < 50ms, write commands p95 < 250ms, main container `app RSS <= 500 MB`, `NFR-301`–`NFR-303`) in `tests/unit/performance-benchmark.test.ts` and `docker/bench-memory.sh`
-- [ ] T059 [OPS] Implement and execute Single-VPS automated `pg_dump` backup & restore drill verifying `RTO <= 60 minutes` and `RPO <= 24 hours` (`NFR-304`, `SC-002`) in `scripts/verify-single-vps-dr.sh`
-- [ ] T060 [SEC] Audit structured telemetry logs, read models, and error payloads for zero raw PII or credential leakage (`INV-010`) and verify single-tenant DB schema isolation (`FR-325c`, `INV-013`) in `tests/unit/security-and-pii-audit.test.ts`
-- [ ] T061 [DOC] Update living documentation (`specs/main/README.md`, `specs/main/architecture.md`, `specs/main/requirements.md`, and `docs/whitelabel-quickstart.md`) with Feature 003 runbooks and Single-VPS DR procedures
-- [ ] T062 [OPS] Run full constitutional quality gate (`npm run validate`, `npm test`, `npm run build`, `scripts/verify-licenses.mjs`, `quickstart.md` tracer bullet verification)
+- [ ] T057 [E2E] Verify the public-to-staff booking journey end to end, including configured business settings/currency and correct live price display, profile/portfolio, availability, booking, staff visibility, and credential-protected cancellation
+- [ ] T058 [PERF] Run the reproducible NFR-301/302 load profile and record p95/p99 for public pages, availability, and booking create/cancel; also verify 100-way same-slot conflict safety and the NFR-303 app memory ceiling
+- [ ] T059 [OPS] Restore a backup no older than 24 hours into a clean database; verify business settings, services, staff, customers, and appointments, and record measured RPO, restore duration, peak RSS, and evidence that RTO `<= 60 minutes` / RPO `<= 24 hours` pass
+- [ ] T060 [SEC] Review public responses, Better Auth staff APIs, logs, cancellation credentials, and profile ownership; verify two client installations use separate databases, secrets, and backup sets, with no cross-install access (`FR-325c`)
+- [ ] T061 [DOC] Update living documentation and client handoff instructions for template settings, staff roles, page publication, booking, and recovery
+- [ ] T062 [OPS] Complete repository validation, build, license checks, and the acceptance steps in `quickstart.md`
+
+---
+
+## Phase 15: User Story 1 — Product Sales & Inventory Pack (Priority: P2 — `003.2+`)
+
+**Goal**: Add product listings, stock tracking, and product checkout only after the booking-first template has been validated with initial clients.
+
+**Independent Test**: Publish a product, reserve and sell available stock, reject an order that exceeds stock, and verify inventory movements provide an auditable balance.
+
+- [ ] T063 [DB] [US1] Add product variants and stock balance/movement models with additive migrations and explicit per-item currency (`FR-302`, `FR-308`, `INV-003`)
+- [ ] T064 [BE] [US1] Implement the transactional inventory movement ledger and stock availability checks for product orders
+- [ ] T065 [BE] [US1] Implement product catalog and inventory management endpoints with role checks and input validation
+- [ ] T066 [FE] [US1] Add product listing, product detail, cart, and checkout screens behind the Goods Pack configuration
+- [ ] T067 [SEC] [US1] Verify stock concurrency, immutable inventory history, configured currency handling, and role boundaries
+
+## Cross-Release Gates
+
+- [ ] T068 [OPS] Instrument PII-safe structured logs, OpenTelemetry traces, and the page/availability/booking/session/memory metrics from `plan.md`; verify exported data contains no customer PII, credentials, or cancellation tokens
+- [ ] T069 [OPS] Before any commercial `003.2+` pack starts, record evidence from the initial live booking deployment(s) and the owner's decision that booking demand is validated; keep the optional Engineering AI Lab outside this commercial gate
 
 ---
 
@@ -218,57 +241,67 @@
 ### Dependencies
 
 ```text
-T001 → T005, T006, T007, T008
+T001 → T005, T006, T007
 T002 → T003
 T003 + T004 → T005
-T005 → T009, T010
-T006 + T009 + T010 → T011
-T011 → T012
-T008 + T010 + T012 → T013
-T013 → T014, T015, T016
-T014 + T015 → T017
-T010 + T012 → T018
-T013 + T018 → T019
-T009 + T019 → T020
+T005 → T008, T009, T010, T011
+T008 + T009 + T010 + T011 → T012
+T010 + T012 → T013
+T006 + T007 + T013 → T014
+T013 → T015
+T006 + T007 + T014 + T015 → T016
+T013 + T016 → T017
+T008 + T012 → T018
+T018 → T019, T020
 T019 + T020 → T021
-T008 + T019 → T022
+T008 + T019 + T069 → T022
 T020 + T022 → T023, T024
 T023 → T025
 T023 + T024 + T025 → T026
 T006 + T023 → T027
 T027 → T028
 T027 + T028 → T029
-T008 + T014 + T022 + T027 → T030
+T008 + T013 + T019 → T030
 T008 → T031
-T030 + T031 → T032, T033
+T030 + T031 → T032
+T032 → T033
 T031 + T032 + T033 → T034
-T019 + T027 + T030 → T035
+T019 + T027 + T030 + T069 → T035
 T035 → T036
 T036 → T037
 T036 + T037 → T038
-T009 + T030 → T039
+T009 + T030 + T069 → T039
 T039 → T040
 T040 → T041
 T040 + T041 → T042
-T022 + T028 → T043
+T022 + T028 + T069 → T043
 T043 → T044
 T044 → T045
-T001 + T030 → T046
+T001 + T030 + T069 → T046
 T046 → T047
 T047 → T048
-T022 + T030 → T049
+T022 + T030 + T069 → T049
 T049 → T050, T051
 T050 + T051 → T052
 T001 + T030 → T053
 T053 → T054, T055
 T054 + T055 → T056
-T017 + T021 + T026 + T029 + T034 → T057
-T057 → T058, T059, T060, T061
-T038 + T042 + T045 + T048 + T052 + T056 + T058 + T059 + T060 + T061 → T062
+T017 + T021 + T034 → T057
+T017 + T021 + T034 → T058
+T005 + T017 + T021 + T034 → T059
+T001 + T005 + T017 + T021 + T034 → T060
+T057 + T059 → T061
+T017 + T021 + T034 → T068
+T006 + T007 + T057 + T058 + T059 + T060 + T061 + T068 → T062
+T062 → T069
+T005 + T069 → T063
+T063 → T064, T065
+T064 + T065 → T066
+T064 + T065 + T066 → T067
 ```
 
 ### Self-Validation Checklist
-- [x] Every task ID in Dependencies (`T001`–`T062`) exists in the task list above
+- [x] Every task ID referenced in Dependencies (`T001`–`T069`) exists in the task list above
 - [x] No circular dependencies (`A → B → A`)
 - [x] No orphan task IDs referenced that don't exist
 - [x] Fan-in uses `+` only, fan-out uses `,` only
@@ -276,128 +309,102 @@ T038 + T042 + T045 + T048 + T052 + T056 + T058 + T059 + T060 + T061 → T062
 
 ---
 
-## Dependency Visualization
+## Dependency Visualization (Production MVP and Product-Pack Excerpt)
+
+This diagram shows the `003.1` release gate and the first product-pack gate only. The complete dependency graph, including all optional packs, is listed in the preceding Dependencies section.
 
 ```mermaid
 graph LR
     T001 --> T005
     T001 --> T006
     T001 --> T007
-    T001 --> T008
-    T002 --> T003
-    T003 & T004 --> T005
+    T005 --> T008
     T005 --> T009
     T005 --> T010
-    T006 & T009 & T010 --> T011
-    T011 --> T012
-    T008 & T010 & T012 --> T013
-    T013 --> T014
+    T005 --> T011
+    T008 & T009 & T010 & T011 --> T012
+    T010 & T012 --> T013
+    T006 & T007 & T013 --> T014
     T013 --> T015
-    T013 --> T016
-    T014 & T015 --> T017
-    T010 & T012 --> T018
-    T013 & T018 --> T019
-    T009 & T019 --> T020
+    T006 & T007 & T014 & T015 --> T016
+    T013 & T016 --> T017
+    T008 & T012 --> T018
+    T018 --> T019
+    T018 --> T020
     T019 & T020 --> T021
-    T008 & T019 --> T022
-    T020 & T022 --> T023
-    T020 & T022 --> T024
-    T023 --> T025
-    T023 & T024 & T025 --> T026
-    T006 & T023 --> T027
-    T027 --> T028
-    T027 & T028 --> T029
-    T008 & T014 & T022 & T027 --> T030
+    T008 & T013 & T019 --> T030
     T008 --> T031
     T030 & T031 --> T032
-    T030 & T031 --> T033
+    T032 --> T033
     T031 & T032 & T033 --> T034
-    T019 & T027 & T030 --> T035
-    T035 --> T036
-    T036 --> T037
-    T036 & T037 --> T038
-    T009 & T030 --> T039
-    T039 --> T040
-    T040 --> T041
-    T040 & T041 --> T042
-    T022 & T028 --> T043
-    T043 --> T044
-    T044 --> T045
-    T001 & T030 --> T046
-    T046 --> T047
-    T047 --> T048
-    T022 & T030 --> T049
-    T049 --> T050
-    T049 --> T051
-    T050 & T051 --> T052
-    T001 & T030 --> T053
-    T053 --> T054
-    T053 --> T055
-    T054 & T055 --> T056
-    T017 & T021 & T026 & T029 & T034 --> T057
-    T057 --> T058
-    T057 --> T059
-    T057 --> T060
-    T057 --> T061
-    T038 & T042 & T045 & T048 & T052 & T056 & T058 & T059 & T060 & T061 --> T062
+    T017 & T021 & T034 --> T057
+    T017 & T021 & T034 --> T058
+    T005 & T017 & T021 & T034 --> T059
+    T001 & T005 & T017 & T021 & T034 --> T060
+    T057 & T059 --> T061
+    T017 & T021 & T034 --> T068
+    T006 & T007 & T057 & T058 & T059 & T060 & T061 & T068 --> T062
+    T062 --> T069
+    T005 & T069 --> T063
+    T063 --> T064
+    T063 --> T065
+    T064 & T065 --> T066
+    T064 & T065 & T066 --> T067
 ```
 
 ---
 
 ## Parallel Lanes
 
-| Lane | Agent Flow | Tasks | Blocked By |
+| Lane | Work | Tasks | Depends on |
 | :--- | :--- | :--- | :--- |
-| **Lane 1: Setup & Governance** | `[SETUP]`, `[OPS]` | `T001`, `T002` → `T003`, `T004` | — |
-| **Lane 2: Database & 4-Stage DDL** | `[DB]` | `T005` → `T011` → `T012` → `T035`, `T039`, `T043`, `T046`, `T049`, `T057` | `T001`, `T003`, `T004` |
-| **Lane 3: MVP Kernel Services & APIs (`003.1`)** | `[BE]` | `T006`, `T007`, `T008`, `T009`, `T010` → `T013`..`T015`, `T018`..`T024`, `T027`..`T033` | `T005`, `T012` |
-| **Lane 4: Storefront & Checkout UI (`003.1`)** | `[FE]` | `T016`, `T025` | `T013`, `T023` |
-| **Lane 5: Phase 2 Capability Packs (`003.2+`)** | `[BE]` | `T036`..`T038`, `T040`..`T042`, `T044`..`T045`, `T047`..`T048`, `T050`..`T051` | `T030`, `T035`..`T049` |
-| **Lane 6: Portfolio Engineering AI Lab (`Phase H`)** | `[BE]`, `[OPS]` | `T053` → `T054`, `T055` → `T056` | `T001`, `T030` |
-| **Lane 7: Security, Perf & Single-VPS DR Gate** | `[SEC]`, `[PERF]`, `[OPS]`, `[DOC]` | `T034`, `T052`, `T058`, `T059`, `T060`, `T061` → `T062` | `T057` |
+| **Foundation & staff access** | Settings, schema, sessions, roles | `T001`–`T012`, `T030`–`T034` | Additive schema and current application structure |
+| **Public pages** | Business page, professional profiles, portfolios, service lists | `T013`–`T017` | `T005`–`T012` |
+| **Appointment booking** | Availability, create/cancel, customer flow | `T018`–`T021` | `T008`, `T012` |
+| **Production readiness** | End-to-end acceptance, privacy, recovery, observability, handoff | `T057`–`T062`, `T068` | Settings, public pages, booking, and staff access |
+| **Later commercial packs** | Mixed carts, payments, products, inventory, and operations | `T022`–`T029`, `T035`–`T052`, `T063`–`T067` | `T069` demand-validation gate plus each pack's own prerequisites |
+| **Optional future work** | Engineering AI Lab | `T053`–`T056` | Its own pack decision and acceptance criteria; independent of the commercial demand gate |
 
 ---
 
 ## Agent Summary
 
-| Agent | Task Count | Can Start After |
-| :--- | :--- | :--- |
-| `[SETUP]` | 3 | Immediately (`T001`, `T002`, `T004`) |
-| `[DB]` | 9 | `T001 + T003 + T004` (`T005`) |
-| `[BE]` | 39 | `T001` (`T006`, `T007`, `T008`) |
-| `[FE]` | 2 | `T013` (`T016`), `T023` (`T025`) |
-| `[OPS]` | 4 | `T002` (`T003`) |
-| `[SEC]` | 3 | `T033` (`T034`), `T051` (`T052`), `T057` (`T060`) |
-| `[PERF]` | 1 | `T057` (`T058`) |
-| `[DOC]` | 1 | `T057` (`T061`) |
-| **Total** | **62** | — |
+| Agent | Task Count | Task IDs |
+| :--- | ---: | :--- |
+| `[SETUP]` | 3 | `T001`, `T002`, `T004` |
+| `[OPS]` | 6 | `T003`, `T054`, `T059`, `T062`, `T068`, `T069` |
+| `[DB]` | 10 | `T005`, `T011`–`T013`, `T035`, `T039`, `T043`, `T046`, `T049`, `T063` |
+| `[BE]` | 38 | `T006`–`T010`, `T014`, `T015`, `T018`–`T020`, `T022`–`T024`, `T026`–`T033`, `T036`–`T038`, `T040`–`T042`, `T044`, `T045`, `T047`, `T048`, `T050`, `T051`, `T053`, `T055`, `T056`, `T064`, `T065` |
+| `[FE]` | 4 | `T016`, `T021`, `T025`, `T066` |
+| `[E2E]` | 1 | `T057` |
+| `[PERF]` | 1 | `T058` |
+| `[SEC]` | 5 | `T017`, `T034`, `T052`, `T060`, `T067` |
+| `[DOC]` | 1 | `T061` |
+| **Total** | **69** | — |
 
-**Critical Path (Production MVP `003.1`)**: `T001 → T005 → T010 → T011 → T012 → T013 → T019 → T020 → T023 → T027 → T030 → T032 → T034 → T057 → T058 → T062`
+**Critical Path (Production MVP `003.1`)**: Foundation and access (`T005`–`T012`) → configured public pages (`T013`–`T017`) + booking (`T018`–`T021`) + role checks (`T030`–`T034`) → acceptance and production readiness (`T057`–`T062`, `T068`).
 
 ---
 
 ## Agent Dispatch Plan
 
-| Agent | Subagent / Command (`.claude/commands/`) | Skills (`.claude/skills/`) | Input Context | Tasks | Target Files / Directories |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `[SETUP]` | `orchestrator` (`.claude/commands/orchestrator.md`) | `architecture`, `system-design-patterns`, `app-builder`, `clean-code` | `plan.md §2, §4`, `research.md §1, §2` | `T001`, `T002`, `T004` | `config/client-manifest.schema.ts`, `config/oss-reuse-registry.json` |
-| `[DB]` | `database-architect` (`.claude/commands/database-architect.md`) | `database-design`, `prisma-expert`, `clean-code` | `data-model.md §1–§4`, `plan.md §6` | `T005`, `T011`, `T012`, `T035`, `T039`, `T043`, `T046`, `T049`, `T057` | `prisma/schema.prisma`, `prisma/migrations/**`, `scripts/backfill-003-kernel.ts` |
-| `[BE]` | `backend-specialist` (`.claude/commands/backend-specialist.md`) | `api-patterns`, `nodejs-best-practices`, `typescript-expert`, `clean-code`, `mcp-builder` | `contracts/api-contracts.md §1–§5`, `data-model.md §2–§3`, `plan.md §4` | `T006`–`T010`, `T013`–`T015`, `T017`–`T024`, `T026`–`T033`, `T036`–`T038`, `T040`–`T042`, `T044`–`T045`, `T047`–`T048`, `T050`–`T051`, `T053`, `T055`–`T056` | `lib/security/**`, `lib/kernel/**`, `lib/packs/**`, `lib/ai/**`, `app/api/**`, `tests/unit/**` |
-| `[FE]` | `frontend-specialist` (`.claude/commands/frontend-specialist.md`) | `react-patterns`, `nextjs-best-practices`, `tailwind-patterns`, `frontend-design` | `contracts/api-contracts.md §2–§3`, `plan.md §4` | `T016`, `T025` | `components/catalog/**`, `components/checkout/**`, `app/checkout/page.tsx` |
-| `[OPS]` | `devops-engineer` (`.claude/commands/devops-engineer.md`) | `docker-expert`, `server-management`, `deployment-procedures`, `bash-linux` | `plan.md §7`, `quickstart.md §2–§3` | `T003`, `T054`, `T059`, `T062` | `scripts/verify-licenses.mjs`, `scripts/verify-single-vps-dr.sh`, `infrastructure/compose/ai-lab.compose.yml` |
-| `[SEC]` | `security-auditor` (`.claude/commands/security-auditor.md`) | `vulnerability-scanner`, `ai-engineering-hygiene`, `code-review-checklist` | `spec.md §3.5`, `plan.md §5`, `contracts/api-contracts.md §1, §4` | `T034`, `T052`, `T060` | `tests/unit/staff-rbac-and-sessions.test.ts`, `tests/unit/agent-read-and-import.test.ts`, `tests/unit/security-and-pii-audit.test.ts` |
-| `[PERF]` | `performance-optimizer` (`.claude/commands/performance-optimizer.md`) | `performance-profiling`, `system-design-patterns` | `spec.md §3.3 (NFR-301..304)`, `quickstart.md §2` | `T058` | `tests/unit/performance-benchmark.test.ts`, `docker/bench-memory.sh` |
-| `[DOC]` | `documentation-writer` (`.claude/commands/documentation-writer.md`) | `documentation-templates`, `knowledge-adaptation` | `plan.md §4, §7`, `quickstart.md` | `T061` | `specs/main/**`, `docs/whitelabel-quickstart.md` |
+| Workstream | Domain owner | Input context | Tasks | Main areas |
+| :--- | :--- | :--- | :--- | :--- |
+| Settings and data model | Database / backend | `spec.md`, `data_model.md`, current Prisma schema | `T001`–`T012` | `config/`, `prisma/` |
+| Profiles and public pages | Frontend / backend | `spec.md` US12, `contracts.md` §3 | `T013`–`T017` | Public routes, profile management, page components |
+| Appointment booking | Backend / frontend | `spec.md` US2, `contracts.md` §2–§3 | `T018`–`T021` | Availability, booking APIs, booking UI |
+| Staff permissions | Backend / security | `spec.md` US5, `contracts.md` §1 and §4 | `T030`–`T034`, `T060` | Sessions, role guards, staff booking views |
+| Client handoff | Operations / documentation | `plan.md`, `quickstart.md` | `T057`–`T062` | Recovery, acceptance, deployment instructions |
+| Later packs | Assigned when scheduled | Their approved scope and contracts | `T022`–`T029`, `T035`–`T056`, `T063`–`T067` | Commerce, messaging, compliance, AI |
 
 ---
 
 ## Implementation Strategy
 
-### 1. Tier 1 Production MVP First (`Release 003.1` — `US1` through `US5`)
-1. Complete **Phase 1 (Setup)** and **Phase 2 (Foundational)** (`T001`–`T012`): establishes the 4-stage Expand/Backfill/Cutover schema, `StaffMember` + `StaffSession` auth, 3-role RBAC (`OWNER`, `OPERATOR`, `PERFORMER`), `Party`, and `Offering`.
-2. Execute **Phases 3–7 (`US1`–`US5`, `T013`–`T034`)**: delivers `InventoryMovement` ledger, `CapacityPort`, mixed `Order`/`OrderLine` snapshots, `PaymentPlan`/`PaymentAllocation`, `FulfillmentPlan`/`FulfillmentSegment` + `CompletionEvidence`, and `OperatorAction` work queue.
-3. Run **Phase 14 (`T057`–`T062`)** against the `003.1` MVP slice to validate the Single-VPS operational baseline (`99.0% uptime`, `RTO <= 60m`, `RPO <= 24h`, `100 concurrent reqs`, `app RSS <= 500 MB`) and ship Release `003.1` within the Sprint B window.
+### 1. First Release (`003.1`)
+1. Complete settings, additive schema, and staff access (`T001`–`T012`), preserving current service, customer, and appointment data.
+2. Complete public business/professional pages and portfolio (`T013`–`T017`), then the single-service appointment booking flow (`T018`–`T021`). Complete staff role and booking operations (`T030`–`T034`) in parallel where dependencies permit.
+3. Complete public-to-staff acceptance, privacy, load, backup/restore, and handoff work (`T057`–`T062`). The acceptance target is the agreed single-VPS service template, not the future commerce kernel.
 
-### 2. Incremental Capability Packs (`Releases 003.2+` — `US6` through `US10`) & Portfolio AI Lab (`US11`)
-- Enable and ship **Phases 8–12 (`US6`–`US10`, `T035`–`T052`)** as independent modular capability packs (`Quote Pack`, `Journey Pack`, `Documents & ChangeRequest Pack`, `Compliance Pack`, `Import & Agent Read Pack`).
-- Execute **Phase 13 (`US11`, `T053`–`T056`)** as an independent portfolio engineering workstream (`LM Studio` + `OmniRoute` AI Gateway + golden benchmark + outage drill) outside the 500 MB production app container.
+### 2. Subsequent Releases (`003.2+`)
+- Schedule product sales and inventory (`T063`–`T067`), mixed orders and payment plans (`T022`–`T029`), and the other capability packs (`T035`–`T056`) after initial booking deployments validate demand and after each pack receives its own implementation review.

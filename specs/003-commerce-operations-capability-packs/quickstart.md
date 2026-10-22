@@ -1,80 +1,48 @@
-# Phase 1 Tracer Bullet Quickstart & Verification Runbook (`003`)
+# Booking-First Template Acceptance Runbook (`003.1`)
 
 **Feature Branch**: `specs/003-commerce-operations-capability-packs`  
-**Date**: 2026-10-21  
-**Target Baseline**: Single-VPS Production (`99.0% uptime`, `RTO <= 60m`, `RPO <= 24h`, `100 concurrent reqs`, `app RSS <= 500 MB` — `Q5 Option B`)
+**Date**: 2026-10-22
+**Target**: Single-business service template with public business and professional pages, portfolios, service listings, and appointment booking.
 
 ---
 
-## 1. Prerequisites & Environment Setup
+## 1. Configure a Client Installation
 
-1. Ensure PostgreSQL 16 with `btree_gist` is running (`docker compose up -d postgres`).
-2. Configure `.env` for single-tenant deployment (`Q4 Option A`):
-   ```env
-   DATABASE_URL="postgresql://postgres:postgres@localhost:5432/undreseller?connection_limit=10"
-   DIRECT_URL="postgresql://postgres:postgres@localhost:5432/undreseller"
-   ENABLED_EXTERNAL_INTEGRATION="TELEGRAM_BUNDLE"
-   ADMIN_TOKEN="break_glass_emergency_token_32chars_min"
-   STAFF_SESSION_SECRET="32_byte_hex_secret_for_cookie_signing"
-   ```
+1. Set the business name, public description, logo, public contact links, locale, timezone, and currency in deployment settings. New setup starts at `USD`; the owner must confirm or change it to the business's actual currency before publishing live prices. Currency must not be inferred from locale.
+2. Create staff accounts through the owner-only Better Auth provisioning flow, using only the three supported roles: `OWNER`, `OPERATOR`, and `PERFORMER`.
+3. Add each professional's profile, portfolio items, services, resource, and working hours. An owner who also takes appointments can be linked to a bookable resource.
+4. Publish the business page, professional pages, service listings, and portfolio items.
+5. Configure no more than one external API integration for the client, if one is needed. The core booking journey must remain usable without it.
 
----
+## 2. Verify the Public Booking Journey
 
-## 2. Step-by-Step Tracer Bullet Validation (Production MVP `003.1`)
+1. Open the public business page and confirm it shows only published business information and active services.
+2. Open `/professionals/{slug}` for each published professional. Confirm the page shows the correct bio, portfolio items, and associated services.
+3. Confirm an unpublished profile and unpublished portfolio item are not visible publicly.
+4. Select a service and professional, choose an available time, and submit a booking with the required customer contact details. No customer account, product cart, payment provider, or messaging account should be required.
+5. Confirm the booking appears in the staff view with the correct service, professional, time, timezone, and customer contact details.
+6. Attempt to create two overlapping bookings for the same professional. Only one may succeed; the other must receive a clear unavailable-slot response.
+7. Cancel a booking through the customer cancellation link and through an authorized staff session. Confirm the customer link is single-use, expires at the appointment start, respects the configured cancellation cutoff, and fails when the booking ID is supplied without its token.
 
-### Step 1: Run 4-Stage Expand & Backfill Migration (`NFR-305`)
-```bash
-DIRECT_URL="postgresql://postgres:postgres@localhost:5432/undreseller" \
-  .specify/scripts/bash/migrate-safe.sh
-npx tsx scripts/backfill-003-kernel.ts
-```
-- **Expected**: Stage 1 (`Expand`), Stage 2 (`Backfill`), and Stage 3 (`Validate/Cutover`) complete with `lock_timeout = '2s'`, `statement_timeout = '5s'`, and `0` unmigrated `Item` or `Order` records.
+## 3. Verify Role Boundaries and Privacy
 
-### Step 2: Verify Staff Session Auth, 3-Role RBAC & Break-Glass Audit (`US5`, `FR-325a`, `FR-325b`)
-```bash
-# 1. Login as OWNER and provision an OPERATOR and a PERFORMER
-curl -i -X POST http://localhost:3000/api/admin/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"owner@shop.local","password":"OwnerInitialPassword!23"}'
+1. Sign in as `OWNER` through Better Auth; confirm the owner can manage staff, business settings, profiles, services, schedules, and bookings.
+2. Sign in as `OPERATOR`; confirm the operator can manage assigned business operations but cannot manage staff access or protected owner settings.
+3. Sign in as `PERFORMER`; confirm the performer can edit only their own profile and portfolio and can see only their own assigned bookings.
+4. Revoke a staff member's Better Auth sessions and confirm the next request is rejected; deactivate the account and repeat.
+5. Confirm public pages expose no customer or appointment data and application logs contain no raw customer contact details, Better Auth credentials/session values, or cancellation tokens.
+6. In an isolated verification environment, compare two client installations and confirm their databases, secrets, settings, and backup sets are separate and inaccessible to each other.
 
-# 2. Verify PERFORMER cannot call refund endpoint (returns HTTP 403 INSUFFICIENT_STAFF_ROLE)
-# 3. Revoke OPERATOR session and verify immediate HTTP 401 SESSION_REVOKED
-# 4. Call with break-glass ADMIN_TOKEN and verify AuditEvent(BREAK_GLASS_ADMIN_TOKEN_USED)
-```
+## 4. Production Readiness
 
-### Step 3: Execute Mixed Goods + Service Order with 30/70 PaymentPlan & Segmented Fulfillment (`US1`–`US4`, `SC-001`)
-1. Query `GET /api/booking/slots?itemIds=<productOfferingId>,<serviceOfferingId>&resourceId=default_master&date=2026-10-25` — verify p95 latency `< 50 ms` (`NFR-301`).
-2. Lock slot & submit `POST /api/checkout` with `paymentPlanMode: "DEPOSIT_30_70"`:
-   - Verify `InventoryMovement(RESERVE)` decrements `InventoryBalance.available` (`INV-003`).
-   - Verify `SlotReservation` locks contiguous window with `bufferBeforeMin` / `bufferAfterMin` (`INV-004`).
-   - Verify `OrderLine` snapshots are persisted (`INV-001`).
-   - Verify `PaymentPlan` creates Milestone 1 (`30% DEPOSIT`) and Milestone 2 (`70% BALANCE`).
-   - Verify `FulfillmentPlan` creates 2 independent segments: `INVENTORY` and `APPOINTMENT`.
-3. Capture 30% deposit webhook $\to$ verify `PaymentAllocation` marks Milestone 1 `PAID` and `Order` payment status `PARTIALLY_PAID`.
-4. Authenticate as `PERFORMER` (`StaffRole.PERFORMER`) and `POST /api/admin/fulfillment/segments/<appointmentSegmentId>/evidence` with checklist and serial number $\to$ verify segment transitions to `COMPLETED` and `AuditEvent` records `actorId`.
-
-### Step 4: Verify Post-Payment Capacity Conflict $\to$ `OperatorAction` Queue (`INV-002`, `SC-003`)
-1. Simulate concurrent payment webhook on `available = 0` stock or expired slot.
-2. Verify `PaymentEvent` is preserved (`INV-002`), order transitions to `PAID_REQUIRES_RESOLUTION`, and `GET /api/admin/operator-actions` returns the open `OperatorAction` within `< 2 seconds`.
-
-### Step 5: Single-VPS Load, Memory Ceiling & DR Restore Drill (`SC-002`, `NFR-303`, `NFR-304`)
-```bash
-npm test -- tests/unit/performance-benchmark.test.ts
-bash docker/bench-memory.sh
-```
-- **Expected**:
-  - 100 concurrent reservation/checkout requests produce `0` overlapping bookings and `100%` accurate `InventoryBalance`;
-  - Main application container peak RSS stays **$\le 500\text{ MB RAM}$**;
-  - Automated `pg_dump` restore drill into a clean verification database completes well within **RTO $\le 60$ minutes** against a **$\le 24$-hour RPO** snapshot.
+- Run the guarded migration and rollback procedure; verify existing services, customer records, and appointment history remain intact.
+- Run the profile in `spec.md`'s standard load section and record p95/p99 for public pages, availability, and booking create/cancel, plus concurrency and peak app RSS.
+- Restore a backup no older than 24 hours and record its age and restore duration; handoff requires RPO `<= 24 hours` and RTO `<= 60 minutes`.
+- Confirm the live domain, TLS, business contact links, timezone, currency display, and one end-to-end booking cycle during onboarding.
+- Verify a selected external API integration only when it is included in the signed project scope. Payment-provider and product-sale checks belong to a later release.
 
 ---
 
-## 3. Optional Engineering AI Lab Verification (`Phase H: P-AI-001`–`P-AI-008`)
+## Later Capability Packs
 
-*(Runs on external workstation / lab profile outside the 500 MB commerce-core container)*
-```bash
-docker compose -f infrastructure/compose/ai-lab.compose.yml up -d
-npx tsx scripts/ai-benchmark.ts --suite golden
-npx tsx scripts/ai-outage-drill.ts
-```
-- **Expected (`SC-006`)**: Stopping local `LM Studio` causes `AiDataClass.CONFIDENTIAL` requests to fail closed immediately (`0` cloud fallbacks) while `commerce-core` checkout and booking endpoints remain `100%` available.
+Product sales, inventory, mixed carts, online payments, advanced operator workflows, messaging bots, compliance integrations, and the optional AI Lab are not prerequisites for `003.1`. Their acceptance runbooks are defined when those packs are scheduled.

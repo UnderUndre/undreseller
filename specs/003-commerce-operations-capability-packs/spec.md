@@ -1,4 +1,4 @@
-# Feature Specification: Small-Business Commerce Operations Kernel & Capability Packs
+# Feature Specification: Service Booking & Professional Portfolio Template
 
 > "Какое ТЗ — такое и ХЗ." — Folk Wisdom  
 > "Обувать пизду в лапти." — Народная мудрость о художественном пиздеже вместо ТЗ  
@@ -9,86 +9,61 @@
 **Directory**: `specs/003-commerce-operations-capability-packs`  
 **Legacy Alias**: `003-small-business-operations-kernel`  
 **Created**: 2026-10-21  
-**Status**: Clarified (Ready for `/speckit.plan`)  
+**Status**: Scope reworked; pending analysis and cross-AI review before implementation
 **Standard Compliance**: ISO/IEC/IEEE 29148:2018 (Requirements Engineering), ISO/IEC/IEEE 12207:2017 & NIST SP 800-218 SSDF  
-**Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v18.3**  
-**Input**: Evolution of the modular storefront (`001` + `002`) into a jurisdiction-neutral, capability-packed small-business commerce operations kernel (`Party`, `Offering`, `Capacity`, `Quote`, `Order`, `PaymentPlan`, `FulfillmentPlan`, `CommercialDocument`, `OperatorAction`, `RedactedReadModels`, `ComplianceAdapters`) with an optional Portfolio AI Gateway & Local Inference Engineering Lab (`LM Studio` + `OmniRoute`).
+**Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v18.4**
+**Input**: Evolve the existing booking template (`001` + `002`) into a reusable, configurable service website for individual professionals and small service businesses. The first release adds public business and professional pages, portfolio galleries, service listings, appointment booking, and fixed three-role staff access. Product sales and expanded commerce operations remain future capability packs.
 
 ---
 
 ## 1. Executive Summary & Architectural Direction
 
-### 1.1. Executive Summary & Delivery Boundary (Option B Scope + Option A Single-Tenant Topology + Option B Single-VPS Baseline)
+### 1.1. Executive Summary & Delivery Boundary (Booking-First Scope + Single-Business Deployment + Single-VPS Baseline)
 
-Feature `003-commerce-operations-capability-packs` evolves the existing product-and-service storefront (`001-modular-commerce-template` + `002-service-cart-and-staff-bot`) into a **jurisdiction-neutral small-business commerce operations kernel**. It does **not** become a general ERP, double-entry accounting system, standalone CRM platform, multi-vendor marketplace, multi-tenant SaaS control plane, or no-code database product.
+Feature 003 turns the existing booking foundation (`001` + `002`) into a **reusable website and appointment-booking template for individual service professionals and small service businesses**. The initial customer journey is: view the business or professional page, review services and portfolio work, choose an available time, and book an appointment. Medium businesses are a later target after the template has been validated with solo professionals and small teams.
 
-To strictly honor the **Sprint B commercial envelope ($4,900 flat / 14 calendar days, $\le 500\text{ MB RAM}$)** without discarding the target modular architecture or the portfolio AI Engineering Lab, Feature 003 locks:
-- **Production MVP Scope (`Q1 Option B`)**: Narrow Production MVP kernel in Release `003.1`, with advanced packs and the AI Engineering Lab in subsequent independent phases;
+The **Sprint B commercial envelope is $4,900 / 14 calendar days**, with one primary process and an optional zero-or-one external API integration agreed before work starts. Release `003.1` contains only the booking-first slice:
+- **Production MVP Scope (`Q1`, updated)**: Public business and professional pages, portfolio items, service listings, available appointment slots, booking creation and staff-managed booking operations;
 - **Fixed 3-Role Staff Model (`Q2 Option B`)**: `OWNER`, `OPERATOR`, `PERFORMER`;
-- **Session-Based Staff Authentication (`Q3 Option B`)**: Individual `StaffMember` accounts and revocable server-side `StaffSession` records via a maintained auth library, with `ADMIN_TOKEN` restricted to audited emergency break-glass use;
-- **Single-Tenant Dedicated-Database Topology (`Q4 Option A`)**: `1 client business = 1 deployment + 1 dedicated PostgreSQL database`;
-- **Single-VPS Production Operational Baseline (`Q5 Option B`)**: `99.0% uptime`, `RTO <= 60 minutes`, `RPO <= 24 hours`, `100 concurrent requests`, and `app container RSS <= 500 MB` (with optional Engineering Lab, `LM Studio`, `OmniRoute`, monitoring backends, and VPN workstation excluded from the 500 MB app container ceiling and decoupled from commerce-core availability).
+- **Session-Based Staff Authentication (`Q3 Option B`)**: Individual `StaffMember` records linked to Better Auth identities and revocable, database-backed sessions managed by the maintained library; `ADMIN_TOKEN` is restricted to audited emergency break-glass use;
+- **Reusable Single-Business Deployment**: one client business per deployment and dedicated PostgreSQL database. Each professional receives a public profile URL within that business site; independent employee-owned domains and profile portability between employers are later capabilities;
+- **Configurable Template**: business name, branding, locale, timezone, and currency are deployment configuration. Core booking and profile logic MUST NOT contain country- or currency-specific branches;
+- **Single-VPS Production Operational Baseline (`Q5 Option B`)**: `99.0% uptime`, `RTO <= 60 minutes`, `RPO <= 24 hours`, `100 concurrent booking requests`, and `app container RSS <= 500 MB`.
 
-Feature 003 is partitioned into two explicit delivery tiers (**Q1 Option B**):
+Feature 003 is partitioned into explicit delivery tiers:
 
-1. **Mandatory Production MVP Slice (Release 003.1 — Blocking for Sprint B Delivery)**:
-   - **Single-Tenant Deployment Isolation (`FR-325c`)**: One client business per deployment and dedicated PostgreSQL database (no shared-table `tenantId` or multi-schema routing; branches, warehouses, and additional legal entities are not modeled as independent tenants in MVP);
-   - **`Party`** unification (`PERSON | ORGANIZATION`, `PartyIdentifier`, `ContactPoint`, `ChannelIdentity`);
-   - **`Offering`** unification (`PRODUCT | SERVICE | BUNDLE | DIGITAL | CUSTOM_QUOTE`, `OfferingVariant`, `CurrencyMetadata`);
-   - **`CapacityPort`** (`InventoryBalance` + immutable `InventoryMovement` ledger for goods; `Reservation` + PostgreSQL GiST `slot_resource_no_overlap` + buffers/exceptions for services);
-   - **Fixed 3-Role Staff Model (`StaffRole ∈ { OWNER, OPERATOR, PERFORMER }`) & Individual Session-Based Staff Auth (`StaffMember`, `StaffSession`)** via a maintained auth library with `OWNER`-only provisioning, individual session revocation, per-command `actorId` auditing, and `ADMIN_TOKEN` restricted to emergency break-glass use;
-   - **`Order` & `OrderLine` immutable commercial snapshots**;
-   - **`PaymentPlan`, `PaymentMilestone` & `PaymentAllocation`** (deposit, milestone, balance, pay-on-site, and provider-separated `RefundOperation`);
-   - **`FulfillmentPlan` & `FulfillmentSegment`** (`INVENTORY`, `APPOINTMENT`, `DIGITAL`, `DELIVERY`, `MANUAL_MILESTONE`) with basic `CompletionEvidence`;
-   - **`OperatorAction` exception-driven work queue** and core redacted read models (`OperatorActionView`, `OrderSummaryView`, `PartyTimelineView`, `AvailabilityView`);
-   - **4-stage Expand $\to$ Backfill $\to$ Validate/Cutover $\to$ Contract migration** from the `001`/`002` schema (`Item`, `Order`, `OrderItem`, `SlotReservation`, `MessengerContact`).
-2. **Subsequent Independent Capability Pack Phases & Non-Blocking Portfolio Workstream (Releases 003.2+ — Post-MVP / Phase 2 Modules)**:
-   - **`Quote Pack` & `MarginGuard`** (`Quote`, `QuoteLine`, versioned quote-to-order conversion);
-   - **`Documents & Jurisdiction Compliance Pack`** (`CommercialDocument`, `DocumentRender`, `JurisdictionProfile`, `TaxQuoteProvider`, `FiscalReceiptProvider`, `ElectronicInvoiceProvider`, `ProductComplianceProvider`, `TransportDocumentProvider`);
-   - **Advanced `Relationship & Operations` Extensions** (AI conversation-to-draft, resumable guest `Journey` / `ContinuationLink`, `ChangeRequest` workflow, `ServiceCase` / `WarrantyCoverage`, `DataQualityIssue` scanner, quarantined `ImportBatch` pipeline, `ActionSuggestion`, and limited-connectivity draft mode);
-   - **`Agent Read Pack`** (disposable read-only MCP spike per Constitution Principle XI);
-   - **`Engineering AI Lab` Workstream (`P-AI-001`–`P-AI-008`)** (`LanguageModelGateway`, local `LM Studio` inference, `OmniRoute` sidecar gateway, `AiDataClass` routing, golden-dataset benchmark, local outage drill, and private VPN workstation topology).
+1. **Release 003.1 — Booking & Professional Pages**: public business and specialist pages; portfolio and service lists; one-service appointment booking; schedules, exceptions, and conflict-safe reservations; three fixed staff roles with individual sessions; configurable brand, locale, timezone, and currency; and production readiness for a single-business deployment.
+2. **Releases 003.2+ — Commerce and Optional Capability Packs**: product catalogue and sales, inventory, mixed goods-and-service orders, online payment providers and payment plans, fulfillment evidence, exception queue, quotes, documents, compliance, relationship operations, and read-only agent integrations.
+3. **Non-Blocking Engineering AI Lab (`Phase H`)**: `LanguageModelGateway`, local `LM Studio` inference, `OmniRoute` sidecar gateway, `AiDataClass` routing, benchmark, outage drill, and private VPN workstation topology.
 
-The feature connects the complete commercial promise lifecycle required by micro-businesses, service studios, and product-plus-service merchants:
+The first release supports one clear customer journey:
 
 ```text
-interest / conversation
-  → party & channel identity
-  → structured draft / quote or cart
-  → capacity check & reservation (stock / staff / resource)
-  → customer acceptance & order snapshot
-  → payment plan & allocation (deposit / milestone / balance / pay-on-site)
-  → commercial document & optional compliance adapter reference
-  → segmented fulfillment & completion evidence
-  → post-sale warranty / service case & follow-up suggestion
+business or professional page
+  → profile, portfolio, and service details
+  → available appointment times
+  → customer contact details and booking request
+  → confirmed appointment and staff schedule
 ```
 
-The system supports physical goods, scheduled services, composite bundles, digital goods, and custom-quoted work through one unified commercial **`Offering`** abstraction while preserving separate capacity models:
-- **Goods (`PRODUCT`)** consume inventory via immutable `InventoryMovement` records;
-- **Services (`SERVICE`)** consume staff/resource time protected by PostgreSQL GiST exclusion constraints;
-- **Digital goods (`DIGITAL`)** create post-payment `DigitalEntitlement` records;
-- **Custom work (`CUSTOM_QUOTE`)** requires an approved, versioned `Quote` snapshot;
-- **Bundles (`BUNDLE`)** compose the above capacity providers across segmented fulfillment plans.
+The initial release supports scheduled services and prevents overlapping bookings for the same professional and time slot. Product sales, digital goods, bundles, custom quotes, inventory, and payment orchestration remain future capabilities.
 
-The runtime architecture remains a **single modular monolith** (`MODULAR_MONOLITH`, `REPLICA_COUNT=1`, $\le 500\text{ MB RAM}$ for the production application container) backed by a dedicated PostgreSQL 16 transactional database per client deployment (`EXISTING_POSTGRES_DOMAIN`, `SINGLE_TENANT_DEDICATED_DB`). Capability packs are compiled into the application and enabled or disabled per client deployment via a Zod-validated customization manifest without bypassing domain invariants.
+The runtime architecture remains a **single modular monolith** (`MODULAR_MONOLITH`, `REPLICA_COUNT=1`, $\le 500\text{ MB RAM}$ for the production application container) backed by one PostgreSQL database per client deployment (`EXISTING_POSTGRES_DOMAIN`, `SINGLE_TENANT_DEDICATED_DB`). Future capability packs may be added behind validated deployment configuration; a runtime plugin system is not part of the first release.
 
-Transactional entities are **never** exposed as unrestricted CRUD collections. All state mutations pass through typed application commands within PostgreSQL transactions. Administrative UIs, operational queues, reports, and optional read-only AI/MCP surfaces consume bounded, PII-redacted read models.
+Transactional entities are **never** exposed as unrestricted CRUD collections. Booking, profile publication, and staff mutations pass through typed application commands within PostgreSQL transactions. Public pages expose only explicitly published business and professional content; customer contact details and booking records remain private.
 
 ### 1.2. Differentiating Value Proposition ("One Recoverable Customer Promise")
 
-Existing open-source software fragments small-business operations across separate e-commerce stores, booking calendars, CRM boards, and invoicing tools—causing customer promises to drop between chat messages, price quotes, calendar availability, partial payments, and on-site execution.
+Independent specialists and small service teams need a simple public place to show their work and let customers book available times. Their profile, service list, and booking calendar should work together and be reusable across different businesses, locales, timezones, and currencies.
 
-Feature 003 is differentiated not by having more entity CRUD screens, but by maintaining **one recoverable customer promise** across:
-1. **Exception-driven operator work queue (`OperatorAction`)** as the primary administrative home screen *(Production MVP)*;
-2. **Mixed goods-and-services fulfillment plans (`FulfillmentPlan`, `FulfillmentSegment`)** within a single order *(Production MVP)*;
-3. **Deposit, milestone, balance, and refund allocations (`PaymentPlan`, `PaymentAllocation`)** rather than a single binary `PAID`/`UNPAID` flag *(Production MVP)*;
-4. **Completion evidence (`CompletionEvidence`)** attached to fulfillment segments (before/after photos, checklists, serial numbers, timestamps) *(Production MVP)*;
-5. **Resumable guest journeys (`Journey`, `ContinuationLink`)** across web, Telegram, and WhatsApp without forcing customer password accounts *(Subsequent Pack Phase)*;
-6. **Operator-approved conversion of conversations into structured drafts** (`Quote Draft`, `Cart Draft`, `Booking Draft`, `Payment Request`, `Order Amendment Proposal`) *(Subsequent Pack Phase)*;
-7. **Immutable, auditable order change requests (`ChangeRequest`)** with price, capacity, and payment delta tracking *(Subsequent Pack Phase)*;
-8. **Post-sale service cases (`ServiceCase`, `WarrantyCoverage`)** linked directly to the original commercial snapshot *(Subsequent Pack Phase)*;
-9. **Operational data-quality diagnostics (`DataQualityIssue`)** and **quarantined, reversible staged data imports (`ImportBatch`, `ImportRow`)** *(Subsequent Pack Phase)*;
-10. **Optional Engineering Lab Profile (`LM Studio` + `OmniRoute` AI Gateway)** demonstrating enterprise-grade local LLM deployment, privacy-aware routing, observability, golden-dataset benchmarking, and local outage drills over a private VPN contour *(Non-Blocking Portfolio Workstream)*.
+Feature 003 is differentiated by a short, complete path from a specialist's public portfolio to a submitted appointment booking. The first release provides:
+1. **A public business page** with configurable branding and service information;
+2. **A public professional profile URL** with biography, services, and portfolio items;
+3. **Availability-aware appointment booking** with conflict-safe slot reservation;
+4. **Three fixed staff roles** with individual, revocable accounts and a clear division of access;
+5. **Currency-, locale-, and timezone-configurable presentation** without country-specific branches in core booking logic.
+
+Product sales, payment orchestration, fulfillment, after-sales operations, and the optional AI Engineering Lab build on this base in later releases.
 
 ### 1.3. Explicit Out-of-Scope & Excluded Capabilities
 
@@ -106,6 +81,9 @@ To prevent scope explosion into a multi-year ERP clone and preserve the Sprint B
 - Custom/dynamic tenant-defined RBAC role/permission builders;
 - **Public multi-tenant SaaS control plane, shared-database row-level `tenantId` multi-tenancy, and multi-schema tenancy (`multi_tenant_saas`)** — each deployment and PostgreSQL database serves exactly one client business (`Q4 Option A`);
 - **Multi-branch, multi-warehouse, or multi-legal-entity tenant hierarchies in the MVP** (may be introduced later as an optional capability pack);
+- **Standalone employee-owned domains and portable professional profiles that move between unrelated business deployments** (the MVP gives each professional a profile URL under the business site);
+- **Product checkout, inventory management, mixed product-and-service carts, online payment processing, deposit/balance plans, and payment-provider integrations** (subsequent commerce release);
+- **Medium-business operating workflows** until the template has been validated with individual professionals and small service teams;
 - **Multi-node Kubernetes / HA clustering and continuous WAL PITR** in the Production MVP (`Q5 Option B` locks a single-VPS baseline);
 - Generic no-code runtime schema builders or arbitrary JS/SQL execution in config;
 - Unrestricted AI agent or remote MCP write/mutation tools (`unrestricted_agent_writes`).
@@ -133,15 +111,16 @@ Feature 003 borrows proven domain patterns and clean-room contracts from mature 
 
 ### Session 2026-10-21
 
-- Q1: What is the mandatory production scope of Feature 003 within the Sprint B ($4,900 / 14 days) boundary? → A: **Option B — Narrow Production MVP Kernel (`Party`, `Offering`, `CapacityPort`/`InventoryMovement`, `Order`/`OrderLine` snapshots, `PaymentPlan`/`PaymentAllocation`, `FulfillmentPlan`/`FulfillmentSegment`, `OperatorAction`, and 4-stage Expand/Contract migration from `001`/`002`); all remaining capability packs (`Quote Pack`, `Documents & Compliance Pack`, `ChangeRequest`, `ServiceCase`, `ImportBatch`, `Agent Read Pack`) and the `Engineering AI Lab` (`P-AI-001`–`P-AI-008`) are structured as subsequent independent implementation phases.**
+- Q1: What is the mandatory production scope of Feature 003 within the Sprint B ($4,900 / 14 days) boundary? → A: **Updated decision — Release `003.1` delivers a public business page, public professional profiles with portfolio items and service lists, appointment availability and booking, three fixed staff roles with individual sessions, configurable branding/locale/timezone/currency, and production readiness for one business deployment. Full product sales, inventory, mixed carts, online payment orchestration, and the broad commerce-kernel migration move to later releases. The delivery includes one primary process (appointment booking) and at most one client-selected external API integration.**
 - Q2: Which staff/operator role model is mandatory in the Production MVP? → A: **Option B — Three fixed roles (`OWNER`, `OPERATOR`, `PERFORMER`) enforced via static policy gates without a custom RBAC builder:**
-  - `OWNER`: deployment & capability configuration, staff access management, GDPR purges, financial/margin overrides, and unrestricted refund/compliance resolution;
-  - `OPERATOR`: orders, parties, catalog/schedules, `OperatorAction` work queue resolution, and standard policy-bounded refunds;
-  - `PERFORMER`: only assigned `FulfillmentSegment` items, personal/resource `WorkingSchedule` view, and `CompletionEvidence` submission.
-- Q3: How do staff members authenticate into administrative interfaces in the Production MVP? → A: **Option B — Individual staff accounts (`StaffMember`) and server-side sessions (`StaffSession`) via a maintained authentication library (`FR-325b`):**
+  - `OWNER`: business and deployment configuration, staff access management, and full control of services, schedules, profiles, and bookings; an owner may also be assigned a bookable resource and perform their own appointments;
+  - `OPERATOR`: day-to-day management of services, schedules, professional pages, and bookings, without access to owner-only deployment or staff-security settings;
+  - `PERFORMER`: own public profile and portfolio, own availability and assigned bookings, without access to other staff or owner-only settings.
+- Q3: How do staff members authenticate into administrative interfaces in the Production MVP? → A: **Option B — Individual staff records linked to Better Auth identities, with database-backed sessions managed by the maintained authentication library (`FR-325b`):**
   - No public self-registration; only `OWNER` creates or invites staff members;
-  - Each staff member is assigned exactly one role (`OWNER`, `OPERATOR`, or `PERFORMER`);
-  - Server-side sessions can be revoked individually (`StaffSession` revocation / `StaffMember.active = false`);
+  - Each staff member is assigned exactly one role (`OWNER`, `OPERATOR`, or `PERFORMER`); an `OWNER` can be configured as a bookable professional through an assigned resource;
+  - Better Auth owns password verification, session creation, cookie handling, expiry, and revocation; the application maps each authenticated identity to one active `StaffMember` and applies its own fixed role checks;
+  - An `OWNER` can revoke a staff member's sessions or deactivate that member, immediately blocking later requests;
   - Every administrative command and Staff Bot action records an explicit individual `actorId` (`StaffMember.id`) and `actorRole`;
   - `ADMIN_TOKEN` remains strictly an emergency break-glass credential with dedicated high-severity audit logging (`BREAK_GLASS_ADMIN_TOKEN_USED`).
 - Q4: Does a single deployment serve one client business or multiple tenants? → A: **Option A — One client business per deployment and dedicated PostgreSQL database (`FR-325c`, `INV-013`).** No `tenantId` in domain tables, no cross-client authorization, separate secrets/backups/restore/customization manifest per client, and no multi-tenant control plane in MVP. Possible multi-branch support is deferred to a future capability pack rather than modeled as tenants.
@@ -155,11 +134,11 @@ Feature 003 borrows proven domain patterns and clean-room contracts from mature 
 
 ## 2. User Scenarios & Testing _(mandatory)_
 
-### User Story 1 — Selling Physical Goods with Auditable Inventory Movements (Priority: P1 — Production MVP)
+### User Story 1 — Selling Physical Goods with Auditable Inventory Movements (Priority: P2 — Commerce Pack `003.2+`)
 
 An individual entrepreneur or small merchant sells physical goods (`OfferingKind.PRODUCT`) with SKU variants from stock. When a customer orders a product and payment (or pay-on-site commitment) is accepted, inventory is reserved and committed exclusively through immutable `InventoryMovement` ledger entries (`RESERVE`, `COMMIT`, `RELEASE`, `ADJUSTMENT`, `RETURN`), and low-stock or out-of-stock conditions after payment automatically create an `OperatorAction` without rolling back accepted funds.
 
-**Why this priority**: Core revenue path for merchants selling physical goods alongside or independently of services (`US1` in Production MVP kernel).
+**Why this priority**: Product sales are a valuable extension for service businesses that also sell goods, but they are not required to launch the appointment-booking template.
 
 **Independent Test**: Create a `PRODUCT` offering with initial stock `+5` via `InventoryMovement`. Place an order for quantity `2`. Verify `InventoryBalance` reflects `available = 3, reserved = 2`, commit on fulfillment transitions `onHand = 3, reserved = 0`, and simulate a concurrent payment on zero stock to verify `PAID_REQUIRES_RESOLUTION` + `OperatorAction` creation.
 
@@ -169,25 +148,38 @@ An individual entrepreneur or small merchant sells physical goods (`OfferingKind
 
 ---
 
-### User Story 2 — Single & Multi-Service Booking with Staff, Resource & Buffer Capacity (Priority: P1 — Production MVP)
+### User Story 2 — Appointment Booking with Staff, Resource & Buffer Capacity (Priority: P1 — Production MVP)
 
-A service professional or studio accepts single or multi-service bookings (`OfferingKind.SERVICE`). The system evaluates `WorkingSchedule`, `AvailabilityException`, service `BufferBefore`/`BufferAfter`, and resource capacity (`StaffMember`, `Resource`), locking contiguous windows in PostgreSQL via resource-scoped advisory locks and the `slot_resource_no_overlap` GiST exclusion constraint.
+A customer visits a business or professional page, chooses one service and an available time, and submits a booking. The system evaluates `WorkingSchedule`, `AvailabilityException`, service `BufferBefore`/`BufferAfter`, and resource capacity (`StaffMember`, `Resource`), protecting reservations in PostgreSQL with the `slot_resource_no_overlap` GiST exclusion constraint. Multi-service baskets are deferred.
 
-**Why this priority**: Preserves and generalizes the core service-booking revenue stream from `001`/`002` into the unified `Offering` + `Capacity` contract (`US2` & `US3` in Production MVP kernel).
+**Why this priority**: Appointment booking is the single primary business process of the first release and the central value of the template for independent professionals and small service businesses.
 
-**Independent Test**: Configure a `SERVICE` offering (60 min + 15 min `bufferAfter`) and a `SERVICE` add-on (30 min). Query available windows via `checkCapacity`, reserve a contiguous 105-minute interval via `reserveCapacity`, and verify that any overlapping request on the same `resourceId` is rejected with HTTP 409 (`23P01`).
+**Independent Test**: Publish one professional profile and one `SERVICE` offering. Query available windows, submit a booking for one interval, and verify that a concurrent overlapping request for the same `resourceId` is rejected with HTTP 409 (`23P01`).
 
 **Acceptance Scenarios**:
-1. **Given** a customer basket with two compatible services totaling 90 minutes plus a 15-minute post-service buffer, **When** `checkCapacity` evaluates candidate 30-minute grid points, **Then** only start times with 105 minutes of uninterrupted working availability (excluding breaks, exceptions, and `HELD`/`BOOKED` reservations) are returned.
+1. **Given** a published professional profile with one active service, **When** a customer views available times, **Then** only intervals that fit the service duration, configured buffers, working schedule, exceptions, and existing `HELD`/`BOOKED` reservations are returned.
 2. **Given** an active `Reservation` on `resourceId = "master_1"` for `14:00–15:45`, **When** a concurrent transaction attempts to reserve `15:30–16:30` on `"master_1"`, **Then** the database GiST constraint rejects the overlap and the API returns HTTP 409 without corrupting state.
+
+### User Story 12 — Public Professional Pages & Portfolio (Priority: P1 — Production MVP)
+
+An individual professional or small service business publishes a branded business page and a separate public page for each active professional. A professional page has its own URL under the business site, a profile, portfolio items, services, and a direct path to appointment booking. A `PERFORMER` can edit their own profile and portfolio; an `OWNER` or `OPERATOR` controls publication and business-level content. Public pages expose only published profile content and never expose customer records or private booking details.
+
+**Why this priority**: A public profile with a portfolio gives an independent specialist a useful web presence and gives a customer the information needed to choose and book a professional.
+
+**Independent Test**: Publish two professional profiles with distinct slugs, services, and portfolio items. Verify each public URL shows only its own published content and routes booking requests to that professional's resource; verify draft or deactivated profiles are not publicly visible.
+
+**Acceptance Scenarios**:
+1. **Given** an active `PERFORMER` with a published profile and portfolio items, **When** a visitor opens `/professionals/{slug}`, **Then** the page shows that professional's public profile, published portfolio, services, prices, and available booking action.
+2. **Given** a `PERFORMER` edits their own profile, **When** they attempt to edit another professional's profile or publish business-level content, **Then** the system returns HTTP 403 and records no change.
+3. **Given** a professional becomes inactive or their profile is unpublished, **When** a visitor opens the public URL, **Then** the page is unavailable and no customer or appointment details are returned.
 
 ---
 
-### User Story 3 — Mixed Goods-and-Services Order & Segmented Fulfillment Plan (Priority: P1 — Production MVP)
+### User Story 3 — Mixed Goods-and-Services Order & Segmented Fulfillment Plan (Priority: P2 — Commerce Pack `003.2+`)
 
 A customer purchases a composite solution in a single order—for example, an air conditioner (`PRODUCT`) + local delivery (`DELIVERY`) + on-site installation appointment (`SERVICE` / `APPOINTMENT`), or a training course (`DIGITAL`) + 1-on-1 consultation (`SERVICE`). Payment is tracked at the order level via `PaymentPlan`, while execution is decomposed into a `FulfillmentPlan` with independent `FulfillmentSegment` records (`INVENTORY`, `APPOINTMENT`, `DIGITAL`, `DELIVERY`, `MANUAL_MILESTONE`) and per-segment `CompletionEvidence`.
 
-**Why this priority**: Bridges the gap between pure e-commerce and pure booking systems—part of the mandatory Production MVP kernel.
+**Why this priority**: It may serve businesses that sell products alongside appointments, after the booking-first template is validated.
 
 **Independent Test**: Create an order containing 1 `PRODUCT` item and 1 `SERVICE` item (or a `BUNDLE` offering). Verify that a single `Order` is created with an `OrderLine` snapshot for each item and a `FulfillmentPlan` containing two segments: an `INVENTORY`/`DELIVERY` segment and an `APPOINTMENT` segment, each progressing independently to completion with attached `CompletionEvidence`.
 
@@ -197,11 +189,11 @@ A customer purchases a composite solution in a single order—for example, an ai
 
 ---
 
-### User Story 4 — Deposit, Milestone & Balance Payment Plans with Explicit Allocations (Priority: P1 — Production MVP)
+### User Story 4 — Deposit, Milestone & Balance Payment Plans with Explicit Allocations (Priority: P2 — Commerce Pack `003.2+`)
 
 Instead of a binary `PAID`/`UNPAID` state, a business configures a `PaymentPlan` on an order (e.g., 30% prepayment deposit to confirm booking + 70% balance upon completion, or 3 project milestones). Every incoming `PaymentEvent` is allocated to a specific `PaymentMilestone` via `PaymentAllocation` (`US5`).
 
-**Why this priority**: Prevents reconciliation chaos on partial prepayments, on-site balance collection, and partial refunds—part of the mandatory Production MVP kernel.
+**Why this priority**: Deposits and online payment plans add provider, refund, and accounting work that can be scoped after the core booking flow is in use.
 
 **Independent Test**: Create an order for `100,000` minor units with a 30% deposit milestone (`30,000`) and 70% completion milestone (`70,000`). Capture `30,000` online; verify the deposit milestone is `PAID`, reservation transitions to `BOOKED`, and `CashCommitmentView` shows `30,000` collected and `70,000` due at fulfillment.
 
@@ -211,18 +203,18 @@ Instead of a binary `PAID`/`UNPAID` state, a business configures a `PaymentPlan`
 
 ---
 
-### User Story 5 — Exception-Driven Operator Work Queue, Session Auth & Role-Bounded Resolution (Priority: P1 — Production MVP)
+### User Story 5 — Staff Access, Profile Management & Role-Bounded Booking Operations (Priority: P1 — Production MVP)
 
-When the business owner (`OWNER`) or operator (`OPERATOR`) signs into the administrative interface via their individual server-side session (or interacts via their linked Staff Bot identity), the primary view is not a list of raw database tables, but a prioritized, exception-driven work queue of `OperatorAction` items (`unconfirmed appointment tomorrow`, `payment received but slot overbooked`, `stock depleted after payment`, `refund SLA due`, `recycled phone manual review`), while field staff (`PERFORMER`) see only their assigned `FulfillmentSegment` tasks and `CompletionEvidence` actions.
+The `OWNER`, `OPERATOR`, and `PERFORMER` sign in with individual revocable sessions. The owner manages the business and may also take appointments using an assigned resource; the operator manages bookings and business content; each performer manages their own public profile and sees only their own schedule and bookings. The first release provides a focused booking workspace; the generalized `OperatorAction` queue and commerce exception handling are deferred.
 
-**Why this priority**: Solves the #1 constraint of micro-business owners—limited operational attention—while enforcing individual `actorId` attribution, revocable server-side sessions, and least-privilege separation between `OWNER`, `OPERATOR`, and `PERFORMER`.
+**Why this priority**: Individual accounts and clear role boundaries are required for businesses with several professionals and for each professional to maintain their own public profile safely.
 
-**Independent Test**: Authenticate as `OWNER`, invite an `OPERATOR` and a `PERFORMER`, verify each logs in with an individual server-side session (`StaffSession`). Trigger an overbooked late payment and verify `OPERATOR` resolves it with `actorId` recorded in `AuditEvent`. Verify `PERFORMER` receives HTTP 403 (`INSUFFICIENT_STAFF_ROLE`) on refund commands, and verify revoking the `OPERATOR` session immediately invalidates subsequent requests with HTTP 401.
+**Independent Test**: Authenticate as `OWNER`, provision an `OPERATOR` and a `PERFORMER`, verify Better Auth issues each an individual server-side session linked to the correct `StaffMember`. Verify the operator can manage bookings, the performer can view only their own bookings and edit their own profile, the owner can manage all staff and can take appointments when assigned a bookable resource, and revoking a session through Better Auth immediately invalidates subsequent requests with HTTP 401.
 
 **Acceptance Scenarios**:
-1. **Given** any failed, ambiguous, overdue, or manually resolvable business transition, **When** the transition commits, **Then** the system creates or updates a durable `OperatorAction` with `reason`, `severity`, `affectedAggregate`, `recommendedNextAction`, `availableSafeActions`, `dueAt`, and audit trail.
-2. **Given** an open `OperatorAction` in the work queue, **When** an authenticated `OPERATOR` or `OWNER` executes one of its `availableSafeActions`, **Then** the underlying application service command runs transactionally and marks the `OperatorAction` as `RESOLVED` with the individual `actorId` (`StaffMember.id`), `StaffRole`, and timestamp.
-3. **Given** an active `StaffMember` whose employment ends or whose device is compromised, **When** an `OWNER` revokes their sessions or sets `active = false`, **Then** all active `StaffSession` records and linked Staff Bot callbacks for that `StaffMember` are immediately rejected without rotating credentials for other staff members.
+1. **Given** a public booking for an active professional, **When** the operator confirms, reschedules, or cancels it, **Then** the appointment and resource schedule update transactionally and the action records the staff `actorId`.
+2. **Given** a `PERFORMER` with an active account, **When** they access the staff workspace, **Then** they can view only their own profile, availability, and assigned bookings and cannot change another staff member's data or business-wide settings.
+3. **Given** an active `StaffMember` whose employment ends or whose device is compromised, **When** an `OWNER` revokes that identity's sessions through Better Auth or sets `active = false`, **Then** its sessions are immediately rejected without rotating credentials for other staff members.
 
 ---
 
@@ -242,11 +234,11 @@ A business prepares an individualized commercial proposal (`Quote`) with version
 
 ### User Story 7 — Unified Party Timeline, Conversation-to-Draft & Resumable Guest Journeys (Priority: P2 — Subsequent Phase Pack)
 
-A customer interacts with the business across multiple channels (website, Telegram, WhatsApp). The system resolves their identifiers (`PartyIdentifier`, `ContactPoint`, `ChannelIdentity`) to a single `Party` (`PERSON` or `ORGANIZATION`) with a unified `PartyTimelineView` (`US6` in Production MVP). In the subsequent `Relationship Pack` extension (`Phase E`), an `OPERATOR` converts a chat message into a validated `Booking Draft` or `Quote Draft` and sends a single revocable `ContinuationLink` (`JourneyToken`), allowing the guest customer to resume in a browser or TMA without creating a password account.
+A customer interacts with the business across multiple channels (website, Telegram, WhatsApp). When the later Relationship Pack is enabled, the system resolves those identifiers (`PartyIdentifier`, `ContactPoint`, `ChannelIdentity`) to a single `Party` (`PERSON` or `ORGANIZATION`) and can show a unified `PartyTimelineView`. An `OPERATOR` may then convert a chat message into a validated `Booking Draft` or `Quote Draft` and send a revocable `ContinuationLink` (`JourneyToken`) so the guest can continue in a browser without creating a password account.
 
-**Why this priority**: Core `Party` + `PartyTimelineView` ships in Production MVP; conversation-to-draft and cross-channel `ContinuationLink` ship as a subsequent modular pack.
+**Why this priority**: Cross-channel history and chat-based booking drafts can reduce manual work after the basic public booking flow is validated.
 
-**Independent Test**: Resolve a customer's Telegram and phone identifiers to one `Party`, verify `PartyTimelineView` aggregates orders and messages, and (when conversation-to-draft is enabled) generate a `ContinuationLink` from a chat inquiry and complete checkout in a browser session.
+**Independent Test**: After enabling the pack, resolve a customer's web and messaging identifiers, inspect the combined activity view, and continue a staff-approved booking draft in a browser session.
 
 **Acceptance Scenarios**:
 1. **Given** a customer message requesting specific offerings and a preferred time window, **When** the conversation-to-draft service parses the intent, **Then** application services validate actual catalog prices and resource capacity and present a draft to the `OPERATOR` for approval (AI never sets prices or locks capacity autonomously).
@@ -274,7 +266,7 @@ A deployment engineer or `OWNER` configures the template for a specific client i
 
 **Why this priority**: Ensures the codebase is a reusable global template while isolating country-specific compliance adapters into `Phase F` packs.
 
-**Independent Test**: Boot the application with two different client manifests: (1) a zero-compliance service studio in `USD` (`minorUnit = 2`), and (2) a retail/service merchant in `JPY` (`minorUnit = 0`) with a mocked `FiscalReceiptProvider`. Verify zero code changes are needed, amounts are stored in exact minor units, and a simulated fiscal provider outage after payment creates an `OperatorAction` without rolling back the `PAID` state.
+**Independent Test**: Load currency metadata from a maintained, versioned ISO 4217 registry and test representative minor-unit scales `0`, `2`, and `3` (for example, JPY, USD, and KWD). Verify each amount is stored using its configured minor-unit scale, payment-provider wire-scale differences are translated only by the provider adapter, and a simulated fiscal provider outage after payment creates an `OperatorAction` without rolling back the `PAID` state.
 
 **Acceptance Scenarios**:
 1. **Given** a `JurisdictionProfile` with `taxQuoteProvider` enabled and `fiscalReceiptProvider` enabled, **When** a customer completes checkout and payment is captured, **Then** the pre-order tax quote is snapshotted on `OrderLine` (`taxAmountMinor`, `taxRateSnapshot`, `taxProviderReference`) and `fiscalReceiptProvider.registerSale()` is invoked asynchronously via the durable outbox.
@@ -321,9 +313,9 @@ An engineer or evaluator runs the optional **Engineering Lab Profile** (`infrast
 3. **Partial Cancellation of a Bundle or Mixed Order**:
    - *Scenario*: Customer cancels the installation appointment segment of a bundle after the physical product has already been delivered.
    - *Resolution*: `ChangeRequest` evaluates per-segment fulfillment state (`INVENTORY` = `COMPLETED`, `APPOINTMENT` = `SCHEDULED`), releases only the `APPOINTMENT` slot reservation, computes the service refund allocation according to the bundle/cancellation policy, and preserves the delivered product record.
-4. **Zero-Decimal or Three-Decimal Currencies (`JPY`, `AMD`, `KWD`, `XTR`)**:
-   - *Scenario*: A deployment uses `JPY` (`minorUnit = 0`) or `KWD` (`minorUnit = 3`) instead of `USD` (`minorUnit = 2`).
-   - *Resolution*: All monetary calculations and formatting use `CurrencyMetadata.minorUnit`; the core never hardcodes `/ 100` or assumes 2 decimal places.
+4. **Currencies and Units with Different Minor-Unit Rules (`JPY`, `KWD`, `XTR`)**:
+   - *Scenario*: A deployment uses ISO 4217 currencies with different exponents, such as `JPY` (`minorUnit = 0`), `USD` (`minorUnit = 2`), or `KWD` (`minorUnit = 3`); non-ISO units such as `XTR` get an explicit application-defined scale.
+   - *Resolution*: Canonical monetary values use `CurrencyMetadata.minorUnit`; the core never hardcodes `/ 100` or assumes 2 decimal places. A payment provider's different wire encoding is translated at its adapter and does not alter canonical stored amounts.
 5. **Local Workstation VPN Disconnect During AI Extraction**:
    - *Scenario*: The VPS application host loses its private WireGuard/Tailscale VPN tunnel to the workstation running `OmniRoute` and `LM Studio`.
    - *Resolution*: `LanguageModelGateway` aborts on explicit request timeout ($\le 4\text{s}$ primary budget), respects `AbortSignal`, enforces `AiDataClass` fallback policy (failing closed for `CONFIDENTIAL` data), and never blocks core checkout, booking, or payment transactions.
@@ -334,63 +326,64 @@ An engineer or evaluator runs the optional **Engineering Lab Profile** (`infrast
 
 ### 3.1. Functional Requirements (ISO/IEC/IEEE 29148:2018)
 
-> **Scope Tier Legend (Option B)**:
-> - **`[MVP-CORE]`**: Mandatory Production MVP slice for initial 003 release (`Phase A`, `Phase B`, `Phase D` core, `OperatorAction` & core read models).
-> - **`[PHASE-PACK]`**: Subsequent modular capability pack phases (`Phase C`, `Phase E`, `Phase F`, `Phase G`) built on top of the MVP kernel.
+> **Scope Tier Legend (Updated 2026-10-22)**:
+> - **`[MVP-CORE]`**: Reusable single-business template for a public business page, professional profile and portfolio pages, service listings, appointment booking, three fixed staff roles, and basic deployment configuration.
+> - **`[PHASE-PACK]`**: Product sales, inventory, mixed carts, online payment processing, advanced operations, messaging channels, compliance adapters, and broader commerce migration.
 > - **`[AI-LAB]`**: Independent non-blocking Portfolio AI Gateway & Local Inference Engineering Lab workstream (`Phase H: P-AI-001`–`P-AI-008`).
 
 #### A. Unified Offering & Catalog Context (`Catalog`)
-- **FR-301 (`[MVP-CORE]` Unified Offering Model)**: System MUST represent all sellable items through a unified `Offering` entity with `OfferingKind ∈ { PRODUCT, SERVICE, BUNDLE, DIGITAL, CUSTOM_QUOTE }`, `priceMode`, `taxCategoryId`, `active` flag, `variants` (`OfferingVariant`), and optional `servicePolicy` (`ServicePolicy`), preserving 100% backward compatibility with `001`/`002` `Item` records.
-- **FR-302 (`[MVP-CORE]` Offering Variants & Commercial Attributes)**: System MUST support `OfferingVariant` records with SKU/barcode, option attributes, `PriceList` / `Price` in explicit `currency` and `unitAmountMinor` (`BigInt`), `MediaAsset`, `Category`, `SalesChannel` visibility, and `BundleComponent` composition.
-- **FR-303 (`[MVP-CORE]` Currency Metadata Provider)**: System MUST resolve currency formatting and minor-unit scaling via a `CurrencyMetadata` provider (`code`, `minorUnit`) and MUST NOT hardcode `minorUnit = 2` or derive `transactionCurrency` from UI `locale`.
+- **FR-301 (`[MVP-CORE]` Service Listing)**: System MUST let an authorized business staff member create, update, publish, unpublish, and order service listings with a name, description, duration, price, and active status. Product, bundle, digital, and custom-quote listings belong to later capability packs.
+- **FR-302 (`[PHASE-PACK]` Product Catalog & Variants)**: When the Goods Pack is enabled, the system MUST support product variants, SKU/barcode, inventory, price lists, media, categories, and bundle composition.
+- **FR-303 (`[MVP-CORE]` Currency Metadata Provider)**: System MUST resolve canonical amount scaling from a maintained, versioned ISO 4217 registry for fiat currencies and explicit configuration for non-ISO units such as `XTR`. It MUST NOT hardcode a supported-currency list or `minorUnit = 2`, assume missing metadata, or derive `transactionCurrency` from UI `locale`; unknown currency codes fail closed until configured. Payment-provider wire formats MUST be converted at the provider adapter and MUST NOT change canonical stored amounts.
 
 #### B. Unified Party & Relationship Context (`Party` & `Relationship Pack`)
-- **FR-304 (`[MVP-CORE]` Single Party Abstraction)**: System MUST model customers, leads, and organizations through a single `Party` entity (`PartyKind ∈ { PERSON, ORGANIZATION }`) with linked `PartyIdentifier`, `ContactPoint`, `ChannelIdentity` (`TELEGRAM`, `WHATSAPP`, `WEB`, `EMAIL`, `PHONE`), `Consent`, `PartyTag`, and `PartyNote`—prohibiting separate disconnected `Lead`, `Customer`, and `TelegramContact` person tables.
-- **FR-305 (`[MVP-CORE]` Unified Party Activity Timeline)**: System MUST project all party interactions (inbound/outbound messages, reservations, orders, payments, refunds, operator notes) into a chronological `PartyTimelineView` read model without duplicating transport messages stored in `InboxEvent`.
+- **FR-304 (`[MVP-CORE]` Booking Customer Details)**: A booking MUST store the customer details needed to confirm and manage that appointment, using the existing customer model where possible. It MUST NOT require a messaging account or customer password.
+- **FR-305 (`[PHASE-PACK]` Unified Party Activity Timeline)**: When the Relationship Pack is enabled, the system MUST project cross-channel customer interactions, bookings, orders, payments, and operator notes into a bounded activity view.
 - **FR-306 (`[PHASE-PACK]` Operator Action Suggestions with Evidence)**: When the optional `Agent Action Suggestions` pack is enabled, the system MUST generate operator-facing `ActionSuggestion` records containing `evidence` (e.g., repeat purchase interval, open quote age, active consent status), `expectedOutcome`, `expiresAt`, and `requiresApproval = true`, and MUST NEVER execute suggested outreach or commercial mutations autonomously.
 
 #### C. Dual Capacity Contract (`Capacity`: `Goods Pack` & `Services Pack`)
-- **FR-307 (`[MVP-CORE]` Unified Capacity Application Contract)**: Inventory and service scheduling MUST use distinct persistence tables (`InventoryBalance`/`InventoryMovement` vs `Resource`/`StaffMember`/`WorkingSchedule`/`AvailabilityException`/`Reservation`) behind a unified application contract: `checkCapacity(request)`, `reserveCapacity(request)`, `commitCapacity(request)`, and `releaseCapacity(request)`.
-- **FR-308 (`[MVP-CORE]` Immutable Inventory Movement Ledger)**: For `PRODUCT` offerings, stock quantities MUST be modified exclusively by appending `InventoryMovement` records (`INITIAL`, `RESERVE`, `COMMIT`, `RELEASE`, `ADJUSTMENT`, `RETURN`, `DAMAGE`) within a transaction that updates `InventoryBalance` (`onHand`, `reserved`, `available`) and optional `markingCode` references (`INV-003`).
-- **FR-309 (`[MVP-CORE]` Service Capacity, Schedules, Exceptions & Buffers)**: For `SERVICE` offerings, capacity evaluation MUST enforce `WorkingSchedule`, date-specific `AvailabilityException` overrides, `BufferBefore` and `BufferAfter` intervals, `CancellationPolicy`, and `NoShowPolicy`, while protecting slot holds and bookings with `acquireResourceSlotLock` + PostgreSQL GiST `slot_resource_no_overlap` (`INV-004`).
+- **FR-307 (`[MVP-CORE]` Appointment Capacity)**: The booking flow MUST show only appointment slots allowed by the selected service duration, the assigned professional's availability, the business timezone, and existing reservations. Concurrent requests MUST NOT create overlapping bookings for the same resource.
+- **FR-308 (`[PHASE-PACK]` Immutable Inventory Movement Ledger)**: Product stock MUST be changed only through append-only inventory movement records when the Goods Pack is enabled (`INV-003`).
+- **FR-309 (`[MVP-CORE]` Service Schedules & Booking Rules)**: Staff MUST be able to configure working hours, days off, service duration, and optional before/after buffers. The system MUST reject unavailable and overlapping appointment slots.
 
 #### D. Quotes, Orders, Snapshots & Change Requests (`Commercial Documents`)
 - **FR-310 (`[PHASE-PACK]` Capacity-Aware Quote Lifecycle)**: When the `Quote Pack` (`Phase C`) is enabled, the system MUST support versioned `Quote` and `QuoteLine` entities with modes `INFORMATIONAL`, `PRICE_LOCKED`, `CAPACITY_HELD`, and `DEPOSIT_BACKED`, explicit `expiresAt`, and states `DRAFT → SENT → ACCEPTED | REJECTED | EXPIRED | SUPERSEDED`.
 - **FR-311 (`[PHASE-PACK]` Quote-to-Order Conversion & Re-Validation)**: Accepting a `Quote` MUST re-validate price, inventory/resource capacity, and active compliance providers inside a transaction and create an `Order` from the exact accepted `Quote` version snapshot (`INV-005`).
-- **FR-312 (`[MVP-CORE]` Immutable OrderLine Commercial Snapshots)**: Every `OrderLine` (and `QuoteLine` when `Quote Pack` is enabled) MUST persist immutable snapshots of `offeringNameSnapshot`, `variantNameSnapshot`, `quantity` (`Decimal`), `unitAmountMinor` (`BigInt`), `currency`, `discountMinor`, `netAmountMinor`, `taxAmountMinor`, `grossAmountMinor`, `taxCategoryCode`, `taxRateSnapshot`, and `taxProviderReference` (`INV-001`).
+- **FR-312 (`[PHASE-PACK]` Immutable OrderLine Commercial Snapshots)**: When checkout is enabled, every `OrderLine` MUST persist immutable commercial snapshots (`INV-001`).
 - **FR-313 (`[PHASE-PACK]` Pre-Acceptance Margin Guard)**: When the optional `Margin Guard` pack (`Phase C`) is enabled, quotes and custom orders MUST evaluate estimated direct costs (`materialCostMinor`, `staffCostMinor`, `deliveryCostMinor`, `paymentFeeEstimateMinor`) against the client's minimum contribution margin policy and require explicit `OWNER` approval before dispatch if the estimate falls below policy.
 - **FR-314 (`[PHASE-PACK]` Auditable Order Change Requests)**: Post-acceptance modifications (rescheduling, item/variant swap, quantity change, partial cancellation) in `Phase D/E` MUST be processed via an immutable `ChangeRequest` entity storing `originalSnapshot`, `proposedSnapshot`, `priceDifferenceMinor`, `capacityDifference`, `paymentAdjustment`, and `approvalState` rather than destructive in-place edits of accepted order lines.
 
 #### E. Payment Plans, Allocations, Neutral Documents & Refunds (`Documents Pack`)
-- **FR-315 (`[MVP-CORE]` Payment Plans, Milestones & Allocations)**: System MUST support `PaymentPlan` and `PaymentMilestone` records (`DEPOSIT`, `MILESTONE`, `BALANCE`, `ON_SITE`) and allocate every captured `PaymentEvent` and `RefundOperation` to specific obligations via `PaymentAllocation`, powering the `CashCommitmentView` read model (`paid`, `dueThisWeek`, `overdue`, `promisedRefunds`, `disputed`).
-- **FR-316 (`[MVP-CORE]` Capability-Declared Payment Providers)**: Payment integrations MUST implement the neutral `PaymentProvider` interface (`createPayment`, `verifyWebhook`, `getPaymentStatus`, optional `refund`) and declare `PaymentProviderCapabilities` (`hostedCheckout`, `asynchronousConfirmation`, `partialPayment`, `partialRefund`, `fullRefund`, `webhookReplay`, `idempotencyKey`, `supportedCurrencies`). Checkout MUST select providers by capability and deployment configuration rather than hardcoded provider names.
+- **FR-315 (`[PHASE-PACK]` Payment Plans & Allocations)**: When online payments are enabled, the system MUST allocate captured payments and refunds to explicit payment obligations.
+- **FR-316 (`[PHASE-PACK]` Payment Provider Contract)**: Payment integrations MUST use a provider-neutral interface and select providers from deployment configuration; no payment provider is required for the booking-first release.
 - **FR-317 (`[PHASE-PACK]` Neutral Commercial Documents & Reversals)**: When `Documents Pack` is enabled, the system MUST model business documents via `CommercialDocument` (`CommercialDocumentKind ∈ { QUOTE, ORDER_CONFIRMATION, PRO_FORMA, PAYMENT_REQUEST, RECEIPT, INVOICE, CREDIT_NOTE, DELIVERY_NOTE, SERVICE_COMPLETION }`), `CommercialDocumentLine`, `DocumentRender` (PDF snapshot), and `ExternalDocumentReference`, correcting issued financial documents exclusively through compensating `CREDIT_NOTE` / reversal records (`INV-006`, `INV-007`).
 
 #### F. Segmented Fulfillment, Evidence & Post-Sale (`Fulfillment` & `Post-Sale Pack`)
-- **FR-318 (`[MVP-CORE]` Mixed Fulfillment Plans & Neutral Providers)**: Every order MUST be linked to a `FulfillmentPlan` containing one or more `FulfillmentSegment` records (`FulfillmentSegmentKind ∈ { INVENTORY, APPOINTMENT, DIGITAL, DELIVERY, MANUAL_MILESTONE }`) executed via neutral `FulfillmentProvider` modes (`PICKUP`, `LOCAL_DELIVERY`, `EXTERNAL_SHIPPING`, `SERVICE_ON_SITE`, `SERVICE_AT_CUSTOMER`, `REMOTE_SERVICE`, `DIGITAL_DELIVERY`, `MANUAL`).
-- **FR-319 (`[MVP-CORE]` Segment Completion Evidence)**: Operators and field staff (`PERFORMER`) MUST be able to attach `CompletionEvidence` records (before/after media references, checklists, installed serial numbers, customer OTP/signature confirmation, start/end timestamps, performer ID) to individual `FulfillmentSegment` rows.
+- **FR-318 (`[PHASE-PACK]` Segmented Fulfillment)**: When goods or additional fulfillment modes are enabled, orders MUST support separately tracked fulfillment segments.
+- **FR-319 (`[PHASE-PACK]` Fulfillment Evidence)**: When the operations pack is enabled, authorized staff MUST be able to attach completion evidence to fulfillment segments.
 - **FR-320 (`[PHASE-PACK]` Order-Linked Warranty & Post-Sale Service Cases)**: When the `Warranty & Post-Sale` pack (`Phase E`) is enabled, operators MUST be able to open a `ServiceCase` (`RETURN_REQUEST`, `REPAIR_VISIT`, `REPLACEMENT`, `CUSTOMER_ISSUE`) directly from a fulfilled `Order` or `FulfillmentSegment`, preserving `WarrantyCoverage`, batch/variant snapshot, performer, and original `CompletionEvidence`.
 
 #### G. Exception Queue, Conversation-to-Draft & Resumable Journeys (`Operations`)
-- **FR-321 (`[MVP-CORE]` Exception-Driven OperatorAction Work Queue)**: Every failed, ambiguous, overdue, or manually resolvable business transition MUST create or update a durable `OperatorAction` record (`reason`, `severity`, `affectedAggregateType`, `affectedAggregateId`, `recommendedNextAction`, `availableSafeActions`, `owner`, `dueAt`, `resolution`, `auditHistory`), which serves as the primary administrative home queue.
+- **FR-321 (`[PHASE-PACK]` Exception-Driven Operations Queue)**: When the advanced operations pack is enabled, recoverable workflow exceptions MUST create durable, auditable operator actions.
 - **FR-322 (`[PHASE-PACK]` Operator-Approved Conversation-to-Draft)**: In `Phase E`, the system MUST allow operators to convert customer conversation messages into structured drafts (`Quote Draft`, `Cart Draft`, `Booking Draft`, `Payment Request`, `Order Amendment Proposal`) where application services validate real catalog prices and capacity and require operator approval before customer confirmation.
 - **FR-323 (`[PHASE-PACK]` Resumable Guest Journeys Across Channels)**: In `Phase E`, the system MUST issue short-lived, single-use or revocable, HMAC-signed `ContinuationLink` tokens (`Journey`, `JourneyToken`, `DraftReference`) that allow a guest customer to start a deal in Telegram/WhatsApp and resume checkout or slot selection in a web browser (or vice versa) without revealing internal database IDs or requiring password accounts.
 - **FR-324 (`[PHASE-PACK]` Limited-Connectivity Operator Draft Mode)**: Mobile/field operators MUST be able to view the last cached read snapshot and queue non-financial drafts (notes, `CompletionEvidence`, draft quotes) locally for explicit server reconciliation upon reconnect; offline payment capture and offline final slot locking are strictly prohibited.
 
 #### H. Staff Role Model, Session Auth, Tenancy Boundary, Capability Packs, Read Models, Data Quality & Staged Import (`Governance`)
-- **FR-325 (`[MVP-CORE]` Compiled Capability Packs & Extension Contract)**: Capability packs (`Core`, `Goods`, `Services`, `Quote`, `Documents`, `Relationship`, `Messenger`, `Agent Read`, plus optional operational packs) MUST implement the typed `CapabilityModule` contract (`id`, `version`, `requiredCapabilities`, `registerRoutes`, `registerJobs`, `registerPolicies`, `registerReadModels`), compiled into the monolith and toggled via Zod-validated deployment configuration—prohibiting runtime dynamic plugin loading, arbitrary npm installs, or dynamic Prisma schema mutation.
-- **FR-325a (`[MVP-CORE]` Fixed Three-Role Staff Authorization Model — Q2 Option B)**: System MUST enforce a fixed 3-role hierarchy (`StaffRole ∈ { OWNER, OPERATOR, PERFORMER }`) across HTTP admin commands and Telegram Staff Bot callbacks (`authorizeStaffCallback`) without a custom RBAC builder:
-  1. **`OWNER`**: Full access to deployment/capability configuration, staff provisioning and role assignments, session revocation, GDPR purges (`/purge`), blacklist unblocks (`/unblock`), `MarginGuard` / compliance overrides, `ImportBatch` commits, and unrestricted refunds;
-  2. **`OPERATOR`**: Access to orders, party records, catalog/schedule management, `OperatorAction` work queue resolution, Staff Bot booking approvals/rejections/reschedules/blacklisting, and standard refunds within policy;
-  3. **`PERFORMER`**: Restricted strictly to viewing assigned `FulfillmentSegment` items and `WorkingSchedule` windows, marking assigned segments complete (`fulfill`), and submitting `CompletionEvidence`.
-- **FR-325b (`[MVP-CORE]` Individual Staff Accounts, Server-Side Sessions & Break-Glass `ADMIN_TOKEN` — Q3 Option B)**: Staff authentication into administrative interfaces MUST use individual `StaffMember` accounts and server-side sessions (`StaffSession`) via a maintained authentication library:
-  1. **No Self-Registration**: Public staff sign-up is disabled; only an authenticated `OWNER` (or initial deployment seed/bootstrap) can create or invite `StaffMember` accounts;
-  2. **Single Role Assignment**: Every `StaffMember` has exactly one `StaffRole` (`OWNER`, `OPERATOR`, or `PERFORMER`);
-  3. **Individual Session Revocation**: `OWNER` can revoke individual `StaffSession` records or deactivate a `StaffMember` (`active = false`) with immediate effect across web sessions and linked `telegramUserId` Staff Bot callbacks;
-  4. **Mandatory `actorId` Audit Attribution**: Every administrative HTTP command and Staff Bot mutation MUST record the authenticated `actorId` (`StaffMember.id`) and `actorRole` (`StaffRole`) in `AuditEvent` and `OperatorAction.auditHistory`;
-  5. **Emergency Break-Glass `ADMIN_TOKEN`**: The static `ADMIN_TOKEN` is retained strictly as an emergency break-glass recovery credential (`actorId = "BREAK_GLASS_ADMIN_TOKEN"`, `actorRole = OWNER`) and MUST emit a dedicated high-severity audit record (`BREAK_GLASS_ADMIN_TOKEN_USED`) on every invocation.
-- **FR-325c (`[MVP-CORE]` Single-Tenant Dedicated-Database Deployment Boundary — Q4 Option A)**: Each application deployment and its PostgreSQL database MUST serve exactly one client business (`1 deployment = 1 client business = 1 PostgreSQL database`). All unique keys (`Offering.slug`, `StaffMember.email`, `StaffMember.telegramUserId`, `idempotencyKey`), GiST exclusion constraints, backups, GDPR purges, and 4-stage migrations operate at single-business database scope without shared-table `tenantId` columns or multi-schema routing. Branches, warehouses, and additional legal entities are not modeled as independent tenants in the Production MVP and are reserved for a future capability pack.
-- **FR-326 (`[MVP-CORE]` Redacted Read Models & Zero Direct Table Writes)**: Admin UI, CRM views, reports, and the optional `Agent Read Pack` (read-only MCP in `Phase G`) MUST query only bounded projections (`OrderSummaryView`, `PartyTimelineView`, `AvailabilityView`, `OperatorActionView`, `CatalogSearchView`, `PaymentStatusView`, `CashCommitmentView`). Direct CRUD writes to transactional tables or MCP mutation tools are strictly prohibited (`INV-008`, `INV-010`).
+- **FR-325 (`[PHASE-PACK]` Compiled Capability Packs & Extension Contract)**: Optional capability packs MUST use a typed, build-time extension contract and validated deployment configuration; the first release does not require a dynamic plugin system.
+- **FR-325a (`[MVP-CORE]` Fixed Three-Role Staff Authorization Model — Q2 Option B)**: The system MUST enforce exactly three staff roles in the first release, without a custom role builder:
+  1. **`OWNER`**: Controls business settings, staff access, services, public pages, and all bookings. An owner who is also a professional may be linked to a bookable resource and manage their own professional page;
+  2. **`OPERATOR`**: Manages services, professional pages, schedules, and customer bookings within the permissions granted by the business;
+  3. **`PERFORMER`**: Views and updates their own profile, portfolio, availability, and assigned bookings; cannot change business-wide settings, manage other staff, or access another professional's private booking details.
+- **FR-325b (`[MVP-CORE]` Individual Staff Accounts, Server-Side Sessions & Break-Glass `ADMIN_TOKEN` — Q3 Option B)**: Staff authentication MUST use the maintained Better Auth library with PostgreSQL-backed identities and sessions. `StaffMember` stores the application's role and active status and links to exactly one Better Auth identity; the application MUST NOT implement password hashing, session-token generation, cookie handling, or session storage itself:
+  1. **No Self-Registration**: Public staff sign-up is disabled; only an authenticated `OWNER` or the initial deployment bootstrap can provision a staff identity and its linked `StaffMember` record;
+  2. **Single Role Assignment**: Every active `StaffMember` has exactly one application `StaffRole` (`OWNER`, `OPERATOR`, or `PERFORMER`); the role is not taken from a client-controlled request or a public profile;
+  3. **Session Revocation**: `OWNER` can revoke sessions for a specific staff identity or deactivate that `StaffMember`; every staff request checks session validity and active staff status before authorization;
+  4. **Mandatory `actorId` Audit Attribution**: Every administrative change MUST record the authenticated `actorId` (`StaffMember.id`) and `actorRole` (`StaffRole`) in the audit log;
+  5. **Library Security Settings**: Configure database-backed sessions, secure HTTP-only cookies, a finite session lifetime, and login rate limiting through Better Auth; authentication secrets and session values MUST NOT appear in logs;
+  6. **Emergency Break-Glass `ADMIN_TOKEN`**: The static `ADMIN_TOKEN` is retained strictly as an emergency break-glass recovery credential (`actorId = "BREAK_GLASS_ADMIN_TOKEN"`, `actorRole = OWNER`) and MUST emit a dedicated high-severity audit record (`BREAK_GLASS_ADMIN_TOKEN_USED`) on every invocation.
+- **FR-325c (`[MVP-CORE]` Single-Business Deployment Boundary — Q4 Option A)**: Each installed template and its database MUST serve one client business. Client data, settings, backups, and secrets MUST remain isolated per installation; shared-database multi-tenancy is outside the first release.
+- **FR-326 (`[MVP-CORE]` Privacy-Safe Staff Views)**: Staff pages and APIs MUST return only the profile, availability, service, and booking information needed by the requesting role. `PERFORMER` access MUST be restricted to their own profile and assigned bookings. Changes MUST pass through validated application commands, and logs MUST exclude raw customer contact details.
 - **FR-327 (`[PHASE-PACK]` Operational Data Quality Scanner & Quarantined Staged Import)**: In `Phase E`, the system MUST provide a `DataQualityIssue` diagnostic scanner (detecting duplicate contacts, offerings missing capacity policies/durations, broken provider mappings, unallocated payments, and stale operator actions) and a quarantined `ImportBatch` pipeline (`upload → parse → normalize → stage → detect duplicates/conflicts → approve mapping → commit batch with rollback reference`).
 
 #### I. Jurisdiction Neutrality, Compliance Ports & Client Manifest (`Compliance`)
@@ -404,11 +397,18 @@ An engineer or evaluator runs the optional **Engineering Lab Profile** (`infrast
 - **FR-333 (`[AI-LAB]` Privacy-Aware `AiDataClass` Routing & Fail-Closed Confidentiality)**: Every AI use case MUST declare a versioned routing policy and `AiDataClass ∈ { PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED }`. `CONFIDENTIAL` requests MUST route to `local` only and fail closed when no approved local runtime is healthy (never silently falling back to cloud), while `RESTRICTED` data is prohibited from AI processing.
 - **FR-334 (`[AI-LAB]` Dual Redacted AI Telemetry, Golden Benchmark & Outage Drill)**: For every AI call, the application MUST record redacted operational telemetry (`traceId`, `useCase`, `providerRoute`, `modelAlias`, `promptVersion`, `latencyMs`, `timeToFirstTokenMs`, `inputTokens`, `outputTokens`, `fallbackCount`, `structuredOutputValid`, `retrievalHitCount`, `resultStatus`) with zero raw prompts, responses, or PII (`P-AI-004`), and ship a reproducible golden-dataset benchmark (`P-AI-005`, `P-AI-006`), a recorded local-model outage drill (`P-AI-007`), and private VPN workstation network documentation (`P-AI-008`).
 
+#### K. Business & Professional Public Pages (`Public Template`)
+- **FR-335 (`[MVP-CORE]` Business Page Configuration)**: An `OWNER` MUST be able to configure the business name, public description, logo or cover image, contact links, locale, timezone, and one business currency without changing application code. A new template installation starts with `USD` as its editable setup value; the `OWNER` MUST confirm or change it to the business's actual currency before publishing live prices. The installation MUST support any configured ISO 4217 currency and explicitly configured non-ISO currency; currency MUST NOT be inferred from locale or drive country-specific branches in core logic.
+- **FR-336 (`[MVP-CORE]` Professional Profile & Portfolio)**: Each business MUST be able to publish separate public pages for its professionals, with a stable URL under the business site, biography, photo, portfolio items, and that professional's active services. Public pages MUST not expose private customer or booking data. A `PERFORMER` may edit only their own public profile and portfolio; `OWNER` and `OPERATOR` may manage profiles within their business permissions.
+- **FR-337 (`[MVP-CORE]` Appointment Booking Flow)**: A customer MUST be able to choose a service, choose an available professional or accept the business's default selection, select an available slot, provide the required contact details, and submit or cancel a booking. Customer cancellation MUST require a valid, unexpired, single-use credential scoped to that booking and cancellation action; a booking ID alone MUST NOT authorize cancellation. The flow MUST work without a customer account, product cart, payment provider, or messaging integration.
+
 ---
 
 ### 3.2. Hard Domain & Jurisdiction Invariants (`NON-NEGOTIABLE`)
 
 #### Core Transactional Invariants (`INV-001` – `INV-013`)
+
+For `003.1`, the active invariants are `INV-004` (no overlapping appointments), `INV-008` (validated application commands), `INV-010` (customer data privacy), and `INV-013` (one business per installation), plus the jurisdiction-neutral rules below. Invariants for orders, inventory, payments, refunds, compliance, and capability-pack history apply only when their later pack is enabled.
 - **`INV-001`**: `OrderLine` commercial snapshots (`offeringNameSnapshot`, `unitAmountMinor`, `currency`, `taxAmountMinor`, `discountMinor`, `grossAmountMinor`) are immutable after order acceptance.
 - **`INV-002`**: Payment acceptance (`PaymentEvent`) is never rolled back because inventory or service capacity became unavailable; capacity conflicts after payment transition the order to `PAID_REQUIRES_RESOLUTION` and create a durable `OperatorAction`.
 - **`INV-003`**: Product inventory is changed only through immutable `InventoryMovement` records inside a database transaction.
@@ -422,6 +422,7 @@ An engineer or evaluator runs the optional **Engineering Lab Profile** (`infrast
 - **`INV-011`**: Disabling any capability pack in configuration cannot make historical orders, payments, or commercial documents unreadable.
 - **`INV-012`**: Jurisdiction and compliance adapters never silently guess tax rates, legal entity rules, or fiscal treatment; pre-checkout tax provider failure blocks checkout, while post-payment compliance failure creates a durable `OperatorAction`.
 - **`INV-013`**: Each deployment instance and PostgreSQL database is physically isolated to a single client business (`Q4 Option A`); cross-tenant shared tables (`tenantId`) and multi-schema tenancy are prohibited in the core schema.
+- **`INV-014`**: A public booking cancellation is authorized only by the booking's valid, unexpired, unused cancellation credential or by an authenticated staff session; the credential is action-scoped, stored only as a hash, rate-limited, and revoked after use or booking changes.
 
 #### Jurisdiction Neutrality Invariants (`INV-J01` – `INV-J08`)
 - **`INV-J01`**: No core module branches on a hardcoded country code (e.g., `AM`, `RU`, `US`, `AE`).
@@ -437,11 +438,12 @@ An engineer or evaluator runs the optional **Engineering Lab Profile** (`infrast
 
 ### 3.3. Non-Functional Requirements (NFR) _(ISO/IEC/IEEE 29148:2018)_
 
-- **NFR-301 (Capacity & Read-Model Query Latency)**: `checkCapacity` for a mixed basket (up to 10 offerings across 7 days) and read-model queries (`OrderSummaryView`, `OperatorActionView`, `PartyTimelineView`) MUST complete in **< 50 ms (p95)** and **< 120 ms (p99)** under standard load.
-- **NFR-302 (Transactional Command Latency & Webhook Ack)**: Application write commands (`reserveCapacity`, quote acceptance, `ChangeRequest`, `OperatorAction` resolution) and webhook acknowledgments MUST complete in **< 250 ms (p95)** and **< 1,500 ms (p99)**.
-- **NFR-303 (Container Memory Ceiling & Concurrency Baseline — Q5 Option B)**: The production Next.js 15 modular monolith container (`REPLICA_COUNT=1`) MUST operate within **$\le 500\text{ MB RAM}$ (`app RSS <= 500 MB`)** peak RSS under **100 concurrent booking/checkout requests**, two active Telegram bots, `inboxPoller`, and enabled capability packs. Optional `Engineering AI Lab` components (`LM Studio`, `OmniRoute`, monitoring backends, and VPN workstation) are excluded from the `500 MB` main application container ceiling and MUST NOT impact `commerce-core` availability.
+- **NFR-301 (Public Page & Availability Latency)**: Public business/professional pages and appointment availability queries MUST complete in **< 50 ms (p95)** and **< 120 ms (p99)** under the agreed standard load, excluding media delivery from the application server.
+- **NFR-302 (Booking Command Latency)**: Booking create/cancel commands MUST complete in **< 250 ms (p95)** and **< 1,500 ms (p99)**, excluding external API latency.
+- **Standard Load Profile for NFR-301/302**: Measure server-side handler time on a production-like single-VPS deployment with one business, 10 active professionals, 50 active services, 90 days of schedules/exceptions, and 5,000 existing reservations. Use 100 concurrent virtual clients for a 60-second warm-up followed by a 5-minute measurement window; each client repeatedly loads a public page, queries seven days of availability, and creates then cancels a booking on a distinct available slot. Measure the 100-request same-slot contention case separately for integrity and memory; do not mix its expected conflict responses into normal booking latency. Exclude network transit, media delivery, and external-provider time. Record p95/p99 per operation, peak app RSS, and the test fixture/profile with the acceptance evidence.
+- **NFR-303 (Container Memory Ceiling & Booking Concurrency — Q5 Option B)**: The production web application container (`REPLICA_COUNT=1`) MUST operate within **$\le 500\text{ MB RAM}$ (`app RSS <= 500 MB`)** peak RSS under **100 concurrent booking requests**. At most one client-selected external API integration is included; messaging bots and commerce packs are outside the first-release baseline.
 - **NFR-304 (Single-VPS Production Availability & Disaster Recovery Baseline — Q5 Option B)**: Mandatory production MVP operational baseline for each dedicated client deployment is **99.0% uptime** on a single VPS; **RTO $\le 60$ minutes** via container restart and automated dump restoration drill; and **RPO $\le 24$ hours** via scheduled `pg_dump` + Restic backup (no Kubernetes, multi-node HA cluster, or continuous WAL PITR required; more frequent host snapshot intervals such as 6 hours remain supported as optional deployment overrides).
-- **NFR-305 (Zero-Downtime 4-Stage DDL Evolution)**: All schema migrations from `002` to `003` MUST execute in 4 decoupled stages (**Expand $\to$ Backfill $\to$ Validate/Cutover $\to$ Contract**) with `SET lock_timeout = '2s'`, `SET statement_timeout = '5s'`, `CHECK ... NOT VALID` + separate `VALIDATE CONSTRAINT`, and bounded batch backfills (`LIMIT 500 FOR UPDATE SKIP LOCKED`).
+- **NFR-305 (Safe Additive Schema Evolution)**: First-release schema changes MUST be additive, preserve existing bookings and customer history, and have a reviewed recovery path. A broad commerce-kernel migration is outside `003.1` and requires its own reviewed plan.
 - **NFR-306 (AI Gateway & Local Inference Latency Budget)**: In the Engineering Lab profile, `LanguageModelGateway` requests MUST enforce explicit `AbortSignal` timeouts (**4,000 ms** primary route budget, **3,000 ms** fallback route budget, **8,000 ms** total ceiling) and bounded concurrency so slow local inference never exhausts Node.js event-loop or database connections.
 - **NFR-307 (Golden Evaluation Quality Gate)**: No model or prompt version in the Engineering Lab may be promoted to default route unless it achieves **100% Zod structured-output validity**, **0% PII leakage**, **100% prompt-injection refusal on adversarial test cases**, and **$\ge 90\%$ field-extraction accuracy** on the versioned golden dataset.
 
@@ -454,7 +456,7 @@ An engineer or evaluator runs the optional **Engineering Lab Profile** (`infrast
   - `PUBLIC`: Active catalog offerings, public prices, store hours, public knowledge base chunks.
   - `INTERNAL`: Redacted read models (`OrderSummaryView`, `OperatorActionView`, `CashCommitmentView`), aggregated telemetry.
   - `CONFIDENTIAL`: Unredacted `Party` contact points (`customerPhone`, `customerEmail`), `customerNotes`, conversation transcripts, `CompletionEvidence` media, `MarginGuard` internal cost estimates.
-  - `RESTRICTED`: Payment provider secrets, webhook signing keys, `StaffMember.passwordHash`, `StaffSession` token hashes, break-glass `ADMIN_TOKEN`, raw payment card/wallet credentials (never stored in core DB; delegated to `PaymentProvider` hosted checkouts).
+  - `RESTRICTED`: Payment provider secrets, webhook signing keys, Better Auth credentials and session data, break-glass `ADMIN_TOKEN`, raw payment card/wallet credentials (never stored in core DB; delegated to `PaymentProvider` hosted checkouts).
 - **Client Compliance Readiness Gate**:
   - Every deployment starts in `NOT_COMPLIANCE_READY` state until the client or its qualified legal/tax counsel approves in writing: seller legal identity, applicable jurisdictions, tax treatment and provider, commercial/fiscal document numbering, payment/refund terms, privacy/consent basis, and retention/erasure schedules (`RetentionProfile`).
 - **Kill Criteria (Falsifiability)**:
@@ -468,12 +470,12 @@ An engineer or evaluator runs the optional **Engineering Lab Profile** (`infrast
 
 | Threat Category | Attack Vector | Architectural Mitigation in Feature 003 |
 | :--- | :--- | :--- |
-| **Spoofing** | Shared static admin tokens, forged `ContinuationLink` guest tokens, forged webhook callbacks, or unauthorized workstation access to AI Gateway | Individual `StaffMember` accounts and server-side `StaffSession` cookies/tokens via a maintained auth library (`FR-325b`, no self-registration); `JourneyToken` and `MagicRescheduleLink` signed with HMAC-SHA256; `OmniRoute` + `LM Studio` bound to localhost/private WireGuard VPN subnet. |
+| **Spoofing** | Shared static admin tokens, forged `ContinuationLink` guest tokens, forged webhook callbacks, or unauthorized workstation access to AI Gateway | Better Auth identities and database-backed session cookies linked to active `StaffMember` records (`FR-325b`, no self-registration); `JourneyToken` and `MagicRescheduleLink` signed with HMAC-SHA256; `OmniRoute` + `LM Studio` bound to localhost/private WireGuard VPN subnet. |
 | **Tampering** | Mutating historical order prices, altering issued invoices, or bypassing application invariants via admin/CRM/MCP direct DB writes | `INV-001` immutable `OrderLine` snapshots; `INV-007` reversal/credit-note-only corrections; `INV-008` strict ban on direct table writes from UI/Directus/MCP; CAS `scheduleVersion` guards on all state transitions. |
 | **Repudiation** | Disputed order changes, manual margin overrides, unblocking blacklisted parties, or emergency `ADMIN_TOKEN` use | Every command emits an immutable `AuditEvent` and updates `OperatorAction.auditHistory` with individual `actorId` (`StaffMember.id`), `actorRole`, `reason`, and `timestamp`; emergency `ADMIN_TOKEN` calls emit a dedicated `BREAK_GLASS_ADMIN_TOKEN_USED` audit record (`FR-325b`). |
 | **Information Disclosure** | Cross-client tenant leakage, or leaking customer PII/business data to cloud LLMs, MCP clients, logs, or unverified OmniRoute proxy providers | Physical single-tenant isolation (`1 deployment = 1 dedicated PostgreSQL DB`, `FR-325c` / `INV-013`); `AiDataClass.CONFIDENTIAL` enforces local-only inference and fails closed when local `LM Studio` is down; `deniedProviderClasses` blocks `web-cookie` and unofficial proxies; MCP reads only PII-redacted projections; recursive `logger.ts` denylist. |
 | **Denial of Service** | Malformed CSV imports, combinatorial bundle/slot queries, or stalled local LLM inference hanging the web server | Staged `ImportBatch` row/size limits; basket cap ($\le 10$ items, $\le 480$ min); `LanguageModelGateway` hard timeout ($\le 8\text{s}$ total) + concurrency limiter; durable outbox rate shaping; AI Lab isolated from `500 MB` commerce-core container (`NFR-303`). |
-| **Elevation of Privilege** | `PERFORMER` attempting financial refunds/config edits, terminated staff retaining access, AI agent executing autonomous mutations, or arbitrary JS in `JurisdictionProfile.configJson` | Fixed 3-role RBAC (`OWNER > OPERATOR > PERFORMER`) enforced on every command and Staff Bot callback (`FR-325a`); instant per-user `StaffSession` revocation (`FR-325b`); zero MCP mutation tools; `configJson` validated strictly via declarative Zod schemas. |
+| **Elevation of Privilege** | `PERFORMER` attempting financial refunds/config edits, terminated staff retaining access, AI agent executing autonomous mutations, or arbitrary JS in `JurisdictionProfile.configJson` | Fixed 3-role RBAC (`OWNER > OPERATOR > PERFORMER`) enforced on every command and Staff Bot callback (`FR-325a`); per-identity Better Auth session revocation and active-staff checks (`FR-325b`); zero MCP mutation tools; `configJson` validated strictly via declarative Zod schemas. |
 
 ---
 
@@ -481,20 +483,20 @@ An engineer or evaluator runs the optional **Engineering Lab Profile** (`infrast
 
 ### 4.1. Bounded Contexts Overview
 
-1. **`A. Party Context` (`[MVP-CORE]`)**: `Party` (`PERSON | ORGANIZATION`), `PartyIdentifier`, `ContactPoint`, `ChannelIdentity`, `Consent`, `PartyNote`, `PartyTag`, `PartyActivity`.
-2. **`B. Catalog Context` (`[MVP-CORE]`)**: `Offering` (`PRODUCT | SERVICE | BUNDLE | DIGITAL | CUSTOM_QUOTE`), `OfferingVariant`, `ServicePolicy`, `Category`, `MediaAsset`, `PriceList`, `Price`, `TaxCategory`, `BundleComponent`, `SalesChannel`, `CurrencyMetadata`.
-3. **`C. Capacity & Staff Context` (`[MVP-CORE]`)**: `InventoryBalance`, `InventoryMovement`, `Resource`, `StaffMember` (`role: StaffRole ∈ { OWNER, OPERATOR, PERFORMER }`), `StaffSession`, `WorkingSchedule`, `AvailabilityException`, `CapacityRule`, `Reservation`.
-4. **`D. Commercial Documents & Payments Context` (`[MVP-CORE]` Orders/PaymentPlans + `[PHASE-PACK]` Quotes/Documents/ChangeRequests)**: `Order`, `OrderLine`, `PaymentPlan`, `PaymentMilestone`, `PaymentEvent`, `PaymentAllocation`, `RefundOperation` (MVP); `Quote`, `QuoteLine`, `ChangeRequest`, `CommercialDocument`, `CommercialDocumentLine`, `DocumentRender`, `ExternalDocumentReference`, `NumberingProfile` (Subsequent Pack Phases).
-5. **`E. Fulfillment & Post-Sale Context` (`[MVP-CORE]` FulfillmentPlan/Evidence + `[PHASE-PACK]` Warranty/ServiceCase)**: `FulfillmentPlan`, `FulfillmentSegment`, `ServiceAppointment`, `DigitalEntitlement`, `DeliveryReference`, `CompletionEvidence` (MVP); `WarrantyCoverage`, `ServiceCase` (Subsequent Pack Phase).
-6. **`F. Communications & Journey Context` (`[MVP-CORE]` Inbox/Outbox + `[PHASE-PACK]` Guest Journey Links)**: `Conversation`, `Message`, `MessageTemplate`, `NotificationJob` (backed by existing `InboxEvent` / `TelegramRateState`), plus `Journey`, `JourneyToken`, `ContinuationLink` (`Phase E`).
-7. **`G. Operations, Data Quality & Import Context` (`[MVP-CORE]` OperatorAction/Audit + `[PHASE-PACK]` DataQuality/ImportBatch)**: `OperatorAction`, `Approval`, `AuditEvent` (MVP); `ActionSuggestion`, `DataQualityIssue`, `ImportBatch`, `ImportRow`, `ImportIssue`, `ImportMapping` (`Phase E`).
-8. **`H. Compliance Adapters & Profiles Context` (`[PHASE-PACK]` `Phase F`)**: `JurisdictionProfile`, `LegalEntityProfile`, `LocaleProfile`, `RetentionProfile`, `ConsentProfile`, `ComplianceOperationRequest`, `ComplianceOperationResult`.
-9. **`I. Redacted Read Models Context` (`[MVP-CORE]` + `[PHASE-PACK]`)**: `OrderSummaryView`, `PartyTimelineView`, `AvailabilityView`, `OperatorActionView`, `CatalogSearchView`, `PaymentStatusView`, `CashCommitmentView`.
-10. **`J. Portfolio AI Gateway & Lab Context` (`[AI-LAB]` `Phase H`)**: `LanguageModelGateway`, `AiRoutingPolicy`, `AiTelemetryRecord`, `GoldenDatasetCase`, `BenchmarkRunReport`.
+**Release `003.1` needs only**:
+1. **Business settings**: business name, branding, locale, timezone, configured currency, and public contact links.
+2. **Staff access**: Better Auth-managed identities and sessions linked to `StaffMember`, with exactly three application roles: `OWNER`, `OPERATOR`, `PERFORMER`.
+3. **Professional pages**: `ProfessionalProfile`, `ProfessionalService`, and `PortfolioItem`, with publication and ownership checks.
+4. **Service booking**: service listings, bookable staff/resources, working hours, exceptions, availability, and the existing appointment/reservation record.
+5. **Privacy-safe views and audit**: public profile data, staff booking views, and attribution for administrative changes.
+
+**Later packs may add**: `Party` and cross-channel identity, product inventory, mixed orders, payment plans and refunds, segmented fulfillment, advanced operator queues, messaging, compliance, imports, read-only agent access, and the optional AI Lab. These entities are not blockers for `003.1`.
 
 ---
 
-### 4.2. Core Domain Models & Schema Contracts
+### 4.2. Expanded Domain Model Reference (Includes Future Packs)
+
+The following schema sketch is the long-term domain reference for Feature 003, not a list of tables required by the first release. The `003.1` schema changes are limited to the business/profile/service/booking/staff data described in `data_model.md` and additive updates to existing tables.
 
 ```prisma
 enum StaffRole {
@@ -576,27 +578,15 @@ enum AiDataClass {
 
 model StaffMember {
   id             String         @id @default(uuid())
-  email          String         @unique
+  authUserId     String         @unique // Better Auth user ID
   displayName    String
-  passwordHash   String?
   role           StaffRole      @default(PERFORMER)
   telegramUserId String?        @unique
   resourceId     String?
   invitedById    String?
   active         Boolean        @default(true)
-  sessions       StaffSession[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
-}
-
-model StaffSession {
-  id            String      @id @default(uuid())
-  staffMemberId String
-  staffMember   StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
-  tokenHash     String      @unique
-  expiresAt     DateTime
-  revokedAt     DateTime?
-  createdAt     DateTime    @default(now())
 }
 
 model Offering {
@@ -758,10 +748,12 @@ export interface LanguageModelGateway {
 
 | Capability Pack | Delivery Tier (Option B) | Default State | Included Domain & Operational Slice |
 | :--- | :--- | :--- | :--- |
-| **`Core Pack`** | **Production MVP (`003.1`)** | **Always Enabled** | Single-tenant dedicated DB boundary (`Option A`), single-VPS baseline (`Option B`: 99.0% uptime, RTO 60m, RPO 24h, 100 concurrent reqs, RSS $\le 500\text{ MB}$), `Party`, `Offering`, `PriceSnapshot`, `StaffMember` (`OWNER | OPERATOR | PERFORMER`), `StaffSession`, `Order`, `OrderLine`, `PaymentPlan`, `PaymentAllocation`, `FulfillmentPlan`, `FulfillmentSegment`, `CompletionEvidence`, `OperatorAction`, `AuditEvent`, `DurableInboxOutbox`, 4-stage migration from `001`/`002` |
-| **`Goods Pack`** | **Production MVP (`003.1`)** | Configurable (`true`) | `OfferingVariant`, `InventoryBalance`, `InventoryMovement`, stock reservation, low-stock `OperatorAction`, pickup/delivery modes, SKU/barcode, optional `markingCode` reference |
-| **`Services Pack`** | **Production MVP (`003.1`)** | Configurable (`true`) | `StaffMember`, `Resource`, `WorkingSchedule`, `AvailabilityException`, `BufferBefore`/`BufferAfter`, multi-service cart, approval/reschedule, cancellation & no-show policies |
-| **`Messenger Pack`** | **Production MVP (`003.1`)** | Configurable (`true`) | Telegram Client Bot + TMA, Telegram Staff Bot pager (`OWNER`/`OPERATOR`/`PERFORMER` role-gated actions mapped via `StaffMember.telegramUserId`), WhatsApp Cloud API approved templates, channel identities, opt-out/cooldown |
+| **`Core Pack`** | **Production MVP (`003.1`)** | **Always Enabled** | One-business installation, staff sessions and fixed three-role access, business page settings, locale/timezone/configured currency, service catalog, booking, privacy-safe staff views, and single-VPS production readiness |
+| **`Professional Profile Pack`** | **Production MVP (`003.1`)** | **Always Enabled** | Public profile page for each professional under the business site, biography, portfolio items, associated services, publication controls, and profile-scoped editing permissions |
+| **`Services Booking Pack`** | **Production MVP (`003.1`)** | **Always Enabled** | `Resource`, working hours, exceptions/days off, service duration and buffers, availability lookup, appointment create/cancel, and prevention of overlapping bookings |
+| **`Goods Pack`** | **Subsequent Phase (`003.2+`)** | Configurable (`false`) | Product variants, SKU/barcode, `InventoryBalance`, `InventoryMovement`, stock reservation, low-stock operations, pickup/delivery modes, optional `markingCode` reference |
+| **`Checkout & Payments Pack`** | **Subsequent Phase (`003.2+`)** | Configurable (`false`) | Product checkout, mixed goods-and-service baskets, online payment providers, payment plans, refunds, payment webhooks, and provider-specific currency conversion |
+| **`Operations & Messenger Packs`** | **Subsequent Phase (`003.2+`)** | Configurable (`false`) | Advanced exception queue, Telegram/WhatsApp bots, automated notifications, conversation-to-draft, resumable journeys, and offline operations |
 | **`Quote Pack`** | **Subsequent Phase (`Phase C`)** | Configurable (`false`) | Versioned `Quote` & `QuoteLine`, `INFORMATIONAL`/`PRICE_LOCKED`/`CAPACITY_HELD`/`DEPOSIT_BACKED` modes, quote-to-order conversion, optional `MarginGuard` |
 | **`Documents & Compliance Pack`** | **Subsequent Phase (`Phase D/F`)** | Configurable (`false`) | `CommercialDocument`, `DocumentRender` PDF snapshot, `NumberingProfile`, `CREDIT_NOTE` reversals, `JurisdictionProfile`, and narrow compliance provider adapters |
 | **`Relationship & Ops Extensions`** | **Subsequent Phase (`Phase E`)** | Configurable (`false`) | Conversation-to-draft, resumable `Journey` links, `ChangeRequest`, `Warranty & Post-Sale` (`ServiceCase`), `DataQualityIssue` scanner, quarantined `ImportBatch`, `ActionSuggestion`, limited-connectivity draft mode |
@@ -775,15 +767,14 @@ export interface LanguageModelGateway {
 Implementation MUST follow strict domain-first sequencing (never starting with cosmetic dashboards, Kanban boards, PDF designers, or MCP servers before transactional invariants exist):
 
 #### Tier 1 — Mandatory Production MVP Scope (Sprint B Deliverable `003.1`)
-- **Phase A (MVP Foundation, Single-Tenant Boundary, Staff Roles & Session Auth)**: Single-tenant dedicated-DB boundary (`FR-325c`), `Party` + `Offering` unification, fixed 3-role `StaffMember` model (`OWNER`, `OPERATOR`, `PERFORMER`) + server-side `StaffSession` authentication (maintained auth library, no self-registration, break-glass `ADMIN_TOKEN` audit), `CapabilityModule` registry, and 4-stage Expand $\to$ Backfill $\to$ Validate/Cutover $\to$ Contract migration from `001`/`002` `Item`, `Order`, `OrderItem`, `SlotReservation`, and `MessengerContact`.
-- **Phase B (MVP Capacity)**: `InventoryMovement` ledger + `InventoryBalance` (`Goods Pack`) and unified `CapacityPort` wrapping service `Reservation`, `WorkingSchedule`, `AvailabilityException`, and `BufferBefore`/`BufferAfter` (`Services Pack`).
-- **Phase D-Core (MVP Commercial & Fulfillment Core)**: Immutable `OrderLine` snapshots, `PaymentPlan` / `PaymentMilestone` / `PaymentAllocation`, mixed `FulfillmentPlan` / `FulfillmentSegment` with `CompletionEvidence`, `OperatorAction` work queue + core redacted read models (`OperatorActionView`, `OrderSummaryView`, `PartyTimelineView`, `AvailabilityView`, `CashCommitmentView`), and Single-VPS Operational Baseline verification (`NFR-303`, `NFR-304`: 100 concurrent requests, app RSS $\le 500\text{ MB}$, backup/restore drill within RTO $\le 60\text{ min}$ / RPO $\le 24\text{ h}$).
+- **Phase A (Reusable Template & Access)**: One-business deployment, business branding and locale/timezone/currency settings, fixed `OWNER`/`OPERATOR`/`PERFORMER` roles, individual staff access, and additive migrations needed for the public pages and booking flow.
+- **Phase B (Professional Pages & Service Listings)**: Public business page, published professional profile pages and portfolios under the business site, service listings, and role-bounded profile editing.
+- **Phase C (Appointment Booking)**: Customer service selection, professional selection, availability, booking creation/cancellation, schedule exceptions and buffers, and protection against overlapping bookings.
+- **Production readiness**: Security and privacy checks, backup/restore drill, and the single-VPS baseline. The booking flow works without an external provider; each client may select at most one external API integration before work starts.
 
 #### Tier 2 — Subsequent Independent Capability Pack Phases (`003.2+`)
-- **Phase C (`Quote Pack`)**: Versioned `Quote` lifecycle, `MarginGuard`, and transactional quote-to-order conversion.
-- **Phase D-Extended (`Documents & Change Requests`)**: `ChangeRequest` workflow, `CommercialDocument` / `DocumentRender` references, and `CREDIT_NOTE` reversals.
-- **Phase E (`Relationship & Operations Pack`)**: Conversation-to-draft, resumable guest `Journey` / `ContinuationLink`, `ServiceCase` post-sale workflow, `DataQualityIssue` scanner, and staged `ImportBatch` quarantine.
-- **Phase F (`Jurisdiction & Compliance Pack`)**: Jurisdiction-neutral compliance provider SPIs (`TaxQuoteProvider`, `FiscalReceiptProvider`, `ElectronicInvoiceProvider`, `ProductComplianceProvider`, `TransportDocumentProvider`), `JurisdictionProfile`, and Client Customization Manifest validator.
+- **Commerce Pack (`003.2+`)**: Goods catalog, inventory, product checkout, mixed carts, online payments, payment plans, refunds, quotes, and commercial documents.
+- **Operations & Integrations Packs (`003.2+`)**: Advanced operator queue, Telegram/WhatsApp, conversation-to-draft, resumable journeys, offline operations, compliance providers, and imports.
 - **Phase G (`Agent Read Pack`)**: Disposable/read-only MCP spike consuming redacted read models (governed by Constitution Principle XI).
 
 #### Tier 3 — Non-Blocking Portfolio Engineering Lab Workstream (`Phase H`)
@@ -795,9 +786,9 @@ Implementation MUST follow strict domain-first sequencing (never starting with c
 
 ### Measurable Outcomes
 
-- **SC-001 (Production MVP Unified Lifecycle Completion)**: In the Production MVP slice (`003.1`), a merchant can take a customer (`Party`) through a mixed order (1 physical good `OfferingKind.PRODUCT` + 1 scheduled service `OfferingKind.SERVICE`), capture a 30% deposit via `PaymentPlan`/`PaymentAllocation`, track independent `INVENTORY` and `APPOINTMENT` segments in `FulfillmentPlan` with `PERFORMER`-submitted `CompletionEvidence`, and collect the 70% balance with zero manual re-entry across subsystems.
-- **SC-002 (Single-VPS Concurrency, Memory & DR Baseline Verification)**: Under **100 concurrent** reservation and checkout requests against the same `resourceId` and the last unit of product stock, exactly 1 reservation succeeds per time window (`0` overlapping bookings), `InventoryBalance` matches the sum of `InventoryMovement` rows with **100% accuracy**, main application container peak memory stays **$\le 500\text{ MB}$ (`app RSS <= 500 MB`)**, and an automated backup/restore drill completes within **RTO $\le 60$ minutes** against a **$\le 24$-hour RPO** snapshot (`NFR-303`, `NFR-304`).
-- **SC-003 (Exception Queue, Session Revocation & 3-Role Boundary Verification)**: **100%** of simulated operational exceptions surface in `OperatorActionView` within **2 seconds**, every administrative command records an individual `actorId` (`StaffMember.id`), revoking a `StaffSession` immediately returns HTTP 401 on subsequent calls, and automated RBAC tests confirm `PERFORMER` actors can update only assigned `FulfillmentSegment` / `CompletionEvidence` records while `OPERATOR` and `OWNER` permissions are strictly enforced.
-- **SC-004 (Jurisdiction Neutrality & Single-Tenant Isolation Verification)**: Switching a deployment manifest between two distinct currencies (`USD` 2-decimal vs `JPY` 0-decimal), locales, and compliance profiles requires **0 lines of core code changes**, static/AST checks confirm **0 hardcoded country-code branches** in core domain modules, and schema verification confirms **100% single-tenant dedicated-DB isolation** (`0` shared-table `tenantId` leaks).
-- **SC-005 (Read-Model & Agent Privacy Isolation)**: Automated security and redaction tests verify **0 bytes of raw customer PII** (`customerPhone`, `customerEmail`, `customerNotes`) or payment secrets appear in structured logs, AI telemetry records, or `Agent Read Pack` responses, and **0 mutation endpoints** are exposed on the read-only agent interface.
+- **SC-001 (Public Pages & Booking Journey)**: A business can publish its public page, publish a professional page with portfolio and services, and accept a customer booking from the public site without requiring an account or payment provider; the booking appears in the staff view with the correct professional, service, time, and customer contact details.
+- **SC-002 (Single-VPS Booking Concurrency, Memory & DR Baseline)**: Under **100 concurrent** booking requests for overlapping slots on the same resource, no more than one booking succeeds for each unavailable interval; the app remains within **500 MB RSS**, and a backup/restore drill meets **RTO ≤ 60 minutes** and **RPO ≤ 24 hours** (`NFR-303`, `NFR-304`).
+- **SC-003 (Three-Role Boundary Verification)**: Session revocation immediately blocks subsequent requests; `PERFORMER` can edit only their own public profile and portfolio and can access only assigned bookings, `OPERATOR` can manage permitted service and booking operations, and `OWNER` can manage the business and staff settings.
+- **SC-004 (Configuration Neutrality & Single-Business Isolation)**: Changing a deployment's configured currency, locale, and timezone—including currencies with different minor-unit scales and an explicitly configured non-ISO currency—requires **0 lines of core code changes**. Static checks find **0 hardcoded country-code branches** in core booking modules, and each installation stores only one business's data.
+- **SC-005 (Privacy)**: Public pages expose no customer or appointment data; staff APIs enforce the role boundary and logs contain no raw customer contact details. The read-only agent interface is evaluated only if its later pack is enabled.
 - **SC-006 (Portfolio AI Lab Reproducibility & Outage Resilience — Phase H)**: When the optional Engineering Lab workstream (`P-AI-001`–`P-AI-008`) is executed outside the `500 MB` commerce-core container budget, the benchmark produces a reproducible comparison between local `LM Studio` and cloud routes via `OmniRoute`, and the local-model outage drill proves that `CONFIDENTIAL` requests fail closed (**0 unauthorized cloud fallbacks**) while `commerce-core` availability remains **100% unaffected**.

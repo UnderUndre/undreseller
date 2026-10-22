@@ -1,44 +1,45 @@
-# Phase 0 Research & Decision Log: Small-Business Commerce Operations Kernel & Capability Packs (`003`)
+# Research & Decision Log: Booking-First Service Template (`003.1`)
 
 **Feature Branch**: `specs/003-commerce-operations-capability-packs`  
-**Date**: 2026-10-21  
+**Date**: 2026-10-22
 **Spec**: `specs/003-commerce-operations-capability-packs/spec.md`  
 **Standard Compliance**: ISO/IEC/IEEE 12207:2017 (Decision Management & Spike Governance) & NIST SP 800-218 SSDF
 
 ---
 
-## 1. Resolved Architecture & Scope Decisions (Locked in `/speckit.clarify`)
+## 1. Resolved Architecture & Scope Decisions
 
-### Decision 1: Delivery Scope Partitioning within Sprint B ($4,900 / 14 Days) — `Q1 Option B`
-- **Decision**: Partition Feature 003 into a **Mandatory Production MVP Slice (`Release 003.1`)** (`Party`, `Offering`, `CapacityPort`/`InventoryMovement`, `StaffMember`/`StaffSession` 3-role auth, `Order`/`OrderLine` snapshots, `PaymentPlan`/`PaymentAllocation`, `FulfillmentPlan`/`FulfillmentSegment` + `CompletionEvidence`, `OperatorAction` queue, core redacted read models, and 4-stage Expand/Contract migration from `001`/`002`) and **Subsequent Independent Capability Pack Phases (`Releases 003.2+`)** (`Quote Pack`, `Documents & Compliance Pack`, `ChangeRequest`, `ServiceCase`, `ImportBatch`, `Agent Read Pack`, and `Engineering AI Lab` `Phase H`).
-- **Rationale**: Delivering all 34 FRs and the AI Lab as a single blocking release would violate the Sprint B 14-day / $4,900 commercial envelope (`undreseller-business-plan.md` v18.3). Option B delivers a rock-solid, revenue-ready commerce & booking kernel in `003.1` while preserving the full capability-pack architecture and portfolio AI Lab as clean subsequent phases.
+### Decision 1: Sprint B Delivery Scope ($4,900 / 14 Days) — Updated for `003.1`
+- **Decision**: Release `003.1` is a reusable single-business template for independent specialists and small service teams. It includes a public business page, professional profile and portfolio pages, service listings, appointment availability and booking, three fixed staff roles, basic business configuration, and production readiness. Product sales, inventory, mixed carts, online payments, complex operations, and broad commerce-kernel migration move to later releases. No more than one client-selected external API integration is included, and the booking journey works without one.
+- **Rationale**: The narrow booking journey addresses the fastest near-term launch need and fits the business plan's $4,900 / 14-day scope. A specialist gets a portfolio and booking page, while a small service business can publish pages for multiple staff. Additional commerce packs can follow after real deployments validate demand.
 - **Alternatives Considered**:
-  - *Option A (Monolithic release of all 34 FRs + AI Lab)*: Rejected — high schedule risk against the 14-day delivery SLA.
-  - *Option D (Architecture-only roadmap)*: Rejected — leaves `003` without an executable production MVP increment.
+  - *Previous broad MVP scope (commerce kernel, inventory, payment plans, messaging, and fulfillment)*: Replaced — too large for the first release and not needed to validate service booking.
+  - *Architecture-only roadmap*: Rejected — leaves `003` without a usable template to deploy.
 
 ---
 
-### Decision 2: Fixed Three-Role Staff Authorization Model (`OWNER`, `OPERATOR`, `PERFORMER`) — `Q2 Option B`
-- **Decision**: Enforce a fixed 3-role hierarchy (`StaffRole ∈ { OWNER, OPERATOR, PERFORMER }`) across all HTTP administrative commands and Telegram Staff Bot callbacks (`authorizeStaffCallback`) via static policy guards (`FR-325a`).
-- **Rationale**: Micro-businesses and service studios need clear separation between the business owner (`OWNER`: config, staff management, GDPR purges, financial/margin overrides), desk operators (`OPERATOR`: orders, customers, schedules, `OperatorAction` queue, policy-bounded refunds), and field technicians/masters (`PERFORMER`: assigned `FulfillmentSegment` execution, personal schedule view, and `CompletionEvidence` upload) without the complexity of a dynamic user-defined RBAC permission constructor.
+### Decision 2: Fixed Three-Role Staff Authorization Model (`OWNER`, `OPERATOR`, `PERFORMER`)
+- **Decision**: Keep exactly three fixed roles with statically checked permissions in the first release. `OWNER` controls the business and staff; `OPERATOR` manages services, profiles, schedules, and bookings; `PERFORMER` manages their own public profile and portfolio and sees their assigned bookings. An owner who also provides services can be linked to a bookable resource. No custom role builder or Telegram callback authorization is required in this release.
+- **Rationale**: The role model covers both a solo specialist and a small team without adding a fourth role. It gives a professional control over their portfolio while keeping business settings and other staff data protected.
 - **Alternatives Considered**:
   - *Option A (Single all-powerful operator role)*: Rejected — allows field staff (`PERFORMER`) to trigger refunds, purges, or config mutations.
   - *Option D (Custom per-client role/permission builder)*: Rejected — unnecessary UI/DB complexity for small-business deployments.
 
 ---
 
-### Decision 3: Individual Staff Accounts, Server-Side Sessions & Break-Glass `ADMIN_TOKEN` — `Q3 Option B`
-- **Decision**: Implement individual `StaffMember` accounts (`email`, `passwordHash` via Node.js native `node:crypto` `scrypt` with random 16-byte salt and timing-safe comparison, linked `telegramUserId`) and database-backed server-side sessions (`StaffSession` storing `tokenHash = sha256(sessionToken)` in an `HttpOnly; Secure; SameSite=Lax` cookie) using a lightweight, zero-copyleft session helper compatible with Next.js 15 App Router (`lib/security/staffSession.ts`). Retain `ADMIN_TOKEN` strictly as an audited emergency break-glass credential (`BREAK_GLASS_ADMIN_TOKEN_USED`).
-- **Rationale**: Once three roles exist, a shared static `ADMIN_TOKEN` cannot distinguish individual actors (`actorId`), cannot restrict `OPERATOR` vs `PERFORMER` on web routes, and cannot revoke access for a departing employee without rotating the global token. Database-backed `StaffSession` rows in existing PostgreSQL 16 require zero external Redis containers (preserving the $\le 500\text{ MB RAM}$ budget) and allow instant per-session or per-staff revocation (`revokedAt`, `StaffMember.active = false`).
+### Decision 3: Individual Staff Accounts, Server-Side Sessions & Break-Glass `ADMIN_TOKEN`
+- **Decision**: Use Better Auth for individual staff identities and revocable PostgreSQL-backed sessions, linked to application `StaffMember` records for the fixed role and audit attribution. Retain `ADMIN_TOKEN` only as an audited emergency recovery credential. Messaging identities are optional future integrations, not required for staff access.
+- **Rationale**: A shared static `ADMIN_TOKEN` cannot distinguish individual actors (`actorId`), cannot restrict `OPERATOR` vs `PERFORMER` on web routes, and cannot revoke access for a departing employee without rotating the global token. Better Auth provides the maintained password/session lifecycle and Prisma integration; the application keeps its own fixed role checks and staff activity state. This avoids custom password hashing and custom cookie/session lifecycle code while using the existing PostgreSQL database without Redis.
+- **Implementation reference**: Better Auth's [Prisma adapter documentation](https://better-auth.com/docs/adapters/prisma). Pin the supported library release during implementation and generate its schema from that release.
 - **Alternatives Considered**:
-  - *Option A (Static bearer token per staff member)*: Rejected — difficult for non-technical staff to manage in browsers and lacks standard session cookie lifecycle controls.
-  - *Stateless JWTs without DB session lookup*: Rejected — cannot immediately revoke an active session when a staff member is deactivated (`FR-325b`).
+  - *Handwritten password hashes and session tables*: Rejected — duplicates security-sensitive credential, cookie, expiry, and revocation mechanisms already provided by the maintained library.
+  - *Stateless JWTs without database session lookup*: Rejected — cannot immediately revoke an active session when a staff member is deactivated (`FR-325b`).
 
 ---
 
 ### Decision 4: Single-Tenant Dedicated-Database Topology (`1 Deployment = 1 Client Business = 1 PostgreSQL DB`) — `Q4 Option A`
 - **Decision**: Each client deployment runs against its own dedicated PostgreSQL database (`SINGLE_TENANT_DEDICATED_DB`, `FR-325c`, `INV-013`). Domain tables contain zero `tenantId` columns, and multi-branch/multi-warehouse structures are deferred to a future capability pack.
-- **Rationale**: Matches the Sprint B "Sovereign Commerce Factory" delivery model, keeps unique indexes (`Offering.slug`, `StaffMember.email`, `StaffMember.telegramUserId`, `idempotencyKey`) and GiST exclusion constraints (`slot_resource_no_overlap`) simple and fast, and eliminates cross-client data leakage by physical database isolation.
+- **Rationale**: Matches the Sprint B delivery model, keeps unique indexes (`Offering.slug`, `StaffMember.authUserId`, `StaffMember.telegramUserId`, `idempotencyKey`) and GiST exclusion constraints (`slot_resource_no_overlap`) simple and fast, and eliminates cross-client data leakage by physical database isolation.
 - **Alternatives Considered**:
   - *Option B/C (Multi-schema or shared-table `tenantId` multi-tenancy)*: Rejected — introduces cross-tenant query leak risks, complicates `pg_dump` restore drills and GDPR purges, and drifts toward a SaaS control plane.
 

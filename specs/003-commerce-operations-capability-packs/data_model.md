@@ -1,7 +1,7 @@
-# Phase 1 Data Model & 4-Stage Expand/Contract Migration Specification (`003`)
+# Booking-First Template Data Model (`003.1`)
 
 **Feature Branch**: `specs/003-commerce-operations-capability-packs`  
-**Date**: 2026-10-21  
+**Date**: 2026-10-22
 **Spec**: `specs/003-commerce-operations-capability-packs/spec.md`  
 **Database Engine**: PostgreSQL 16 + `btree_gist` (Single-Tenant Dedicated Database per Client Deployment — `Q4 Option A`)  
 **ORM**: Prisma 6.4.1 (`DATABASE_URL` pooled `connection_limit=10`, `DIRECT_URL` for guarded migrations)
@@ -17,13 +17,15 @@ Every entity and field in `003` is classified under one of four sensitivity tier
 | **`PUBLIC`** | Plaintext in PostgreSQL; cacheable; safe in public API responses | Allowed on `local` and `official-api-key` routes | `Offering`, `OfferingVariant`, `Price`, `CurrencyMetadata`, `WorkingSchedule`, `KnowledgeChunk` |
 | **`INTERNAL`** | Plaintext in PostgreSQL; structured logs allowed (redacted of PII) | Allowed via redacted read models (`OrderSummaryView`, `OperatorActionView`, `AvailabilityView`) | `InventoryBalance`, `InventoryMovement`, `Reservation`, `FulfillmentPlan`, `FulfillmentSegment`, `OperatorAction`, `AuditEvent` |
 | **`CONFIDENTIAL`** | Plaintext/bounded in dedicated single-tenant PostgreSQL; **strictly forbidden** in logs, analytics, and idempotency keys (`INV-010`) | **Local-only (`LM Studio`)**; fails closed if local runtime is unavailable; **never** exposed in `Agent Read Pack` | `Party.displayName`, `ContactPoint.value` (`phone`, `email`), `PartyNote`, `Order.customerPhone`, `Order.customerEmail`, `Order.customerNotes`, `CompletionEvidence`, `MarginGuard` cost fields |
-| **`RESTRICTED`** | Hashed (`scrypt` / `sha256`) or stored only in host `.env`; raw payment credentials never touch core DB | **Prohibited** from all AI and read-model surfaces | `StaffMember.passwordHash`, `StaffSession.tokenHash`, `JourneyToken.tokenHash`, `Order.rescheduleTokenHash`, `ADMIN_TOKEN`, webhook secrets |
+| **`RESTRICTED`** | Managed by the authentication library or stored only in host `.env`; one-time cancellation secrets are stored as SHA-256 hashes; raw payment credentials never touch core DB | **Prohibited** from all AI and read-model surfaces | Better Auth credential/session fields, `SlotReservation.cancellationTokenHash`, `JourneyToken.tokenHash`, `ADMIN_TOKEN`, webhook secrets |
 
 ---
 
-## 2. Production MVP (`003.1`) Core Entities & Prisma Schema Contracts
+## 2. Production MVP (`003.1`) Entities & Prisma Schema Contracts
 
 ### 2.1. Staff Authentication, Roles & Sessions (`[MVP-CORE]` — `FR-325a`, `FR-325b`)
+
+Better Auth owns its generated identity, credential, account, and database-session tables. Generate those tables from the pinned library version using its supported Prisma integration; do not define a parallel `StaffSession` table or application-owned password/session fields. The application role remains in `StaffMember` and is never inferred from Better Auth metadata.
 
 ```prisma
 enum StaffRole {
@@ -34,39 +36,25 @@ enum StaffRole {
 
 model StaffMember {
   id             String         @id @default(uuid())
-  email          String         @unique // Lowercase normalized; single-tenant DB unique
+  authUserId     String         @unique // Better Auth user ID
   displayName    String
-  passwordHash   String?        // Restricted: scrypt hash (null until invite accepted)
   role           StaffRole      @default(PERFORMER)
-  telegramUserId String?        @unique // Maps Telegram Staff Bot ctx.from.id -> StaffMember
-  resourceId     String?        // Links PERFORMER to a schedulable Resource (e.g., "master_1")
+  telegramUserId String?        @unique // Reserved for a later messaging integration
+  resourceId     String?        @unique // Any bookable staff member can own a Resource, including OWNER
+  resource       Resource?      @relation(fields: [resourceId], references: [id])
+  professionalProfile ProfessionalProfile?
   invitedById    String?
   active         Boolean        @default(true)
-  sessions       StaffSession[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
   @@index([role, active])
 }
-
-model StaffSession {
-  id            String      @id @default(uuid())
-  staffMemberId String
-  staffMember   StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
-  tokenHash     String      @unique // SHA-256 hash of opaque 32-byte session token
-  userAgent     String?
-  ipAddressHash String?
-  expiresAt     DateTime
-  revokedAt     DateTime?
-  createdAt     DateTime    @default(now())
-
-  @@index([staffMemberId, expiresAt])
-}
 ```
 
-### 2.2. Unified Party Context (`[MVP-CORE]` — `FR-304`, `FR-305`)
+### 2.2. Booking Customer Details (`[MVP-CORE]` — `FR-304`)
 
-Replaces disconnected customer/contact silos while preserving backward compatibility with `MessengerContact` during the 4-stage transition:
+The first release stores only customer details required to confirm and manage a booking. Reuse the existing customer/booking tables where possible. The `Party`, cross-channel identity, notes, tags, and unified timeline models shown here are a later Relationship Pack and MUST NOT be added solely for `003.1`.
 
 ```prisma
 enum PartyKind {
@@ -172,7 +160,7 @@ model PartyTag {
 }
 ```
 
-### 2.3. Unified Catalog & Offering Context (`[MVP-CORE]` — `FR-301`–`FR-303`)
+### 2.3. Service Listings & Currency Configuration (`[MVP-CORE]` — `FR-301`, `FR-303`, `FR-335`)
 
 ```prisma
 enum OfferingKind {
@@ -190,8 +178,8 @@ enum PriceMode {
 }
 
 model CurrencyMetadata {
-  code      String   @id // e.g., "USD", "AMD", "JPY", "KWD", "XTR"
-  minorUnit Int      // e.g., 2 for USD, 0 for JPY/XTR, 3 for KWD
+  code      String   @id // ISO 4217 code or explicitly configured non-ISO code, e.g., XTR
+  minorUnit Int      // ISO 4217 exponent for fiat currencies; configured scale for non-ISO units; PSP wire formats are adapter-specific
   symbol    String
   active    Boolean  @default(true)
   updatedAt DateTime @updatedAt
@@ -199,9 +187,9 @@ model CurrencyMetadata {
 
 model Offering {
   id            String            @id @default(uuid())
-  legacyItemId  String?           @unique // Links 1:1 to legacy Item.id during Expand/Contract
+  legacyItemId  String?           @unique // Optional link to an existing service record
   slug          String            @unique
-  kind          OfferingKind
+  kind          OfferingKind      @default(SERVICE) // MVP publishes services; other kinds are later packs
   name          String
   description   String?
   active        Boolean           @default(true)
@@ -209,6 +197,7 @@ model Offering {
   priceMode     PriceMode         @default(FIXED)
   variants      OfferingVariant[]
   servicePolicy ServicePolicy?
+  professionalProfiles ProfessionalService[]
   bundleItems   BundleComponent[] @relation("ParentBundle")
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
@@ -224,7 +213,7 @@ model OfferingVariant {
   title             String
   attributesJson    Json                @default("{}")
   unitAmountMinor   BigInt
-  currency          String              @default("USD")
+  currency          String // Copy the configured business currency; new template setup starts at USD and the owner confirms/changes it before live prices
   starsPrice        Int?
   active            Boolean             @default(true)
   inventoryBalance  InventoryBalance?
@@ -242,8 +231,46 @@ model ServicePolicy {
   durationMin         Int      // 1..480
   bufferBeforeMin     Int      @default(0)
   bufferAfterMin      Int      @default(0)
-  defaultResourceId   String   @default("default_master")
   cancellationCutoffHours Int  @default(3)
+}
+
+model ProfessionalProfile {
+  id             String              @id @default(uuid())
+  staffMemberId  String              @unique
+  staffMember    StaffMember         @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+  slug           String              @unique
+  headline       String?
+  biography      String?
+  photoUrl       String?
+  isPublished    Boolean             @default(false)
+  services       ProfessionalService[]
+  portfolioItems PortfolioItem[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+}
+
+model ProfessionalService {
+  professionalProfileId String
+  professionalProfile   ProfessionalProfile @relation(fields: [professionalProfileId], references: [id], onDelete: Cascade)
+  offeringId            String
+  offering              Offering            @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+
+  @@id([professionalProfileId, offeringId])
+}
+
+model PortfolioItem {
+  id                     String              @id @default(uuid())
+  professionalProfileId  String
+  professionalProfile    ProfessionalProfile @relation(fields: [professionalProfileId], references: [id], onDelete: Cascade)
+  title                  String
+  description            String?
+  mediaUrl               String
+  sortOrder              Int                 @default(0)
+  isPublished            Boolean             @default(false)
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  @@index([professionalProfileId, isPublished, sortOrder])
 }
 
 model BundleComponent {
@@ -256,7 +283,9 @@ model BundleComponent {
 }
 ```
 
-### 2.4. Dual Capacity Context (`Goods Pack` + `Services Pack` — `[MVP-CORE]` `FR-307`–`FR-309`)
+### 2.4. Appointment Capacity (`[MVP-CORE]` — `FR-307`, `FR-309`)
+
+Only `Resource`, working hours, date exceptions, service duration/buffers, and overlap-safe appointment reservations are required in `003.1`. The inventory models below belong to the later Goods Pack and MUST NOT block the booking release.
 
 ```prisma
 enum InventoryMovementKind {
@@ -296,10 +325,11 @@ model InventoryMovement {
 }
 
 model Resource {
-  id          String                  @id // e.g., "default_master", "room_1"
+  id          String                  @id
   name        String
   kind        String                  @default("STAFF") // "STAFF" | "ROOM" | "EQUIPMENT"
   active      Boolean                 @default(true)
+  staffMember StaffMember?
   exceptions  AvailabilityException[]
   createdAt   DateTime                @default(now())
 }
@@ -318,9 +348,21 @@ model AvailabilityException {
   @@unique([resourceId, date])
 }
 ```
-*(Note: Service `SlotReservation` from `002` is retained and mapped to `Reservation` with `resourceId`, `startTime`, `endTime`, `totalDurationMin`, `bufferBeforeMin`, `bufferAfterMin`, and the PostgreSQL GiST exclusion constraint `slot_resource_no_overlap`.)*
+`SlotReservation` from `002` remains the stored booking record and is not renamed in this release. Add the following nullable credential fields to it where absent:
 
-### 2.5. OrderLine Snapshots, Payment Plans & Segmented Fulfillment (`[MVP-CORE]` — `FR-312`, `FR-315`, `FR-318`, `FR-319`)
+```prisma
+// Schema delta on the existing SlotReservation model
+cancellationTokenHash        String?   @unique // SHA-256 of a random 32-byte token; raw token is never stored
+cancellationTokenExpiresAt   DateTime?
+cancellationTokenConsumedAt  DateTime?
+cancellationTokenRevokedAt   DateTime?
+```
+
+Map the retained reservation to the resource schedule with `resourceId`, `startTime`, `endTime`, `totalDurationMin`, `bufferBeforeMin`, `bufferAfterMin`, and the PostgreSQL GiST exclusion constraint `slot_resource_no_overlap`. Existing reservations and their customer/order history remain in place.
+
+### 2.5. Commerce, Payment & Fulfillment Models (`[PHASE-PACK]` — `FR-312`, `FR-315`–`FR-319`)
+
+The following commerce models describe later packs. They are not prerequisites for the booking-first release, which reuses the existing appointment and customer records.
 
 ```prisma
 enum PaymentPlanStatus {
@@ -492,7 +534,7 @@ model CompletionEvidence {
 }
 ```
 
-### 2.6. Exception-Driven `OperatorAction` Queue & Immutable `AuditEvent` (`[MVP-CORE]` — `FR-321`, `FR-325b`)
+### 2.6. Advanced Operations Queue & Audit (`[PHASE-PACK]` — `FR-321`)
 
 ```prisma
 enum OperatorActionSeverity {
@@ -561,30 +603,13 @@ model AuditEvent {
 
 ---
 
-## 4. Four-Stage Expand/Contract Migration Strategy (`002` $\to$ `003.1`)
+## 4. Booking-First Migration Strategy
 
-All migrations obey Constitution Principle X (`SET lock_timeout = '2s'`, `SET statement_timeout = '5s'`, max 5 retries in `scripts/migrate.ts`, and `SET NOT NULL` strictly separated from batch backfill):
+Release `003.1` uses additive migrations for the Better Auth schema, staff identity link, bookable resources/schedules where missing, professional profiles, portfolio items, service-to-professional associations, and booking cancellation hashes. It MUST preserve existing services, bookings, customers, and order history. Existing `Item` and `SlotReservation` records remain canonical; no broad `001`/`002` commerce-kernel conversion is part of this release.
 
-### Stage 1: Expand (`prisma/migrations/20261022000000_003_kernel_expand/migration.sql`)
-- Create new tables (`StaffMember`, `StaffSession`, `Party`, `PartyIdentifier`, `ContactPoint`, `ChannelIdentity`, `PartyNote`, `PartyTag`, `CurrencyMetadata`, `Offering`, `OfferingVariant`, `ServicePolicy`, `BundleComponent`, `InventoryBalance`, `InventoryMovement`, `Resource`, `AvailabilityException`, `OrderLine`, `PaymentPlan`, `PaymentMilestone`, `PaymentAllocation`, `FulfillmentPlan`, `FulfillmentSegment`, `CompletionEvidence`, `OperatorAction`, `AuditEvent`).
-- Add nullable foreign keys on `Order` (`partyId String?`) and `SlotReservation` (`bufferBeforeMin Int @default(0)`, `bufferAfterMin Int @default(0)`).
-- **Zero destructive DDL**: Existing `Item`, `Order`, `OrderItem`, `SlotReservation`, `PaymentEvent`, `RefundOperation`, and `MessengerContact` columns and constraints remain untouched.
-- **Dual-Write Activation**: Application services write to both `Item`/`OrderItem`/`MessengerContact` and `Offering`/`OrderLine`/`Party` + `PaymentPlan` + `FulfillmentPlan`.
+1. **Expand**: Add new tables and nullable fields; keep the current and prior application versions compatible. Use non-blocking index creation where supported and bounded DDL timeouts.
+2. **Dual-Write & Backfill**: Dual-write only when a legacy value is represented in a new field/table. Backfill only deterministic existing service-to-resource associations with an idempotent, rate-limited job and reconcile the result. New independent profile/auth/resource/cancellation data has no legacy equivalent; record dual-write/backfill as not applicable for those tables.
+3. **Cutover**: Switch reads of migrated associations only after counts and values reconcile and telemetry shows no regression. New independent tables become active through the release configuration while existing booking reads remain available through acceptance.
+4. **Contract**: Drop no old schema in `003.1`. Any later cleanup is a separate reviewed migration after the compatibility window.
 
-### Stage 2: Bounded Backfill (`scripts/backfill-003-kernel.ts`)
-- Idempotent batch worker (`LIMIT 500 FOR UPDATE SKIP LOCKED`) populates:
-  1. `CurrencyMetadata` (`USD` `minorUnit = 2`, `XTR` `minorUnit = 0`, `AMD` `minorUnit = 0`, `JPY` `minorUnit = 0`);
-  2. `Resource` (`default_master`) and bootstrap `OWNER` `StaffMember` from `ShopSettings.authorizedStaffUserIds`;
-  3. `Offering` + default `OfferingVariant` + `ServicePolicy` / `InventoryBalance` (`INITIAL` movement) from every existing `Item`;
-  4. `Party` + `PartyIdentifier` + `ContactPoint` + `ChannelIdentity` from `MessengerContact` and historical `Order` customer fields, setting `Order.partyId`;
-  5. `OrderLine`, `PaymentPlan` (`PaymentMilestone` + `PaymentAllocation` from `PaymentEvent`/`RefundOperation`), and `FulfillmentPlan` (`FulfillmentSegment`) from every historical `Order` and `OrderItem`;
-  6. `OperatorAction` rows for any open `PAID_REQUIRES_RESOLUTION` or `MANUAL_REVIEW` orders.
-
-### Stage 3: Validate & Cutover (`prisma/migrations/20261022020000_003_kernel_validate_cutover/migration.sql`)
-- Add `CHECK ("partyId" IS NOT NULL) NOT VALID` on `Order` (when backfill remainder reaches `0`) and run `VALIDATE CONSTRAINT` in a separate transaction.
-- Switch read models (`CatalogSearchView`, `AvailabilityView`, `OrderSummaryView`, `PartyTimelineView`, `OperatorActionView`, `CashCommitmentView`) to read from `Offering`, `Party`, `OrderLine`, `PaymentPlan`, `FulfillmentPlan`, and `OperatorAction`.
-
-### Stage 4: Contract (`prisma/migrations/20261022030000_003_kernel_contract/migration.sql`)
-- Executed in the Polish phase after observation window confirms zero read-switch errors:
-  - Promote validated foreign keys/constraints, retire temporary dual-write shims while keeping legacy tables/views readable (`INV-011`).
-- **Down-Migration (`down.sql`)**: Every migration folder includes an idempotent `down.sql` script that reverses read-switch flags and drops only newly introduced additive tables/constraints if rolled back prior to Contract.
+Rollback before cutover returns the application to the prior compatible version and leaves additive schema/data intact. After cutover, return reads to the compatible path and preserve all records; only remove an added table if it is proven empty and unused. T012 verifies the rollback and data reconciliation against a restored database. The broader commerce-kernel migration remains a later, separately planned phase.
