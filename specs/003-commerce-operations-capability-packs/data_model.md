@@ -14,9 +14,9 @@ Every entity and field in `003` is classified under one of four sensitivity tier
 
 | Data Class | Storage & Logging Rules | AI / MCP Exposure Policy | Representative Entities & Fields |
 | :--- | :--- | :--- | :--- |
-| **`PUBLIC`** | Plaintext in PostgreSQL; cacheable; safe in public API responses | Allowed on `local` and `official-api-key` routes | `Offering`, `OfferingVariant`, `Price`, `CurrencyMetadata`, `WorkingSchedule`, `KnowledgeChunk` |
+| **`PUBLIC`** | Plaintext in PostgreSQL; cacheable; safe in public API responses | Allowed on `local` and `official-api-key` routes | `Offering`, `OfferingVariant`, `Price`, `CurrencyMetadata`, `WorkingSchedule`, `KnowledgeChunk`, and `IN_CALL` address when public display is enabled |
 | **`INTERNAL`** | Plaintext in PostgreSQL; structured logs allowed (redacted of PII) | Allowed via redacted read models (`OrderSummaryView`, `OperatorActionView`, `AvailabilityView`) | `InventoryBalance`, `InventoryMovement`, `Reservation`, `FulfillmentPlan`, `FulfillmentSegment`, `OperatorAction`, `AuditEvent` |
-| **`CONFIDENTIAL`** | Plaintext/bounded in dedicated single-tenant PostgreSQL; **strictly forbidden** in logs, analytics, and idempotency keys (`INV-010`) | **Local-only (`LM Studio`)**; fails closed if local runtime is unavailable; **never** exposed in `Agent Read Pack` | `Party.displayName`, `ContactPoint.value` (`phone`, `email`), `PartyNote`, `Order.customerPhone`, `Order.customerEmail`, `Order.customerNotes`, `CompletionEvidence`, `MarginGuard` cost fields |
+| **`CONFIDENTIAL`** | Plaintext/bounded in dedicated single-tenant PostgreSQL; **strictly forbidden** in logs, analytics, and idempotency keys (`INV-010`) | **Local-only (`LM Studio`)**; fails closed if local runtime is unavailable; **never** exposed in `Agent Read Pack` | Customer-provided `OUT_CALL` addresses, non-public `IN_CALL` address snapshots, `Party.displayName`, `ContactPoint.value` (`phone`, `email`), `PartyNote`, `Order.customerPhone`, `Order.customerEmail`, `Order.customerNotes`, `CompletionEvidence`, `MarginGuard` cost fields |
 | **`RESTRICTED`** | Managed by the authentication library or stored only in host `.env`; one-time cancellation secrets are stored as SHA-256 hashes; raw payment credentials never touch core DB | **Prohibited** from all AI and read-model surfaces | Better Auth credential/session fields, `SlotReservation.cancellationTokenHash`, `JourneyToken.tokenHash`, `ADMIN_TOKEN`, webhook secrets |
 
 ---
@@ -162,7 +162,14 @@ model PartyTag {
 
 ### 2.3. Service Listings & Currency Configuration (`[MVP-CORE]` — `FR-301`, `FR-303`, `FR-335`)
 
+The existing business settings record gains `businessServiceAddress`, `businessServiceAddressPublic` (default `false`), and `outCallCoverageDescription`. Require a service address when any active service supports `IN_CALL`; expose it publicly only when the owner enables that setting. The coverage description is public and does not imply automatic geocoding or distance checks.
+
 ```prisma
+enum ServiceFulfillmentMode {
+  IN_CALL
+  OUT_CALL
+}
+
 enum OfferingKind {
   PRODUCT
   SERVICE
@@ -214,6 +221,8 @@ model OfferingVariant {
   attributesJson    Json                @default("{}")
   unitAmountMinor   BigInt
   currency          String // Copy the configured business currency; new template setup starts at USD and the owner confirms/changes it before live prices
+  outCallPriceMinor BigInt? // Optional OUT_CALL service-price override, excluding travel fee
+  outCallTravelFeeMinor BigInt @default(0) // Fixed per-booking travel fee in the same currency
   starsPrice        Int?
   active            Boolean             @default(true)
   inventoryBalance  InventoryBalance?
@@ -232,7 +241,15 @@ model ServicePolicy {
   bufferBeforeMin     Int      @default(0)
   bufferAfterMin      Int      @default(0)
   cancellationCutoffHours Int  @default(3)
+  inCallEnabled       Boolean  @default(true)
+  outCallEnabled      Boolean  @default(false)
+  outCallTravelBeforeMin Int    @default(0) // Applied only to OUT_CALL resource availability
+  outCallTravelAfterMin  Int    @default(0)
 }
+
+// `OfferingVariant.unitAmountMinor` is the `IN_CALL` service price. For `OUT_CALL`,
+// use `outCallPriceMinor` when set, otherwise use `unitAmountMinor`, then add
+// `outCallTravelFeeMinor`. The fixed fee uses the business currency.
 
 model ProfessionalProfile {
   id             String              @id @default(uuid())
@@ -282,6 +299,8 @@ model BundleComponent {
   quantity          Decimal  @default(1)
 }
 ```
+
+`OfferingVariant.unitAmountMinor` is the `IN_CALL` service price. For `OUT_CALL`, use `outCallPriceMinor` when set, otherwise use `unitAmountMinor`, then add `outCallTravelFeeMinor`. The fee is fixed per booking and cannot use a currency different from the configured business currency.
 
 ### 2.4. Appointment Capacity (`[MVP-CORE]` — `FR-307`, `FR-309`)
 
@@ -348,7 +367,7 @@ model AvailabilityException {
   @@unique([resourceId, date])
 }
 ```
-`SlotReservation` from `002` remains the stored booking record and is not renamed in this release. Add the following nullable credential fields to it where absent:
+`SlotReservation` from `002` remains the stored booking record and is not renamed in this release. Add the following nullable fields where absent. Existing rows remain null for mode, price, and address; do not infer these values from the current service or settings.
 
 ```prisma
 // Schema delta on the existing SlotReservation model
@@ -356,7 +375,13 @@ cancellationTokenHash        String?   @unique // SHA-256 of a random 32-byte to
 cancellationTokenExpiresAt   DateTime?
 cancellationTokenConsumedAt  DateTime?
 cancellationTokenRevokedAt   DateTime?
+fulfillmentMode              ServiceFulfillmentMode?
+servicePriceMinor            Int? // Immutable service-price snapshot in linked Order.currency
+travelFeeMinor               Int? // Immutable travel-fee snapshot; zero for IN_CALL
+serviceAddressSnapshot       String? // OUT_CALL customer address or IN_CALL address at booking time
 ```
+
+New bookings must always set a mode, price snapshots, and service-address snapshot. `Order.totalMinor` must equal `servicePriceMinor + travelFeeMinor`, and `Order.currency` must equal the configured business currency. `serviceAddressSnapshot` contains the customer-provided address for `OUT_CALL` and the configured business service address for `IN_CALL`. The latter may appear on public pages only when the owner enables public display; otherwise, show it only to that booking's customer and authorized staff. `OUT_CALL` addresses remain confidential and are shown only to that booking's customer and authorized staff. Never include either address in logs, analytics, or public profile data. Since the first release has no automatic outcall coverage check, new `OUT_CALL` requests reuse the existing `Order.confirmationStatus = PENDING_STAFF_REVIEW` and `SlotReservation.status = HELD` flow; an authorized owner or operator confirms coverage or rejects the booking. Confirmation uses the existing `STAFF_APPROVED` / `BOOKED` states; rejection uses `Order.status = CANCELLED` with `cancellationReason = STAFF_REJECTED` and releases the reservation. Legacy reservations keep null mode, address, and price snapshots; do not add a new status enum for location review.
 
 Map the retained reservation to the resource schedule with `resourceId`, `startTime`, `endTime`, `totalDurationMin`, `bufferBeforeMin`, `bufferAfterMin`, and the PostgreSQL GiST exclusion constraint `slot_resource_no_overlap`. Existing reservations and their customer/order history remain in place.
 
@@ -605,7 +630,7 @@ model AuditEvent {
 
 ## 4. Booking-First Migration Strategy
 
-Release `003.1` uses additive migrations for the Better Auth schema, staff identity link, bookable resources/schedules where missing, professional profiles, portfolio items, service-to-professional associations, and booking cancellation hashes. It MUST preserve existing services, bookings, customers, and order history. Existing `Item` and `SlotReservation` records remain canonical; no broad `001`/`002` commerce-kernel conversion is part of this release.
+Release `003.1` uses additive migrations for the Better Auth schema, staff identity link, bookable resources/schedules where missing, professional profiles, portfolio items, service-to-professional associations, service location/pricing settings, booking mode/address/price snapshots, and booking cancellation hashes. It MUST preserve existing services, bookings, customers, and order history. Existing `Item` and `SlotReservation` records remain canonical; no broad `001`/`002` commerce-kernel conversion is part of this release.
 
 1. **Expand**: Add new tables and nullable fields; keep the current and prior application versions compatible. Use non-blocking index creation where supported and bounded DDL timeouts.
 2. **Dual-Write & Backfill**: Dual-write only when a legacy value is represented in a new field/table. Backfill only deterministic existing service-to-resource associations with an idempotent, rate-limited job and reconcile the result. New independent profile/auth/resource/cancellation data has no legacy equivalent; record dual-write/backfill as not applicable for those tables.

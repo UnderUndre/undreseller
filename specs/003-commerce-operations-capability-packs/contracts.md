@@ -67,6 +67,7 @@ export type AvailabilityRequest = {
 export interface BookingPort {
   listAvailability(input: AvailabilityRequest): Promise<Array<{
     professionalId: string;
+    fulfillmentMode: 'IN_CALL' | 'OUT_CALL';
     startsAt: string;
     endsAt: string;
   }>>;
@@ -74,30 +75,38 @@ export interface BookingPort {
   createBooking(input: {
     serviceId: string;
     professionalId: string;
+    fulfillmentMode: 'IN_CALL' | 'OUT_CALL';
+    serviceAddress?: string;
     startsAt: string;
     customerName: string;
     customerContact: string;
     idempotencyKey: string;
-  }): Promise<{ bookingId: string; status: 'PENDING' | 'CONFIRMED'; cancellationUrl: string }>;
+  }): Promise<{
+    bookingId: string;
+    status: 'PENDING' | 'CONFIRMED';
+    price: { servicePriceMinor: string; travelFeeMinor: string; totalMinor: string; currency: string };
+    location: { fulfillmentMode: 'IN_CALL' | 'OUT_CALL'; serviceAddress: string };
+    cancellationUrl: string;
+  }>;
 
   cancelBooking(input: { bookingId: string; actorId?: string; cancellationToken?: string; reason?: string }): Promise<void>;
 }
 ```
 
-`createBooking` returns `{ bookingId, status, cancellationUrl }`. The random cancellation token is returned only once for the confirmation page; if an external notification is part of the signed client scope, that configured integration may deliver the same link. The raw token is never stored or logged.
+`createBooking` recalculates the selected mode's price on the server and returns `{ bookingId, status, price, location, cancellationUrl }` only to the customer creating the booking. The `location` address is the submitted `OUT_CALL` address or the configured `IN_CALL` address, including when that business address is hidden from public pages. The customer must see and accept the current price before submission; the request never trusts a client-supplied amount. The random cancellation token is returned only once for the confirmation page; if an external notification is part of the signed client scope, that configured integration may deliver the same link. The raw token is never stored or logged.
 
 ---
 
 ## 3. Public Pages & Appointment Endpoints (`[MVP-CORE]`)
 
 ### 3.1. Public Business & Professional Pages
-- `GET /api/public/business` returns published business details, active services, configured locale/timezone/currency, and public contact links.
-- `GET /api/public/professionals/[slug]` returns only a published profile, published portfolio items, and services associated with that professional.
+- `GET /api/public/business` returns published business details, active services, configured locale/timezone/currency, and public contact links. It returns the exact `IN_CALL` address only when the owner enabled public display; it may return the customer-facing `OUT_CALL` coverage description.
+- `GET /api/public/professionals/[slug]` returns only a published profile, published portfolio items, and services associated with that professional, including the enabled location modes and corresponding price breakdowns. It never returns a customer's service address.
 - Unpublished profiles, drafts, customer identities, and appointment records MUST never appear in public responses.
 
 ### 3.2. Appointment Availability (`GET /api/booking/slots`)
-- **Input**: `serviceId`, date range, optional `professionalId`.
-- **Behavior**: Resolves duration and buffers from the service, working hours and exceptions from the professional's resource, and timezone from business settings. Returns only slots that remain available after existing bookings.
+- **Input**: `serviceId`, date range, optional `professionalId`, and enabled `fulfillmentMode`.
+- **Behavior**: Resolves duration and mode-specific buffers from the service, working hours and exceptions from the professional's resource, and timezone from business settings. For `OUT_CALL`, includes the configured travel buffers in the occupied resource interval. Returns only slots that remain available after existing bookings.
 - **Concurrency**: `POST /api/booking` MUST acquire the resource/slot lock and return `409 SLOT_UNAVAILABLE` if another request has already booked the interval.
 
 ### 3.3. Create or Cancel a Booking
@@ -106,6 +115,8 @@ export interface BookingPort {
   const CreateBookingSchema = z.object({
     serviceId: z.string().uuid(),
     professionalId: z.string().uuid(),
+    fulfillmentMode: z.enum(['IN_CALL', 'OUT_CALL']),
+    serviceAddress: z.string().trim().min(5).max(500).optional(),
     startsAt: z.string().datetime(),
     customerName: z.string().min(1).max(120),
     customerContact: z.string().min(3).max(160),
@@ -113,7 +124,14 @@ export interface BookingPort {
     idempotencyKey: z.string().min(8).max(128),
   });
   ```
-  - **Behavior**: validates that the service and professional are active, the profile is published or the business accepts direct bookings, and the requested slot is still available; creates the booking and writes a staff audit event. This flow does not create a product order or require payment.
+  - **Validation**: `serviceAddress` is required for `OUT_CALL` and forbidden for `IN_CALL`. The server validates the mode is enabled for that service, recomputes the current price from trusted settings, and does not accept amounts or currency from the browser.
+  - **Behavior**: validates that the service and professional are active, the profile is published or the business accepts direct bookings, the requested slot is still available, and the customer accepted the displayed mode and price; creates the booking and writes its mode, service-price snapshot, travel-fee snapshot, configured currency, and service-address snapshot. For `IN_CALL`, it takes the address from business settings. Since the first release cannot automatically check outcall coverage, it creates `OUT_CALL` bookings as `PENDING`; this maps to the existing `Order.confirmationStatus = PENDING_STAFF_REVIEW` and `SlotReservation.status = HELD`. An authenticated `OWNER` or `OPERATOR` confirms that the address is within coverage or rejects the request. Confirmation maps to `STAFF_APPROVED` and a `BOOKED` reservation; rejection sets `Order.status = CANCELLED` and `cancellationReason = STAFF_REJECTED`, then releases the reservation. The linked `Order.totalMinor` equals service price plus travel fee. This flow does not create a product order or require payment.
+  - **Price rules**: `IN_CALL` uses the configured service price and no travel fee. `OUT_CALL` uses the configured outcall service-price override or falls back to the standard service price, then adds the configured fixed travel fee for the booking. The response displays the service price, travel fee, total, and currency separately. A fee or price change after booking does not rewrite the stored snapshot.
+
+### 3.4. Business Location & Service Price Configuration
+- `PATCH /api/admin/settings` is available to `OWNER` and updates the configured currency, `IN_CALL` service address, whether that exact address is public, and customer-facing `OUT_CALL` coverage description. An active service with `IN_CALL` enabled cannot be published until the business service address is set.
+- `PATCH /api/admin/services/[id]` is available to authorized service managers (`OWNER` or `OPERATOR`) and updates enabled modes, the standard service price, optional `OUT_CALL` price override, fixed per-booking travel fee, and outcall travel buffers. The standard price is used for `IN_CALL` and as the `OUT_CALL` fallback; every enabled mode must resolve to a non-negative price in the configured business currency before the service is published.
+- Price changes and location settings affect future bookings only. All amounts use the configured business currency; the client cannot submit or override prices when creating a booking.
 - **`POST /api/booking/[id]/cancel`**:
   - **Customer input**: `{ token: string }`; a booking ID by itself never authorizes cancellation.
   - **Staff input**: an authenticated staff session with role authorization; no customer token is required.
@@ -137,6 +155,11 @@ export type StaffBookingView = {
   status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED';
   customerName: string;
   customerContact: string;
+  fulfillmentMode: 'IN_CALL' | 'OUT_CALL' | null; // Null for legacy bookings with no recorded mode
+  serviceAddress: string | null; // Confidential; returned only to authorized staff for this assigned booking
+  servicePriceMinor: string | null; // Null for legacy bookings without a snapshot
+  travelFeeMinor: string | null; // Null for legacy bookings without a snapshot
+  currency: string | null; // Null only when the legacy booking has no linked currency value
 };
 
 export type PublicProfessionalView = {
@@ -146,9 +169,22 @@ export type PublicProfessionalView = {
   biography: string | null;
   photoUrl: string | null;
   portfolioItems: Array<{ title: string; description: string | null; mediaUrl: string }>;
-  services: Array<{ id: string; name: string; durationMin: number; priceMinor: string; currency: string }>;
+  services: Array<{
+    id: string;
+    name: string;
+    durationMin: number;
+    priceOptions: Array<{
+      fulfillmentMode: 'IN_CALL' | 'OUT_CALL';
+      servicePriceMinor: string;
+      travelFeeMinor: string;
+      totalMinor: string;
+      currency: string;
+    }>;
+  }>;
 };
 ```
+
+The staff-view `PENDING` status maps to `Order.confirmationStatus = PENDING_STAFF_REVIEW`; `CONFIRMED` maps to a staff-approved or client-confirmed booking; `CANCELLED` maps to the existing cancelled order state. Do not add a separate location-review status enum for `003.1`.
 
 ---
 

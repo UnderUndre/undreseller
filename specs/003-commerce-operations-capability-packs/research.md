@@ -30,7 +30,7 @@
 ### Decision 3: Individual Staff Accounts, Server-Side Sessions & Break-Glass `ADMIN_TOKEN`
 - **Decision**: Use Better Auth for individual staff identities and revocable PostgreSQL-backed sessions, linked to application `StaffMember` records for the fixed role and audit attribution. Retain `ADMIN_TOKEN` only as an audited emergency recovery credential. Messaging identities are optional future integrations, not required for staff access.
 - **Rationale**: A shared static `ADMIN_TOKEN` cannot distinguish individual actors (`actorId`), cannot restrict `OPERATOR` vs `PERFORMER` on web routes, and cannot revoke access for a departing employee without rotating the global token. Better Auth provides the maintained password/session lifecycle and Prisma integration; the application keeps its own fixed role checks and staff activity state. This avoids custom password hashing and custom cookie/session lifecycle code while using the existing PostgreSQL database without Redis.
-- **Implementation reference**: Better Auth's [Prisma adapter documentation](https://better-auth.com/docs/adapters/prisma). Pin the supported library release during implementation and generate its schema from that release.
+- **Implementation reference**: Better Auth's [Prisma adapter documentation](https://better-auth.com/docs/adapters/prisma). Select a supported release before integration, pin its exact version in the package manifest and lockfile, and generate its schema from that release.
 - **Alternatives Considered**:
   - *Handwritten password hashes and session tables*: Rejected — duplicates security-sensitive credential, cookie, expiry, and revocation mechanisms already provided by the maintained library.
   - *Stateless JWTs without database session lookup*: Rejected — cannot immediately revoke an active session when a staff member is deactivated (`FR-325b`).
@@ -57,6 +57,13 @@
 ### Decision 6: Clean-Room OSS Pattern Borrowing & License Gate
 - **Decision**: Borrow architectural patterns (clean-room design reference only) from Medusa (MIT core), Spree (BSD-3-Clause), Directus (MSCL — design reference only), Twenty (AGPLv3 — design reference only), Invoice Ninja (ELv2 — design reference only), Dolibarr (GPLv3 — design reference only), and Apache OFBiz (Apache-2.0). Enforce an automated license & attribution gate (`config/oss-reuse-registry.json`) allowing code/adapted-code only from `MIT`, `BSD-3-Clause`, and `Apache-2.0` sources with exact file path and commit SHA.
 - **Rationale**: Prevents copyleft (`AGPLv3`, `GPLv3`) or source-available (`MSCL`, `ELv2`) contamination of the commercial template while reusing battle-tested domain invariants.
+
+### Decision 7: `IN_CALL` / `OUT_CALL` as One Booking Flow
+- **Decision**: A service may be offered for `IN_CALL` (the customer visits the configured service address), `OUT_CALL` (the professional visits the customer), or both. The standard service price applies to `IN_CALL`; `OUT_CALL` may override that service price and may add a separately displayed, fixed travel fee. Apply fixed outcall travel buffers to the professional's availability and snapshot the selected mode, price, fee, currency, and address with each new booking. Because the first release has no route/geocoding check, `OUT_CALL` requests remain pending until an owner or operator confirms coverage; rejection cancels the request and releases its slot.
+- **Rationale**: Location and price choices stay inside the existing appointment flow, which remains the single first-release business process. Separate price and travel-fee lines make outcall costs clear before the customer books, while immutable snapshots protect accepted bookings from later settings changes. Manual coverage review avoids promising service at an address the template cannot validate.
+- **Alternatives Considered**:
+  - *Distance, fuel, toll, or route-based fee calculation*: Deferred — it requires geocoding/routing dependencies and a more complex pricing contract than the first template needs.
+  - *A separate outcall checkout or payment integration*: Rejected — online payment and travel-rate providers are outside the booking-first release.
 
 ---
 

@@ -1,8 +1,8 @@
 # SpecKit Analyze: 003-commerce-operations-capability-packs
 
 **Reviewer**: analyze (Codex self-consistency)
-**Reviewed at**: 2026-10-22T07:25:13Z
-**Commit**: 3379b57e0b0ea5411991179db24bdcfb7f769f75
+**Reviewed at**: 2026-10-22T07:59:02Z
+**Commit**: 515b7b6793435061a990d5bc74147dc261989904
 **Artifacts**: spec.md, plan.md, tasks.md, data_model.md, contracts.md, quickstart.md, research.md, .specify/memory/constitution.md, ../undreplans/docs/projects/undreseller/undreseller-business-plan.md (v18.4)
 **Working tree**: The reviewed feature artifacts include uncommitted changes.
 
@@ -10,7 +10,7 @@
 
 | ID | Category | Severity | Location(s) | Summary | Recommendation |
 | --- | --- | --- | --- | --- | --- |
-| — | — | — | — | No unresolved findings. The prior critical, high, and medium findings were addressed in the current artifacts. | Continue to the required independent external reviews. |
+| — | — | — | — | No unresolved findings in this pass. | Continue to the required independent external reviews for the revised scope. |
 
 ## Coverage Summary
 
@@ -44,7 +44,7 @@
 | FR-325a | Yes | T008 | Three fixed roles |
 | FR-325b | Yes | T008, T031 | Better Auth staff identity and sessions |
 | FR-325c | Yes | T060 | Per-installation isolation verification |
-| FR-326 | Yes | T030, T051 | Role-filtered staff views and read-only projection |
+| FR-326 | Yes | T030, T032, T034, T051, T060 | Role-filtered staff views, authorized booking decisions, and privacy checks |
 | FR-327 | Yes | T050 | Data-quality scanner and staged import |
 | FR-328 | Yes | T047 | Jurisdiction-neutral core and provider ports |
 | FR-329 | Yes | T047 | Customization manifest |
@@ -53,14 +53,16 @@
 | FR-332 | Yes | T054 | Optional AI Lab topology |
 | FR-333 | Yes | T053 | AI data-class routing |
 | FR-334 | Yes | T053, T055 | AI telemetry, benchmark, and outage drill |
-| FR-335 | Yes | T001, T006, T014 | Business settings and configured currency |
+| FR-335 | Yes | T001, T006, T007, T014 | Business settings, service location, and configured currency |
 | FR-336 | Yes | T010, T013, T014 | Professional profiles and portfolio |
 | FR-337 | Yes | T019, T020, T021 | Booking flow with protected cancellation |
+| FR-338 | Yes | T010, T014, T018, T020, T021, T032, T034, T057, T060, T070 | Location modes, privacy, coverage review, availability, and snapshots |
+| FR-339 | Yes | T006, T010, T014, T019, T020, T021, T057, T058, T070 | Mode prices, fixed travel fee, currency, and booking totals |
 | NFR-301 | Yes | T058 | Measured page and availability latency |
 | NFR-302 | Yes | T058 | Measured booking command latency |
 | NFR-303 | Yes | T058 | Concurrency and memory check |
 | NFR-304 | Yes | T059 | Measured restore, RTO, and RPO |
-| NFR-305 | Yes | T005, T011, T012 | Additive migration, backfill, compatibility, and rollback |
+| NFR-305 | Yes | T005, T011, T012, T070 | Additive migrations, backfill, compatibility, and rollback |
 | NFR-306 | Yes | T056 | AI timeout limits |
 | NFR-307 | Yes | T055 | AI evaluation gate |
 
@@ -71,18 +73,18 @@ No unresolved artifact conflicts with the constitution's mandatory data-migratio
 ## Commercial / Business Plan Alignment
 
 - Plan files loaded: `../undreplans/docs/projects/undreseller/undreseller-business-plan.md` (v18.4)
-- Focus/hard laws checked: Booking-first template for independent professionals and small service businesses; exactly three staff roles; one primary booking process; at most one client-selected external API; product sales and commerce packs deferred; the 10-paid-Tripwire prerequisite is stated before Sprint B implementation.
-- Findings: No commercial drift detected.
+- Focus/hard laws checked: Booking-first template for independent professionals and small service businesses; exactly three staff roles; one primary booking process; at most one client-selected external API; product sales and commerce packs deferred; the 10-paid-Tripwire prerequisite is stated before Sprint B implementation. The added location modes, optional outcall price override, and fixed travel fee stay within the same booking process and use deployment currency settings.
+- Findings: No commercial drift detected; no country- or currency-specific pricing behavior was introduced.
 
 ## Unmapped Tasks
 
-No unmapped tasks identified. Setup, security, operations, telemetry, and handoff tasks map to cross-cutting requirements and release gates.
+No unmapped tasks identified. The new migration task `T070` maps to `FR-338`, `FR-339`, and `NFR-305`; existing service, booking, staff-review, security, and handoff tasks cover the corresponding behavior.
 
 ## Metrics
 
-- Total Requirements: 47
-- Total Tasks: 69
-- Coverage % (requirements with ≥1 task): 100% (47/47)
+- Total Requirements: 49
+- Total Tasks: 70
+- Coverage % (requirements with ≥1 task): 100% (49/49)
 - Ambiguity count: 0
 - Duplication count: 0
 - CRITICAL count: 0
@@ -95,8 +97,8 @@ No unmapped tasks identified. Setup, security, operations, telemetry, and handof
 ```yaml
 verdict: PASS
 reviewer: analyze
-reviewed_at: 2026-10-22T07:25:13Z
-commit: 3379b57e0b0ea5411991179db24bdcfb7f769f75
+reviewed_at: 2026-10-22T07:59:02Z
+commit: 515b7b6793435061a990d5bc74147dc261989904
 critical_count: 0
 high_count: 0
 medium_count: 0
