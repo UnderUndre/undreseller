@@ -198,11 +198,11 @@ describe('PostgreSQL GiST Exclusion, 4-Stage Expand/Contract & Restored-v1 Backf
     expect(stage003b).toContain("SET lock_timeout = '2s'");
 
     // Additive tables
-    expect(stage003a).toContain("CREATE TABLE "StaffMember"");
-    expect(stage003a).toContain("CREATE TABLE "AuditEvent"");
-    expect(stage003a).toContain("CREATE TABLE "CurrencyMetadata"");
-    expect(stage003a).toContain("CREATE TABLE "ProfessionalProfile"");
-    expect(stage003a).toContain("CREATE TABLE "Resource"");
+    expect(stage003a).toContain('CREATE TABLE "StaffMember"');
+    expect(stage003a).toContain('CREATE TABLE "AuditEvent"');
+    expect(stage003a).toContain('CREATE TABLE "CurrencyMetadata"');
+    expect(stage003a).toContain('CREATE TABLE "ProfessionalProfile"');
+    expect(stage003a).toContain('CREATE TABLE "Resource"');
 
     // Additive fields on SlotReservation
     expect(stage003a).toContain("cancellationTokenHash");
@@ -211,11 +211,11 @@ describe('PostgreSQL GiST Exclusion, 4-Stage Expand/Contract & Restored-v1 Backf
     expect(stage003b).toContain("appointmentStartTime");
 
     // Down migrations safely drop only new entities
-    expect(stage003aDown).toContain("DROP TABLE IF EXISTS "StaffMember"");
-    expect(stage003bDown).toContain("DROP TYPE IF EXISTS "ServiceFulfillmentMode"");
-    expect(stage003aDown).not.toContain("DROP TABLE "Order"");
-    expect(stage003aDown).not.toContain("DROP TABLE "Item"");
-    expect(stage003aDown).not.toContain("DROP TABLE "SlotReservation"");
+    expect(stage003aDown).toContain('DROP TABLE IF EXISTS "StaffMember"');
+    expect(stage003bDown).toContain('DROP TYPE IF EXISTS "ServiceFulfillmentMode"');
+    expect(stage003aDown).not.toContain('DROP TABLE "Order"');
+    expect(stage003aDown).not.toContain('DROP TABLE "Item"');
+    expect(stage003aDown).not.toContain('DROP TABLE "SlotReservation"');
   });
 
 });

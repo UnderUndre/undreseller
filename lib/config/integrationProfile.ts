@@ -182,8 +182,8 @@ export function assertIntegrationProfileStartup(
 // -------------------------------------------------------------
 
 export interface CapabilityPackConfig {
-  version: '003.1';
-  tier: 'TIER_1_MVP';
+  version: '003.1' | '003.2';
+  tier: 'TIER_1_MVP' | 'TIER_2_COMMERCE_PACKS';
   packs: {
     publicProfiles: boolean;     // US12: Public professional pages & portfolios
     serviceBooking: boolean;     // US2: Appointment booking with buffers & location modes

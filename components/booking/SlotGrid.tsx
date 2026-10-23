@@ -131,7 +131,7 @@ export function SlotGrid({
     setErrorMsg(null);
 
     try {
-      if (hapticFeedback) hapticFeedback('impact', 'medium');
+      if (hapticFeedback) hapticFeedback.impactOccurred('medium');
 
       const payload = {
         serviceId: service.id,
