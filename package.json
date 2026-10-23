@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "ts-node scripts/migrate.ts && next dev",
     "build": "prisma generate && prisma migrate deploy && next build",
-    "start": "next start",
+    "start": "ts-node scripts/migrate.ts && next start",
     "lint": "eslint",
     "validate": "tsc --noEmit",
     "test": "jest",
