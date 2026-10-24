@@ -223,3 +223,53 @@ export const CAPABILITY_PACKS_CONFIG: CapabilityPackConfig = {
 export function getCapabilityPackConfig(): CapabilityPackConfig {
   return CAPABILITY_PACKS_CONFIG;
 }
+
+// ============================================================
+// 004 Release Readiness — feature-flag cutover config (T016)
+// Killswitch semantics: every 004 read path has a legacy fallback that is
+// restorable WITHOUT DDL (data-model §3 Phase 4 / plan.md §Rollback).
+// ============================================================
+
+export interface ReleaseReadinessFlags {
+  /** US1: route bookings through the two-track bookingFsm (else legacy status mapping). */
+  fsmCutover: boolean;
+  /** US1: invoices via PaymentProvider contract (else legacy hand-built URL path). */
+  paymentProviderCutover: boolean;
+  /** US5: waitlist fan-out + atomic claims (else no waitlist features). */
+  waitlistEnabled: boolean;
+  /** US3: next-intl ru/en chrome (else legacy hardcoded strings). */
+  i18nCutover: boolean;
+  /** US2: email fallback channel for notifications (else TG-only). */
+  emailFallbackEnabled: boolean;
+}
+
+/**
+ * Env-driven flags. Every flag defaults to its safe/legacy value: false.
+ * Killswitch = setting the env var to 'false' (or removing it) restores legacy
+ * read paths immediately — no DDL, no redeploy of schema.
+ */
+const FLAG_ENV_MAP: Record<keyof ReleaseReadinessFlags, string> = {
+  fsmCutover: 'FEATURE_FLAG_FSM_CUTOVER',
+  paymentProviderCutover: 'FEATURE_FLAG_PAYMENT_PROVIDER_CUTOVER',
+  waitlistEnabled: 'FEATURE_FLAG_WAITLIST',
+  i18nCutover: 'FEATURE_FLAG_I18N',
+  emailFallbackEnabled: 'FEATURE_FLAG_EMAIL_FALLBACK',
+};
+
+function readFlag(envName: string): boolean {
+  const raw = process.env[envName];
+  return raw === 'true' || raw === '1';
+}
+
+export function getReleaseReadinessFlags(): ReleaseReadinessFlags {
+  const flags = {
+    fsmCutover: readFlag(FLAG_ENV_MAP.fsmCutover),
+    paymentProviderCutover: readFlag(FLAG_ENV_MAP.paymentProviderCutover),
+    waitlistEnabled: readFlag(FLAG_ENV_MAP.waitlistEnabled),
+    i18nCutover: readFlag(FLAG_ENV_MAP.i18nCutover),
+    emailFallbackEnabled: readFlag(FLAG_ENV_MAP.emailFallbackEnabled),
+  };
+  return flags;
+}
+
+export const RELEASE_READINESS_FLAG_ENV_MAP = FLAG_ENV_MAP;
