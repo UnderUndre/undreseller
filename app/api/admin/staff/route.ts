@@ -80,7 +80,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
 
     // If resourceId specified, ensure Resource row exists
-    let boundResourceId = resourceId || null;
+    const boundResourceId = resourceId || null;
     if (boundResourceId) {
       await prisma.resource.upsert({
         where: { id: boundResourceId },
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       data: {
         authUserId: user.id,
         displayName,
-        role: role as any,
+        role: role,
         resourceId: boundResourceId,
         invitedById: auth.actor!.actorId,
         active: true,

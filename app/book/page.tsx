@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db/prisma';
 import { SlotGrid } from '@/components/booking/SlotGrid';
-import { shopConfig } from '@/config/shop.config';
 
 export const dynamic = 'force-dynamic';
 

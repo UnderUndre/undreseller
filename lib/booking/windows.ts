@@ -5,7 +5,6 @@
  */
 
 import { prisma } from '@/lib/db/prisma';
-import { shopConfig } from '@/config/shop.config';
 
 export interface AvailableSlot {
   startsAt: string;          // ISO string (appointment start)
@@ -79,7 +78,6 @@ export async function computeAvailableSlots(
     outCallTravelAfterMin = 0,
     slotGridStepMin = 30,
     minNoticeMin = 60,
-    timeZone = 'UTC',
     resourceId = 'default_master',
     now = new Date(),
   } = params;

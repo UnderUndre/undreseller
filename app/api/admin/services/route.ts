@@ -49,8 +49,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const service = await createService(parsed.data, auth.actor!);
     return NextResponse.json({ service }, { status: 201 });
-  } catch (err: any) {
+  } catch (err: unknown) {
     logger.error('Failed to create admin service', { error: String(err) });
-    return NextResponse.json({ error: err.message || 'Failed to create service' }, { status: 400 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to create service' }, { status: 400 });
   }
 }

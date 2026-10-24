@@ -563,9 +563,11 @@ export async function createSlotHoldLock(params: CreateHoldParams): Promise<Hold
   const staffChatId = process.env.STAFF_CHAT_ID;
   if (staffChatId) {
     try {
-      const validatedCart = (result as any)._validatedCart;
+      const validatedCart = (
+        result as { _validatedCart?: { snapshots: Array<{ titleSnapshot: string }> } }
+      )._validatedCart;
       const serviceTitles = validatedCart
-        ? validatedCart.snapshots.map((s: any) => s.titleSnapshot)
+        ? validatedCart.snapshots.map((s) => s.titleSnapshot)
         : [];
 
       await dispatchStaffOrderPagerCard(
@@ -596,7 +598,7 @@ export async function createSlotHoldLock(params: CreateHoldParams): Promise<Hold
   }
 
   // Remove temporary _validatedCart field before returning to caller
-  delete (result as any)._validatedCart;
+  delete (result as { _validatedCart?: unknown })._validatedCart;
   return result;
 }
 

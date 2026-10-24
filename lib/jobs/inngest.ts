@@ -5,8 +5,6 @@ import { acquireResourceSlotLock, acquireItemSlotLock } from '@/lib/booking/advi
 import { sendWhatsAppTemplate } from '@/lib/bot/whatsappClient';
 import { enqueueTelegramOutbox, OUTBOX_PRIORITY } from '@/lib/bot/telegramOutbox';
 import { buildClientReminderKeyboard } from '@/lib/bot/clientConfirmation';
-import { bot, sendWithRetry } from '@/lib/bot/telegramBot';
-import { staffBot } from '@/lib/bot/staffBot';
 import { processInboxEventRow } from './inboxProcessor';
 import {
   evaluateReminderWakeUpCas,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import { authenticateStaff, emitAuditEvent } from '@/lib/security/staffAuth';
 import { logger } from '@/lib/telemetry/logger';
@@ -172,7 +173,7 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const updateData: any = { ...directFields };
+    const updateData = { ...directFields } as Prisma.ShopSettingsUncheckedUpdateInput;
     if (publicContactLinks !== undefined) {
       updateData.publicContactLinksJson = publicContactLinks;
     }
@@ -182,10 +183,17 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
       update: updateData,
       create: {
         id: 1,
-        currency: updateData.currency || 'USD',
-        greeting: updateData.greeting || '👋 Welcome to our store!',
-        whatsappTemplateName: updateData.whatsappTemplateName || 'order_status_update',
-        ...updateData,
+        ...(updateData as Prisma.ShopSettingsUncheckedCreateInput),
+        currency:
+          typeof updateData.currency === 'string' ? updateData.currency : 'USD',
+        greeting:
+          typeof updateData.greeting === 'string'
+            ? updateData.greeting
+            : '👋 Welcome to our store!',
+        whatsappTemplateName:
+          typeof updateData.whatsappTemplateName === 'string'
+            ? updateData.whatsappTemplateName
+            : 'order_status_update',
       },
     });
 

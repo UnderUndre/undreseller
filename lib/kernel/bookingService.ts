@@ -5,8 +5,8 @@
  */
 
 import { randomBytes, createHash } from 'node:crypto';
+import { ConfirmationStatus, ReservationStatus } from '@prisma/client';
 import { prisma } from '../db/prisma';
-import { logger } from '../telemetry/logger';
 import { acquireResourceSlotLock } from '../booking/advisoryLock';
 import { calculateEffectiveBuffers } from '../booking/windows';
 import { validateCustomerContact } from '../booking/lock';
@@ -193,8 +193,12 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
     const isOutCall = fulfillmentMode === 'OUT_CALL';
     const requireApproval = isOutCall || settings.requireStaffApprovalForInCall;
 
-    const initialReservationStatus = requireApproval ? 'HELD' : 'BOOKED';
-    const initialConfirmationStatus = requireApproval ? 'PENDING_STAFF_REVIEW' : 'STAFF_APPROVED';
+    const initialReservationStatus: ReservationStatus = requireApproval
+      ? 'HELD'
+      : 'BOOKED';
+    const initialConfirmationStatus: ConfirmationStatus = requireApproval
+      ? 'PENDING_STAFF_REVIEW'
+      : 'STAFF_APPROVED';
     // OUT_CALL pending approval gets holdExpiresAt = null so it does not auto-cancel (FR-338)
     const holdExpiresAt = null;
 
@@ -213,7 +217,7 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
         customerPhone: contactValidation.type === 'PHONE' ? contactValidation.normalized : null,
         customerEmail: contactValidation.type === 'EMAIL' ? contactValidation.normalized : null,
         customerNotes: customerNote ? customerNote.trim() : null,
-        confirmationStatus: initialConfirmationStatus as any,
+        confirmationStatus: initialConfirmationStatus,
         paymentType: 'PAY_ON_SITE',
         scheduleVersion: 1,
         items: {
@@ -239,7 +243,7 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
         startTime,
         endTime,
         totalDurationMin,
-        status: initialReservationStatus as any,
+        status: initialReservationStatus,
         holdExpiresAt,
         fulfillmentMode,
         servicePriceMinor: pricing.servicePriceMinor,

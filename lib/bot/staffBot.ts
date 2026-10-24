@@ -1,5 +1,5 @@
 import { Bot, InlineKeyboard } from 'grammy';
-import { prisma } from '@/lib/db/prisma';
+import type { UserFromGetMe } from '@grammyjs/types';
 import { logger } from '@/lib/telemetry/logger';
 import { enqueueTelegramOutbox, OUTBOX_PRIORITY, classifyTelegramError } from './telegramOutbox';
 
@@ -9,11 +9,8 @@ const staffToken = process.env.STAFF_BOT_TOKEN || 'DUMMY_STAFF_TOKEN_FOR_BUILD';
  * Get cached botInfo from globalThis if available.
  * This survives Next.js module hot-reloads during development.
  */
-function getCachedStaffBotInfo(): any {
-  if (typeof globalThis !== 'undefined' && (globalThis as any).__staffBotInfo) {
-    return (globalThis as any).__staffBotInfo;
-  }
-  return undefined;
+function getCachedStaffBotInfo(): UserFromGetMe | undefined {
+  return typeof globalThis !== 'undefined' ? globalThis.__staffBotInfo : undefined;
 }
 
 // Create bot with cached botInfo if available
@@ -234,14 +231,6 @@ export function formatMasterTemplate(
         'Будем рады видеть вас снова.',
       ].join('\n');
   }
-}
-
-function getRescheduleSecret(): string {
-  return (
-    process.env.STAFF_WEBHOOK_SECRET ||
-    process.env.ADMIN_TOKEN ||
-    'default-sovereign-reschedule-secret'
-  );
 }
 
 // Server-only crypto-функции живут в ./magicReschedule (node:crypto нельзя

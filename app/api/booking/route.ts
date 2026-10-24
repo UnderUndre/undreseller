@@ -31,11 +31,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
 
     return NextResponse.json({ booking: result }, { status: 201 });
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (err instanceof SlotConflictError) {
       return NextResponse.json({ error: err.message, code: 'SLOT_UNAVAILABLE' }, { status: 409 });
     }
     logger.error('Failed to create booking', { error: String(err) });
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 400 });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Internal server error' },
+      { status: 400 }
+    );
   }
 }

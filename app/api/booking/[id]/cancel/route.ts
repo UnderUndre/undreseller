@@ -110,11 +110,11 @@ export async function POST(
         },
       }
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (err instanceof CancellationError) {
       return NextResponse.json({ error: err.message }, { status: err.statusCode });
     }
     logger.error('Failed to submit booking cancellation', { error: String(err) });
-    return NextResponse.json({ error: err.message || 'Failed to cancel booking' }, { status: 400 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to cancel booking' }, { status: 400 });
   }
 }

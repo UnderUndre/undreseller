@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { authenticateStaff } from '@/lib/security/staffAuth';
 import {
   updateProfile,
-  addPortfolioItem,
   linkServicesToProfile,
   assertProfileOwnership,
 } from '@/lib/kernel/professionalProfileService';
@@ -30,9 +29,9 @@ export async function GET(
     const { id } = await context.params;
     const profile = await assertProfileOwnership(id, auth.actor!);
     return NextResponse.json({ profile }, { status: 200 });
-  } catch (err: any) {
-    const status = err.statusCode || 500;
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status });
+  } catch (err: unknown) {
+    const status = (err as { statusCode?: number }).statusCode || 500;
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Internal server error' }, { status });
   }
 }
 
@@ -60,9 +59,12 @@ export async function PATCH(
     }
 
     return NextResponse.json({ profile: updated }, { status: 200 });
-  } catch (err: any) {
+  } catch (err: unknown) {
     logger.error('Failed to patch profile', { error: String(err) });
-    const status = err.statusCode || 400;
-    return NextResponse.json({ error: err.message || 'Failed to update profile' }, { status });
+    const status = (err as { statusCode?: number }).statusCode || 400;
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Failed to update profile' },
+      { status }
+    );
   }
 }

@@ -1,21 +1,26 @@
 import { bot } from './telegramBot';
 import { staffBot } from './staffBot';
 import { logger } from '@/lib/telemetry/logger';
+import type { UserFromGetMe } from '@grammyjs/types';
 
 /**
  * Global bot initialization state (survives module hot-reloads in Next.js dev mode)
  */
 declare global {
+  // eslint-disable-next-line no-var -- ambient global augmentation requires `var` (TS syntax constraint)
   var __botsInitPromise: Promise<void> | null;
+  // eslint-disable-next-line no-var -- ambient global augmentation requires `var` (TS syntax constraint)
   var __botsInitialized: boolean;
-  var __clientBotInfo: any;
-  var __staffBotInfo: any;
+  // eslint-disable-next-line no-var -- ambient global augmentation requires `var` (TS syntax constraint)
+  var __clientBotInfo: UserFromGetMe | undefined;
+  // eslint-disable-next-line no-var -- ambient global augmentation requires `var` (TS syntax constraint)
+  var __staffBotInfo: UserFromGetMe | undefined;
 }
 
 globalThis.__botsInitialized ??= false;
 globalThis.__botsInitPromise ??= null;
-globalThis.__clientBotInfo ??= null;
-globalThis.__staffBotInfo ??= null;
+globalThis.__clientBotInfo ??= undefined;
+globalThis.__staffBotInfo ??= undefined;
 
 /**
  * Initialize bot info one time at server startup.

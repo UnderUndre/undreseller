@@ -3,8 +3,20 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 
+interface AdminBookingRow {
+  bookingId: string;
+  orderNumber: string;
+  serviceTitle: string;
+  customerName: string;
+  customerContact: string;
+  serviceAddress?: string | null;
+  startsAt: string;
+  status: string;
+  fulfillmentMode?: string | null;
+}
+
 export default function AdminBookingsPage() {
-  const [bookings, setBookings] = useState<any[]>([]);
+  const [bookings, setBookings] = useState<AdminBookingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [filterMode, setFilterMode] = useState<string>('ALL');
@@ -21,8 +33,8 @@ export default function AdminBookingsPage() {
       }
       const data = await res.json();
       setBookings(data.bookings || []);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Error loading bookings');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Error loading bookings');
     } finally {
       setLoading(false);
     }
@@ -46,8 +58,8 @@ export default function AdminBookingsPage() {
         throw new Error(data.error || 'Action failed');
       }
       await loadBookings();
-    } catch (err: any) {
-      alert(`Action error: ${err.message}`);
+    } catch (err: unknown) {
+      alert(`Action error: ${err instanceof Error ? err.message : 'Action failed'}`);
     }
   }
 

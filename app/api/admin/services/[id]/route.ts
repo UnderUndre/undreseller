@@ -58,8 +58,8 @@ export async function PATCH(
 
     const updated = await updateService(id, parsed.data, auth.actor!);
     return NextResponse.json({ service: updated }, { status: 200 });
-  } catch (err: any) {
+  } catch (err: unknown) {
     logger.error('Failed to update service', { error: String(err) });
-    return NextResponse.json({ error: err.message || 'Failed to update service' }, { status: 400 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to update service' }, { status: 400 });
   }
 }

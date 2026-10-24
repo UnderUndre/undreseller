@@ -1,8 +1,8 @@
 import { Bot, InlineKeyboard } from 'grammy';
+import type { UserFromGetMe } from '@grammyjs/types';
 import { prisma } from '@/lib/db/prisma';
 import { logger } from '@/lib/telemetry/logger';
 import { handleClientConfirmationCallback } from './clientConfirmation';
-
 const token = process.env.TELEGRAM_BOT_TOKEN || 'DUMMY_TOKEN_FOR_BUILD';
 
 // Log bot initialization details
@@ -17,11 +17,8 @@ console.log('[TELEGRAM_BOT_INIT]', {
  * Get cached botInfo from globalThis if available.
  * This survives Next.js module hot-reloads during development.
  */
-function getCachedBotInfo(): any {
-  if (typeof globalThis !== 'undefined' && (globalThis as any).__clientBotInfo) {
-    return (globalThis as any).__clientBotInfo;
-  }
-  return undefined;
+function getCachedBotInfo(): UserFromGetMe | undefined {
+  return typeof globalThis !== 'undefined' ? globalThis.__clientBotInfo : undefined;
 }
 
 // Create bot with cached botInfo if available

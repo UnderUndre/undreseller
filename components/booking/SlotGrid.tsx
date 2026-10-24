@@ -2,6 +2,19 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTelegram } from '../tma/TelegramProvider';
+import type { AvailableSlot } from '@/lib/booking/windows';
+
+interface BookingSuccessState {
+  bookingId: string;
+  cancellationToken: string;
+  status: string;
+  orderNumber: string;
+  serviceTitle: string;
+  startsAt: string;
+  fulfillmentMode: string;
+  serviceAddress?: string | null;
+  totalMinor?: number;
+}
 
 export interface BookingServiceInfo {
   id: string;
@@ -19,9 +32,7 @@ export interface BookingServiceInfo {
 export function SlotGrid({
   service,
   currency,
-  currencyConfirmed = true,
   performerSlug,
-  businessServiceAddress,
   outCallCoverageDescription,
 }: {
   service: BookingServiceInfo;
@@ -31,7 +42,7 @@ export function SlotGrid({
   businessServiceAddress?: string | null;
   outCallCoverageDescription?: string | null;
 }) {
-  const { isTma, user, hapticFeedback } = useTelegram();
+  const { user, hapticFeedback } = useTelegram();
 
   // Mode selection: default to IN_CALL if enabled, else OUT_CALL
   const [mode, setMode] = useState<'IN_CALL' | 'OUT_CALL'>(
@@ -43,8 +54,8 @@ export function SlotGrid({
     return today.toISOString().split('T')[0];
   });
 
-  const [slots, setSlots] = useState<any[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<any | null>(null);
+  const [slots, setSlots] = useState<AvailableSlot[]>([]);
+  const [selectedSlot, setSelectedSlot] = useState<AvailableSlot | null>(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -56,7 +67,7 @@ export function SlotGrid({
   const [customerNote, setCustomerNote] = useState('');
 
   // Booking success state
-  const [bookingSuccess, setBookingSuccess] = useState<any | null>(null);
+  const [bookingSuccess, setBookingSuccess] = useState<BookingSuccessState | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelStatus, setCancelStatus] = useState<string | null>(null);
 
@@ -93,9 +104,9 @@ export function SlotGrid({
         if (active) {
           setSlots(data.slots || []);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (active) {
-          setErrorMsg(err.message || 'Error fetching slots');
+          setErrorMsg(err instanceof Error ? err.message : 'Error fetching slots');
         }
       } finally {
         if (active) setLoadingSlots(false);
@@ -157,8 +168,8 @@ export function SlotGrid({
       }
 
       setBookingSuccess(data.booking);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Booking submission failed');
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Booking submission failed');
     } finally {
       setBookingLoading(false);
     }
@@ -178,8 +189,10 @@ export function SlotGrid({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to cancel');
       setCancelStatus('Your appointment has been successfully cancelled.');
-    } catch (err: any) {
-      alert(`Error cancelling appointment: ${err.message}`);
+    } catch (err: unknown) {
+      alert(
+        `Error cancelling appointment: ${err instanceof Error ? err.message : 'unknown error'}`
+      );
     } finally {
       setCancelLoading(false);
     }
@@ -243,7 +256,7 @@ export function SlotGrid({
           <div className="flex justify-between pt-3">
             <span className="text-gray-400">Total Price:</span>
             <span className="font-extrabold text-base text-green-400">
-              {formatPrice(bookingSuccess.totalMinor)}
+              {formatPrice(bookingSuccess.totalMinor ?? 0)}
             </span>
           </div>
         </div>
