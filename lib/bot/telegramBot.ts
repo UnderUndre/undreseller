@@ -3,6 +3,13 @@ import type { UserFromGetMe } from '@grammyjs/types';
 import { prisma } from '@/lib/db/prisma';
 import { logger } from '@/lib/telemetry/logger';
 import { handleClientConfirmationCallback } from './clientConfirmation';
+import {
+  cancelViaToken,
+  mainKeyboard,
+  setLanguageOverride,
+  showLanguageMenu,
+  showMyBookings,
+} from './quickActions';
 const token = process.env.TELEGRAM_BOT_TOKEN || 'DUMMY_TOKEN_FOR_BUILD';
 
 // Log bot initialization details
@@ -93,12 +100,8 @@ bot.command('start', async (ctx) => {
 
     const greetingText = settings?.greeting || '👋 Welcome to our store!';
 
-    const keyboard = new InlineKeyboard()
-      .webApp('🛍️ Open Storefront', appUrl)
-      .row()
-      .text('👨‍💼 Contact Manager', 'contact_manager');
-
-    await sendWithRetry(() => ctx.reply(greetingText, { reply_markup: keyboard }));
+    void appUrl;
+    await sendWithRetry(() => ctx.reply(greetingText, { reply_markup: mainKeyboard() }));
   } catch (err) {
     logger.error('Failed to handle /start', { error: String(err) });
   }
@@ -113,6 +116,31 @@ bot.command('help', async (ctx) => {
       { reply_markup: keyboard }
     )
   );
+});
+
+// T051/FR-416 quick actions
+bot.callbackQuery('qb:bookings', async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await showMyBookings({ from: ctx.from, reply: (text, opts) => ctx.reply(text, opts) });
+});
+
+bot.callbackQuery('qb:lang', async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await showLanguageMenu({ reply: (text, opts) => ctx.reply(text, opts) });
+});
+
+bot.callbackQuery(/^qb:lang:(ru|en)$/, async (ctx) => {
+  if (!ctx.from) return;
+  const locale = (ctx.match as RegExpExecArray)[1] as 'ru' | 'en';
+  await ctx.answerCallbackQuery();
+  await setLanguageOverride(String(ctx.from.id), locale);
+});
+
+bot.command('cancel', async (ctx) => {
+  if (!ctx.from) return;
+  const args = (ctx.message?.text || '').split(/\s+/).slice(1);
+  const result = await cancelViaToken(String(ctx.from.id), args);
+  await sendWithRetry(() => ctx.reply(result.message));
 });
 
 bot.callbackQuery('contact_manager', async (ctx) => {
