@@ -8,6 +8,7 @@
  */
 
 import { prisma } from '../lib/db/prisma';
+import type { ShopSettings } from '@prisma/client';
 
 const SUPPORTED_LOCALES = new Set(['ru', 'en']);
 const BATCH_SIZE = 100;
@@ -40,8 +41,9 @@ export async function runBackfill004LanguageDefaults(): Promise<BackfillSummary>
 
   let cursor: number | undefined = undefined;
   for (;;) {
-    const batch = await prisma.shopSettings.findMany({
-      where: cursor ? { id: { gt: cursor } } : undefined,
+    const cursorId = cursor;
+    const batch: ShopSettings[] = await prisma.shopSettings.findMany({
+      where: cursorId !== undefined ? { id: { gt: cursorId } } : undefined,
       orderBy: { id: 'asc' },
       take: BATCH_SIZE,
     });
