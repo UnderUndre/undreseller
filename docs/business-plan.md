@@ -6,6 +6,16 @@
 
 **Canonical**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` (v18.5, 2026-10-24)
 
+## v18.5 update — verbatim from canonical (undreplans commit `fe41d57`, 2026-10-24)
+
+> Reproduced here so reviewers scoped to this repository see the actual plan update, not just the pointer.
+
+| Версия | Дата | Изменения | Причина / Источник |
+| :--- | :--- | :--- | :--- |
+| **v18.5** | 24.10.2026 | **Релиз 004-release-readiness (post-Sprint-B):** онлайн-платежи возвращаются в скоуп продукта — унифицированный провайдер-нейтральный контракт (NOWPayments + Telegram Stars за одним интерфейсом), депозитная политика «без депозита по умолчанию / полная предоплата per-service», FSM брони под крипто-подтверждения. Изменения платёжных рельсов не меняют ICP/SKU/цены: Sprint B остаётся $4,900; платежи — capability уже поставляемого шаблона, а не новый SKU. Также зафиксировано: бренд-иерархия (UnderUndre — публичный бренд, undreseller — внутреннее имя шаблона), флагман-инстанс на shop.underundre.com, лендинг на underundre.com (undrllanding §6.3). | SpecKit Principle VII-B (payment-rails delta) + внешнее ревью Copilot F6; спека `undreseller/specs/004-release-readiness` |
+
+Canonical header: `**Версия:** 18.5 (Release Readiness 004: payments capability, post-Sprint-B)`
+
 ## Hard constraints extracted (read as binding for specs 003/004+)
 
 - **Product ladder**: Tripwire $350–$490 → Sprint A $3,500+$500/mo → Sprint B $4,900 (hero, 14-day fixed scope).
