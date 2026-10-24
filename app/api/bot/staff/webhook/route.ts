@@ -10,6 +10,10 @@ import {
   executeStaffCallbackTransaction,
   StaffActionType,
 } from '@/lib/bot/staffActions';
+import {
+  awaitConfirmBarrier,
+  isDestructiveStaffAction,
+} from '@/lib/bot/staffConfirm';
 
 const VALID_ACTIONS = new Set<StaffActionType>([
   'approve',
@@ -96,6 +100,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const action = parts[1] as StaffActionType;
   const orderId = parts[2];
+
+  // FR-429 (T093): destructive actions require a second confirmation press
+  // within 30 seconds before execution.
+  if (isDestructiveStaffAction(action)) {
+    const barrier = awaitConfirmBarrier(action, orderId);
+    if (barrier === 'REQUIRES_CONFIRMATION') {
+      return NextResponse.json(
+        {
+          status: 'CONFIRMATION_REQUIRED',
+          callbackAnswer: {
+            callback_query_id: callbackQueryId,
+            text: '⚠️ Это действие необратимо. Нажмите кнопку ещё раз в течение 30 секунд для подтверждения.',
+            show_alert: true,
+          },
+        },
+        { status: 200 }
+      );
+    }
+  }
 
   // Не мутирующее действие: отправить мастеру текст контактов новым сообщением.
   if (action === 'copy_contacts') {
