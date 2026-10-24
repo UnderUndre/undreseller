@@ -1,7 +1,7 @@
 # System Architecture: Modular E-Commerce & Multi-Service Booking Engine (Track 1)
 
 **Repository**: `UnderUndre/undreseller`  
-**Version**: 2.1.0 (Production Architecture — `001-modular-commerce-template` + `002-service-cart-and-staff-bot` actualized; `003.1` Booking-First Service Template planned)  
+**Version**: 2.2.0 (Production Architecture — `001` + `002` actualized; `003.1` booking-first core; `004-release-readiness` planned per specs/004-release-readiness)  
 **Standard Compliance**: ISO/IEC/IEEE 29148:2018, ISO/IEC/IEEE 12207:2017 & NIST SP 800-218 SSDF  
 **Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v18.4**
 
@@ -32,8 +32,12 @@
 │   (Marketing Lander, :3000)   │                     │  (Transactional Engine, :3000)│
 │                               │                     │                               │
 │  Host:                        │                     │  Host:                        │
-│   • underundre.com            │                     │   • demo.undreseller.com      │
-│   • undreseller.com           │                     │   • shop.underundre.com       │
+│   • underundre.com            │                     │   • shop.underundre.com      │
+│     (лендинг бюро, проект     │                     │     (флагман-форк инстанс)   │
+│      underundre — см.         │                     │   • demo.undreseller.com     │
+│      undrllanding §6.3)       │                     │     (retired, 004)           │
+│   • undreseller.com           │                     │                              │
+│     (retired, 004)            │                     │                              │
 │                               │                     │                               │
 │  Назначение:                  │  HTTP Links / TMA   │  Назначение:                  │
 │   • Прогрев лидов             │────────────────────►│   • Каталог + CartDrawer /    │
@@ -309,3 +313,40 @@ undreseller/
 | **PostgreSQL 16** | `postgres` | **4096 MB** | 2048 MB | `backend_network` |
 
 Бенчмарк `tests/unit/performance-benchmark.test.ts` подтверждает расчёт 7-дневной сетки слотов для корзины из 5 услуг с задержкой **p95 < 50 мс** и удержание RSS памяти процесса существенно ниже потолка **500 MB RAM** при одновременной работе двух инстансов ботов, встроенного `inboxPoller`, обработчиков Inngest и очереди Telegram outbox.
+
+---
+
+## 5. Feature Reference: `004-release-readiness` (2026-10-24)
+
+> Living-spec append per `/speckit.plan` (Principle VIII). Source: `specs/004-release-readiness/{spec,plan,data-model}.md`.
+
+### Новые технологии (004)
+
+| Технология | Роль | Лицензия |
+|---|---|---|
+| `next-intl` | i18n ru/en (uk пост-лонч), ICU-плюрализм, locale resolution (user > language_code > instance default) | Apache-2.0 (MIT-совместимо с реестром) |
+| `@aws-sdk/client-s3` + `s3-request-presigner` | Presigned URLs → Cloudflare R2 (медиа админки; сервер не видит байты) | Apache-2.0 |
+| `browser-image-compression` | Клиентский WebP-ресайз ≤200 КБ перед загрузкой (OOM-гарда) | MIT |
+| Cloudflare R2 | S3-совместимое медиа-хранилище, zero egress [COST: $0 до 10 ГБ] | SaaS |
+| Transactional email SaaS (за адаптером) | Фоллбек-канал уведомлений (FR-409) | SaaS |
+| `@underundre/undesign` (уже подключён, 1b7bd23) | Бренд-токены: шкалы, семантика, темы undrlla/undrlla-dark | MIT |
+
+Удаляемая зависимость: `better-auth` (установлена, не импортируется — аудит 003; решение D4 в research.md).
+
+### Новые пути (дельта к §2)
+
+- `lib/payments/providerContract.ts` — провайдер-нейтральный контракт + реестр (FR-401/416, 003 FR-316 реализован в 004); адаптеры `nowpayments.ts` (invoice API, confirming-freeze), `stars.ts`.
+- `lib/kernel/bookingFsm.ts` — двухтрековый FSM (FREE: авто-подтверждение IN_CALL / staff-аппрув OUT_CALL; PREPAID: HELD 15 мин → PAYMENT_PENDING → CONFIRMED/UNDERPAID; FR-432 поздний платёж).
+- `lib/waitlist/` — waitlistService (фан-аут офферов ≤10, атомарный claim через единый booking-путь), slotPacker (any-available, детерминированный greedy).
+- `lib/i18n/`, `lib/notifications/` (delivery log: ACCEPTED/FAILED, без «delivered»), `lib/email/`, `lib/uploads/presign.ts`.
+- `app/admin/{catalog,team,settings}/` — мобильная контент-админка (3 таба, quick-create ≤4 полей); `app/api/admin/uploads/presign/`, `app/api/waitlist/`.
+- Миграция `prisma/migrations/20261025000000_004_release_readiness_expand/` (Expand-only: 8 новых таблиц, enum ADD VALUE, nullable-колонки) — манифест в data-model.md.
+
+### SpecKit Integration
+
+| Спека | Статус |
+|---|---|
+| `specs/001-modular-commerce-template/` | v1 actualized |
+| `specs/002-service-cart-and-staff-bot/` | v2 actualized |
+| `specs/003-commerce-operations-capability-packs/` | 003.1 core actualized; 003.2 packs reopened → `specs/004-release-readiness/backlog-carried-over-0032.md` |
+| `specs/004-release-readiness/` | spec v6 + plan + tasks (release: платежи/FSM, надёжность, i18n, гибрид TG, waitlist, кастом-поля, харденинг, undesign, контент-админка) |
