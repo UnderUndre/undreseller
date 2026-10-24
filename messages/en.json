@@ -1,0 +1,24 @@
+{
+  "web": {
+    "nav": { "catalog": "Catalog", "book": "Book", "professionals": "Professionals" },
+    "booking": {
+      "slotCount": "{count, plural, one {# slot available} other {# slots available}}",
+      "inCall": "In-Studio Visit",
+      "outCall": "Professional Outcall"
+    },
+    "errors": { "generic": "Something went wrong. Please try again." }
+  },
+  "clientBot": {
+    "greeting": "Welcome! Pick a service to get started.",
+    "booking": { "confirmed": "Your appointment is confirmed.", "cancelled": "Your booking is cancelled." }
+  },
+  "staffBot": {
+    "actions": { "approved": "Approved", "rejected": "Rejected" }
+  },
+  "admin": {
+    "tabs": { "catalog": "Catalog", "team": "Team", "settings": "Settings" }
+  },
+  "email": {
+    "booking": { "subject": "Your appointment at {businessName}", "confirmed": "Your appointment is confirmed." }
+  }
+}

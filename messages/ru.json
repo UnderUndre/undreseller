@@ -1,0 +1,43 @@
+{
+  "web": {
+    "nav": {
+      "catalog": "Каталог",
+      "book": "Запись",
+      "professionals": "Мастера"
+    },
+    "booking": {
+      "slotCount": "{count, plural, one {# слот доступен} few {# слота доступно} many {# слотов доступно} other {# слотов доступно}}",
+      "inCall": "Визит в студию",
+      "outCall": "Выезд к клиенту"
+    },
+    "errors": {
+      "generic": "Что-то пошло не так. Попробуйте ещё раз."
+    }
+  },
+  "clientBot": {
+    "greeting": "Добро пожаловать! Выберите услугу, чтобы начать.",
+    "booking": {
+      "confirmed": "Ваша запись подтверждена.",
+      "cancelled": "Ваша запись отменена."
+    }
+  },
+  "staffBot": {
+    "actions": {
+      "approved": "Одобрено",
+      "rejected": "Отклонено"
+    }
+  },
+  "admin": {
+    "tabs": {
+      "catalog": "Каталог",
+      "team": "Команда",
+      "settings": "Настройки"
+    }
+  },
+  "email": {
+    "booking": {
+      "subject": "Ваша запись в {businessName}",
+      "confirmed": "Ваша запись подтверждена."
+    }
+  }
+}
