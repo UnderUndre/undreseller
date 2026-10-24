@@ -23,7 +23,7 @@ export default function AdminNav() {
   return (
     <nav
       aria-label="Admin sections"
-      className="fixed bottom-0 inset-x-0 z-40 bg-gray-950 border-t border-gray-800 flex justify-around pb-[env(safe-area-inset-bottom)]"
+      className="fixed bottom-0 inset-x-0 z-40 bg-base-100 border-t border-base-300 flex justify-around pb-[env(safe-area-inset-bottom)]"
     >
       {TABS.map((tab) => {
         const active = pathname?.startsWith(tab.href);
@@ -33,7 +33,7 @@ export default function AdminNav() {
             href={tab.href}
             aria-current={active ? 'page' : undefined}
             className={`flex-1 text-center py-3 text-xs font-medium transition-colors ${
-              active ? 'text-purple-400' : 'text-gray-400 hover:text-white'
+              active ? 'text-purple-400' : 'text-base-content/60 hover:text-base-content'
             }`}
           >
             {tab.label}

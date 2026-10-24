@@ -13,6 +13,7 @@ interface AdminBookingRow {
   startsAt: string;
   status: string;
   fulfillmentMode?: string | null;
+  fieldAnswers?: { label: string; type: string; value: string }[];
 }
 
 export default function AdminBookingsPage() {
@@ -72,18 +73,18 @@ export default function AdminBookingsPage() {
   });
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-6 text-white pb-24">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-800 pb-4">
+    <div className="max-w-6xl mx-auto px-4 py-8 space-y-6 text-base-content pb-24">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-base-300 pb-4">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight">Staff Booking Operations</h1>
-          <p className="text-xs text-gray-400 pt-1">
+          <p className="text-xs text-base-content/60 pt-1">
             Role-bounded appointment management, outcall coverage review, and fulfillments (FR-326)
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Link
             href="/"
-            className="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors"
+            className="text-xs bg-base-300 hover:bg-base-300 px-3 py-1.5 rounded-lg transition-colors"
           >
             Public Site
           </Link>
@@ -105,7 +106,7 @@ export default function AdminBookingsPage() {
             className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
               filterMode === f
                 ? 'bg-purple-600 border-purple-400 text-white'
-                : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-white'
+                : 'bg-base-200 border-base-300 text-base-content/60 hover:text-base-content'
             }`}
           >
             {f}
@@ -120,15 +121,15 @@ export default function AdminBookingsPage() {
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-sm text-gray-400 animate-pulse">Loading appointments...</div>
+        <div className="text-center py-12 text-sm text-base-content/60 animate-pulse">Loading appointments...</div>
       ) : filteredBookings.length === 0 ? (
-        <div className="text-center py-16 border border-dashed border-gray-800 rounded-xl">
-          <p className="text-xs text-gray-400">No bookings match the selected filter.</p>
+        <div className="text-center py-16 border border-dashed border-base-300 rounded-xl">
+          <p className="text-xs text-base-content/60">No bookings match the selected filter.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-800 bg-gray-900/40">
-          <table className="w-full text-left text-xs divide-y divide-gray-800">
-            <thead className="bg-gray-950/80 text-gray-400 uppercase tracking-wider font-semibold">
+        <div className="overflow-x-auto rounded-xl border border-base-300 bg-base-200/40">
+          <table className="w-full text-left text-xs divide-y divide-base-300">
+            <thead className="bg-base-100/80 text-base-content/60 uppercase tracking-wider font-semibold">
               <tr>
                 <th className="py-3 px-4">Order #</th>
                 <th className="py-3 px-4">Service</th>
@@ -139,14 +140,14 @@ export default function AdminBookingsPage() {
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800/60">
+            <tbody className="divide-y divide-base-300/60">
               {filteredBookings.map((b) => (
-                <tr key={b.bookingId} className="hover:bg-gray-800/30 transition-colors">
+                <tr key={b.bookingId} className="hover:bg-base-300/30 transition-colors">
                   <td className="py-3 px-4 font-mono font-semibold">{b.orderNumber}</td>
                   <td className="py-3 px-4">{b.serviceTitle}</td>
                   <td className="py-3 px-4">
-                    <div className="font-medium text-gray-200">{b.customerName}</div>
-                    <div className="text-gray-400 font-mono text-[11px]">{b.customerContact}</div>
+                    <div className="font-medium text-base-content/90">{b.customerName}</div>
+                    <div className="text-base-content/60 font-mono text-[11px]">{b.customerContact}</div>
                   </td>
                   <td className="py-3 px-4">
                     <span
@@ -159,7 +160,7 @@ export default function AdminBookingsPage() {
                       {b.fulfillmentMode || 'IN_CALL'}
                     </span>
                     {b.serviceAddress && (
-                      <div className="text-gray-400 text-[11px] max-w-xs truncate" title={b.serviceAddress}>
+                      <div className="text-base-content/60 text-[11px] max-w-xs truncate" title={b.serviceAddress}>
                         📍 {b.serviceAddress}
                       </div>
                     )}
@@ -168,6 +169,15 @@ export default function AdminBookingsPage() {
                     {new Date(b.startsAt).toLocaleString()}
                   </td>
                   <td className="py-3 px-4">
+                    {b.fieldAnswers && b.fieldAnswers.length > 0 && (
+                      <div className="space-y-0.5 mb-1">
+                        {b.fieldAnswers.map((a, i) => (
+                          <div key={i} className="text-[11px] text-base-content/80">
+                            <span className="text-base-content/50">{a.label}:</span> {a.value}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <span
                       className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${
                         b.status === 'CONFIRMED'
@@ -193,7 +203,7 @@ export default function AdminBookingsPage() {
                         </button>
                         <button
                           onClick={() => handleAction(b.bookingId, 'REJECT_COVERAGE')}
-                          className="bg-error hover:bg-error text-white px-2 py-1 rounded text-[11px] font-medium"
+                          className="bg-error hover:bg-error text-base-content px-2 py-1 rounded text-[11px] font-medium"
                         >
                           Reject
                         </button>
