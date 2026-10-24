@@ -66,13 +66,13 @@ export default async function CatalogItemPage({ params }: Props) {
         dangerouslySetInnerHTML={{ __html: safeJsonLdString }}
       />
 
-      <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-8 shadow-xl">
+      <div className="bg-base-200/60 border border-base-300 rounded-2xl p-8 shadow-xl">
         <div className="flex items-center gap-3 mb-4">
           <span className="text-xs uppercase font-extrabold tracking-wider text-purple-400 bg-purple-900 px-2.5 py-1 rounded">
             {item.itemType}
           </span>
           {item.itemType === 'SERVICE' && item.durationMin && (
-            <span className="text-xs text-gray-400 font-mono">
+            <span className="text-xs text-base-content/60 font-mono">
               ⏱ {item.durationMin} min duration
             </span>
           )}
@@ -83,13 +83,13 @@ export default async function CatalogItemPage({ params }: Props) {
           )}
         </div>
 
-        <h1 className="text-3xl font-extrabold text-white mb-4">{item.title}</h1>
-        <p className="text-gray-300 text-base leading-relaxed mb-6 whitespace-pre-line">
+        <h1 className="text-3xl font-extrabold text-base-content mb-4">{item.title}</h1>
+        <p className="text-base-content/80 text-base leading-relaxed mb-6 whitespace-pre-line">
           {item.description}
         </p>
 
-        <div className="flex items-baseline gap-4 py-6 border-t border-b border-gray-800 my-6">
-          <span className="text-3xl font-black text-white">{formattedPrice}</span>
+        <div className="flex items-baseline gap-4 py-6 border-t border-b border-base-300 my-6">
+          <span className="text-3xl font-black text-base-content">{formattedPrice}</span>
           {item.starsPrice && (
             <span className="text-sm font-bold text-warning bg-warning-surface/40 px-3 py-1 rounded-full border border-warning/50">
               ⭐ {item.starsPrice.toLocaleString()} Stars (XTR)

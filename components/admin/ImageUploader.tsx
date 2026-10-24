@@ -110,14 +110,14 @@ export default function ImageUploader({ folder, label, onUploaded, onError }: Im
 
   return (
     <div className="space-y-2">
-      <label className="block text-xs font-medium text-gray-400">{label}</label>
+      <label className="block text-xs font-medium text-base-content/60">{label}</label>
       <div className="flex items-center gap-3">
         {previewUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={previewUrl}
             alt="Uploaded preview"
-            className="w-16 h-16 rounded-lg object-cover border border-gray-700"
+            className="w-16 h-16 rounded-lg object-cover border border-base-300"
           />
         )}
         <input
@@ -129,7 +129,7 @@ export default function ImageUploader({ folder, label, onUploaded, onError }: Im
             if (file) void handleFile(file);
           }}
           disabled={busy}
-          className="block w-full text-xs text-gray-400 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-purple-600 file:text-white file:text-xs file:font-medium hover:file:bg-purple-500 disabled:opacity-50"
+          className="block w-full text-xs text-base-content/60 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-purple-600 file:text-white file:text-xs file:font-medium hover:file:bg-purple-500 disabled:opacity-50"
         />
       </div>
       {busy && <p className="text-xs text-purple-400">Compressing &amp; uploading…</p>}

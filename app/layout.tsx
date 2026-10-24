@@ -16,24 +16,24 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className="bg-gray-950 text-gray-100 min-h-screen flex flex-col font-sans antialiased">
+      <body className="bg-base-100 text-base-content min-h-screen flex flex-col font-sans antialiased">
         <TelegramProvider>
-          <header className="border-b border-gray-800 bg-gray-900/60 backdrop-blur sticky top-0 z-50">
+          <header className="border-b border-base-300 bg-base-200/60 backdrop-blur sticky top-0 z-50">
             <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-              <Link href="/" className="font-extrabold text-lg text-white tracking-tight flex items-center gap-2">
+              <Link href="/" className="font-extrabold text-lg text-base-content tracking-tight flex items-center gap-2">
                 <span>🛡️</span>
                 <span>{shopConfig.brandName}</span>
               </Link>
-              <nav className="text-sm font-medium flex items-center gap-4 text-gray-300">
-                <Link href="/" className="hover:text-white transition">Catalog</Link>
-                <Link href="/book" className="hover:text-white transition">Book Slot</Link>
+              <nav className="text-sm font-medium flex items-center gap-4 text-base-content/80">
+                <Link href="/" className="hover:text-base-content transition">Catalog</Link>
+                <Link href="/book" className="hover:text-base-content transition">Book Slot</Link>
               </nav>
             </div>
           </header>
           <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-8">
             {children}
           </main>
-          <footer className="border-t border-gray-800 py-6 text-center text-xs text-gray-500">
+          <footer className="border-t border-base-300 py-6 text-center text-xs text-base-content/50">
             © {new Date().getFullYear()} {shopConfig.brandName}. Powered by Sovereign Commerce Stack.
           </footer>
         </TelegramProvider>

@@ -188,10 +188,10 @@ export default function AdminTeamPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 text-white pb-24">
-      <div className="border-b border-gray-800 pb-4 mb-4">
+    <div className="max-w-3xl mx-auto px-4 py-6 text-base-content pb-24">
+      <div className="border-b border-base-300 pb-4 mb-4">
         <h1 className="text-xl font-extrabold tracking-tight">Team</h1>
-        <p className="text-xs text-gray-400 pt-1">Professional profiles, portfolio and working hours (FR-440)</p>
+        <p className="text-xs text-base-content/60 pt-1">Professional profiles, portfolio and working hours (FR-440)</p>
       </div>
 
       {errorMsg && (
@@ -206,22 +206,22 @@ export default function AdminTeamPage() {
         </div>
       )}
       {notice && (
-        <div className="p-3 bg-gray-900 border border-gray-700 rounded-xl text-xs text-gray-300 mb-4">{notice}</div>
+        <div className="p-3 bg-base-200 border border-base-300 rounded-xl text-xs text-base-content/80 mb-4">{notice}</div>
       )}
 
       {loading ? (
-        <p className="text-sm text-gray-400">Loading…</p>
+        <p className="text-sm text-base-content/60">Loading…</p>
       ) : (
         <div className="space-y-4">
           {profiles.map((p) => (
-            <section key={p.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+            <section key={p.id} className="bg-base-200 border border-base-300 rounded-xl p-4 space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold">
                     {p.staffMember.displayName}{' '}
-                    <span className="text-xs text-gray-500">({p.staffMember.role})</span>
+                    <span className="text-xs text-base-content/50">({p.staffMember.role})</span>
                   </p>
-                  <p className="text-xs text-gray-400 truncate">
+                  <p className="text-xs text-base-content/60 truncate">
                     /{p.slug} {p.headline ? `· ${p.headline}` : ''}
                   </p>
                 </div>
@@ -231,7 +231,7 @@ export default function AdminTeamPage() {
                   className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
                     p.isPublished
                       ? 'bg-purple-600 border-purple-400 text-white'
-                      : 'bg-gray-800 border-gray-700 text-gray-400'
+                      : 'bg-base-300 border-base-300 text-base-content/60'
                   }`}
                 >
                   {p.isPublished ? 'Published' : 'Unpublished'}
@@ -241,26 +241,26 @@ export default function AdminTeamPage() {
               {editingId === p.id ? (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Headline</label>
+                    <label className="block text-xs font-medium text-base-content/60 mb-1">Headline</label>
                     <input
                       value={edit.headline}
                       onChange={(e) => setEdit({ ...edit, headline: e.target.value })}
                       maxLength={200}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+                      className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Biography</label>
+                    <label className="block text-xs font-medium text-base-content/60 mb-1">Biography</label>
                     <textarea
                       value={edit.biography}
                       onChange={(e) => setEdit({ ...edit, biography: e.target.value })}
                       maxLength={2000}
                       rows={3}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+                      className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
                     />
                   </div>
                   <ImageUploader folder="profiles" label="Profile photo" onUploaded={onPhotoUploaded} />
-                  {edit.photoUrl && <p className="text-xs text-gray-500 truncate">Photo: {edit.photoUrl}</p>}
+                  {edit.photoUrl && <p className="text-xs text-base-content/50 truncate">Photo: {edit.photoUrl}</p>}
                   <div className="flex gap-2">
                     <button
                       onClick={() => void saveProfile(p)}
@@ -270,7 +270,7 @@ export default function AdminTeamPage() {
                     </button>
                     <button
                       onClick={() => setEditingId(null)}
-                      className="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg"
+                      className="text-xs bg-base-300 hover:bg-base-300 px-3 py-1.5 rounded-lg"
                     >
                       Cancel
                     </button>
@@ -279,14 +279,14 @@ export default function AdminTeamPage() {
               ) : (
                 <button
                   onClick={() => startEdit(p)}
-                  className="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg"
+                  className="text-xs bg-base-300 hover:bg-base-300 px-3 py-1.5 rounded-lg"
                 >
                   Edit profile
                 </button>
               )}
 
-              <div className="border-t border-gray-800 pt-3 space-y-2">
-                <p className="text-xs font-semibold text-gray-300">Portfolio</p>
+              <div className="border-t border-base-300 pt-3 space-y-2">
+                <p className="text-xs font-semibold text-base-content/80">Portfolio</p>
                 {p.portfolioItems.map((item) => (
                   <div key={item.id} className="flex items-center gap-2">
                     {item.mediaUrl && (
@@ -294,17 +294,17 @@ export default function AdminTeamPage() {
                       <img
                         src={item.mediaUrl}
                         alt={item.title}
-                        className="w-10 h-10 rounded object-cover border border-gray-700"
+                        className="w-10 h-10 rounded object-cover border border-base-300"
                       />
                     )}
-                    <span className="flex-1 text-xs text-gray-300 truncate">{item.title}</span>
+                    <span className="flex-1 text-xs text-base-content/80 truncate">{item.title}</span>
                     <button
                       onClick={() => void togglePortfolioPublish(p, item)}
                       aria-pressed={item.isPublished}
                       className={`text-[11px] px-2 py-1 rounded border ${
                         item.isPublished
                           ? 'bg-purple-600 border-purple-400 text-white'
-                          : 'bg-gray-800 border-gray-700 text-gray-400'
+                          : 'bg-base-300 border-base-300 text-base-content/60'
                       }`}
                     >
                       {item.isPublished ? 'Live' : 'Draft'}
@@ -321,7 +321,7 @@ export default function AdminTeamPage() {
                       })
                     }
                     placeholder="Portfolio item title"
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+                    className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
                   />
                   <ImageUploader
                     folder="portfolio"
@@ -335,7 +335,7 @@ export default function AdminTeamPage() {
                   />
                   <button
                     onClick={() => void addPortfolio(p)}
-                    className="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg"
+                    className="text-xs bg-base-300 hover:bg-base-300 px-3 py-1.5 rounded-lg"
                   >
                     Add portfolio item
                   </button>
@@ -344,17 +344,17 @@ export default function AdminTeamPage() {
             </section>
           ))}
 
-          {profiles.length === 0 && <p className="text-sm text-gray-400">No professional profiles yet.</p>}
+          {profiles.length === 0 && <p className="text-sm text-base-content/60">No professional profiles yet.</p>}
 
-          <section className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-            <p className="text-xs font-semibold text-gray-300 mb-2">Working hours summary</p>
+          <section className="bg-base-200 border border-base-300 rounded-xl p-4">
+            <p className="text-xs font-semibold text-base-content/80 mb-2">Working hours summary</p>
             {hours.length === 0 ? (
-              <p className="text-xs text-gray-500">No weekly hours configured.</p>
+              <p className="text-xs text-base-content/50">No weekly hours configured.</p>
             ) : (
               <ul className="space-y-1">
                 {hours.map((h) => (
-                  <li key={h.id} className="text-xs text-gray-400">
-                    <span className="text-gray-300">{WEEKDAYS[(h.weekday - 1) % 7]}</span>{' '}
+                  <li key={h.id} className="text-xs text-base-content/60">
+                    <span className="text-base-content/80">{WEEKDAYS[(h.weekday - 1) % 7]}</span>{' '}
                     {fmtMin(h.startMin)}–{fmtMin(h.endMin)}
                     {h.itemId ? '' : ' (global)'}
                   </li>

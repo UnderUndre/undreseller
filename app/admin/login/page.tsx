@@ -47,12 +47,12 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gray-950 p-4">
+    <main className="min-h-screen flex items-center justify-center bg-base-100 p-4">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-4 bg-gray-900/80 border border-gray-800 rounded-2xl p-6"
+        className="w-full max-w-sm space-y-4 bg-base-200/80 border border-base-300 rounded-2xl p-6"
       >
-        <h1 className="text-xl font-bold text-white text-center">Staff Sign-In</h1>
+        <h1 className="text-xl font-bold text-base-content text-center">Staff Sign-In</h1>
 
         <input
           type="email"
@@ -62,7 +62,7 @@ export default function AdminLoginPage() {
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white text-base"
+          className="w-full rounded-lg border border-base-300 bg-base-300 px-4 py-3 text-base-content text-base"
         />
         <input
           type="password"
@@ -71,7 +71,7 @@ export default function AdminLoginPage() {
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-3 text-white text-base"
+          className="w-full rounded-lg border border-base-300 bg-base-300 px-4 py-3 text-base-content text-base"
         />
 
         {errorMsg && (

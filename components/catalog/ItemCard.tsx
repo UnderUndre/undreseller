@@ -22,14 +22,14 @@ export function ItemCard({ item }: { item: CatalogItem }) {
   });
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900/80 p-6 flex flex-col justify-between shadow-lg hover:border-purple-500/50 transition">
+    <div className="rounded-xl border border-base-300 bg-base-200/80 p-6 flex flex-col justify-between shadow-lg hover:border-purple-500/50 transition">
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-semibold uppercase tracking-wider text-purple-400 bg-purple-900/60 px-2 py-0.5 rounded">
             {item.itemType}
           </span>
           {item.itemType === 'SERVICE' && item.durationMin && (
-            <span className="text-xs text-gray-400 font-mono">
+            <span className="text-xs text-base-content/60 font-mono">
               ⏱ {item.durationMin} min
             </span>
           )}
@@ -40,14 +40,14 @@ export function ItemCard({ item }: { item: CatalogItem }) {
           )}
         </div>
 
-        <h3 className="text-xl font-bold text-gray-100 mb-2">{item.title}</h3>
-        <p className="text-sm text-gray-400 mb-4 line-clamp-3">{item.description}</p>
+        <h3 className="text-xl font-bold text-base-content mb-2">{item.title}</h3>
+        <p className="text-sm text-base-content/60 mb-4 line-clamp-3">{item.description}</p>
       </div>
 
-      <div className="pt-4 border-t border-gray-800/80 mt-auto">
+      <div className="pt-4 border-t border-base-300/80 mt-auto">
         <div className="flex items-baseline justify-between mb-4">
           <div>
-            <span className="text-2xl font-extrabold text-white">{formattedPrice}</span>
+            <span className="text-2xl font-extrabold text-base-content">{formattedPrice}</span>
             {item.starsPrice && (
               <span className="ml-2 text-xs font-bold text-warning">
                 ⭐ {item.starsPrice.toLocaleString()} XTR

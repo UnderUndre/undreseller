@@ -190,14 +190,14 @@ export default function AdminCatalogPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 text-white pb-24">
-      <div className="flex justify-between items-center border-b border-gray-800 pb-4 mb-4">
+    <div className="max-w-3xl mx-auto px-4 py-6 text-base-content pb-24">
+      <div className="flex justify-between items-center border-b border-base-300 pb-4 mb-4">
         <div>
           <h1 className="text-xl font-extrabold tracking-tight">Catalog</h1>
-          <p className="text-xs text-gray-400 pt-1">Services, pricing and ordering (FR-436)</p>
+          <p className="text-xs text-base-content/60 pt-1">Services, pricing and ordering (FR-436)</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/" className="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors">
+          <Link href="/" className="text-xs bg-base-300 hover:bg-base-300 px-3 py-1.5 rounded-lg transition-colors">
             Public Site
           </Link>
           <button
@@ -223,24 +223,24 @@ export default function AdminCatalogPage() {
         </div>
       )}
       {notice && (
-        <div className="p-3 bg-gray-900 border border-gray-700 rounded-xl text-xs text-gray-300 mb-4">{notice}</div>
+        <div className="p-3 bg-base-200 border border-base-300 rounded-xl text-xs text-base-content/80 mb-4">{notice}</div>
       )}
 
       {loading ? (
-        <p className="text-sm text-gray-400">Loading…</p>
+        <p className="text-sm text-base-content/60">Loading…</p>
       ) : (
         <ul className="space-y-2">
           {services.map((s, i) => (
             <li
               key={s.id}
-              className="bg-gray-900 border border-gray-800 rounded-xl p-3 flex items-center gap-3"
+              className="bg-base-200 border border-base-300 rounded-xl p-3 flex items-center gap-3"
             >
               <div className="flex flex-col gap-1">
                 <button
                   aria-label={`Move ${s.title} up`}
                   disabled={i === 0}
                   onClick={() => void reorder(i, -1)}
-                  className="text-gray-400 hover:text-white disabled:opacity-30 text-xs px-1"
+                  className="text-base-content/60 hover:text-base-content disabled:opacity-30 text-xs px-1"
                 >
                   ▲
                 </button>
@@ -248,14 +248,14 @@ export default function AdminCatalogPage() {
                   aria-label={`Move ${s.title} down`}
                   disabled={i === services.length - 1}
                   onClick={() => void reorder(i, 1)}
-                  className="text-gray-400 hover:text-white disabled:opacity-30 text-xs px-1"
+                  className="text-base-content/60 hover:text-base-content disabled:opacity-30 text-xs px-1"
                 >
                   ▼
                 </button>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold truncate">{s.title}</p>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-base-content/60">
                   {(s.priceMinor / 100).toFixed(2)} · {s.durationMin} min
                   {s.requiresFullPrepayment ? ' · prepaid' : ''}
                 </p>
@@ -264,7 +264,7 @@ export default function AdminCatalogPage() {
                 onClick={() => void toggleActive(s)}
                 aria-pressed={s.isActive}
                 className={`relative w-11 h-6 rounded-full transition-colors ${
-                  s.isActive ? 'bg-purple-600' : 'bg-gray-700'
+                  s.isActive ? 'bg-purple-600' : 'bg-base-300'
                 }`}
               >
                 <span
@@ -275,7 +275,7 @@ export default function AdminCatalogPage() {
               </button>
             </li>
           ))}
-          {services.length === 0 && <li className="text-sm text-gray-400">No services yet.</li>}
+          {services.length === 0 && <li className="text-sm text-base-content/60">No services yet.</li>}
         </ul>
       )}
 
@@ -284,40 +284,40 @@ export default function AdminCatalogPage() {
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60" role="dialog" aria-modal="true">
           <form
             onSubmit={submitQuickCreate}
-            className="w-full max-w-3xl bg-gray-900 border-t border-gray-700 rounded-t-2xl p-4 space-y-3 max-h-[85vh] overflow-y-auto"
+            className="w-full max-w-3xl bg-base-200 border-t border-base-300 rounded-t-2xl p-4 space-y-3 max-h-[85vh] overflow-y-auto"
           >
             <div className="flex justify-between items-center">
               <h2 className="text-base font-bold">New Service</h2>
-              <button type="button" onClick={() => setSheetOpen(false)} className="text-xs text-gray-400 hover:text-white">
+              <button type="button" onClick={() => setSheetOpen(false)} className="text-xs text-base-content/60 hover:text-base-content">
                 Cancel
               </button>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Title *</label>
+              <label className="block text-xs font-medium text-base-content/60 mb-1">Title *</label>
               <input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+                className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
                 placeholder="Deep tissue massage"
               />
               {formErrors.title && <p className="text-xs text-error mt-1">{formErrors.title}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Price (minor units) *</label>
+              <label className="block text-xs font-medium text-base-content/60 mb-1">Price (minor units) *</label>
               <input
                 value={form.price}
                 onChange={(e) => setForm({ ...form, price: e.target.value })}
                 inputMode="numeric"
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+                className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
                 placeholder="5000 = 50.00"
               />
               {formErrors.price && <p className="text-xs text-error mt-1">{formErrors.price}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Duration (15-min steps) *</label>
+              <label className="block text-xs font-medium text-base-content/60 mb-1">Duration (15-min steps) *</label>
               <div className="flex flex-wrap gap-2">
                 {DURATION_OPTIONS.map((d) => (
                   <button
@@ -327,7 +327,7 @@ export default function AdminCatalogPage() {
                     className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
                       form.durationMin === d
                         ? 'bg-purple-600 border-purple-400 text-white'
-                        : 'bg-gray-800 border-gray-700 text-gray-400'
+                        : 'bg-base-300 border-base-300 text-base-content/60'
                     }`}
                   >
                     {d}m
@@ -338,11 +338,11 @@ export default function AdminCatalogPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Type *</label>
+              <label className="block text-xs font-medium text-base-content/60 mb-1">Type *</label>
               <select
                 value={form.itemType}
                 onChange={(e) => setForm({ ...form, itemType: e.target.value })}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+                className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
               >
                 <option value="SERVICE">Service</option>
               </select>
@@ -358,41 +358,41 @@ export default function AdminCatalogPage() {
             </button>
 
             {moreOpen && (
-              <div className="space-y-3 border-t border-gray-800 pt-3">
+              <div className="space-y-3 border-t border-base-300 pt-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Description</label>
+                  <label className="block text-xs font-medium text-base-content/60 mb-1">Description</label>
                   <textarea
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
                     rows={2}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+                    className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Buffer before (min)</label>
+                    <label className="block text-xs font-medium text-base-content/60 mb-1">Buffer before (min)</label>
                     <input
                       type="number"
                       min={0}
                       max={120}
                       value={form.bufferBeforeMin}
                       onChange={(e) => setForm({ ...form, bufferBeforeMin: Number(e.target.value) })}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+                      className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Buffer after (min)</label>
+                    <label className="block text-xs font-medium text-base-content/60 mb-1">Buffer after (min)</label>
                     <input
                       type="number"
                       min={0}
                       max={120}
                       value={form.bufferAfterMin}
                       onChange={(e) => setForm({ ...form, bufferAfterMin: Number(e.target.value) })}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+                      className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
                     />
                   </div>
                 </div>
-                <label className="flex items-center gap-2 text-sm text-gray-300">
+                <label className="flex items-center gap-2 text-sm text-base-content/80">
                   <input
                     type="checkbox"
                     checked={form.requiresFullPrepayment}

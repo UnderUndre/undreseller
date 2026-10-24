@@ -171,10 +171,10 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 text-white pb-24">
-      <div className="border-b border-gray-800 pb-4 mb-4">
+    <div className="max-w-3xl mx-auto px-4 py-6 text-base-content pb-24">
+      <div className="border-b border-base-300 pb-4 mb-4">
         <h1 className="text-xl font-extrabold tracking-tight">Settings</h1>
-        <p className="text-xs text-gray-400 pt-1">Shop foundation and operational parameters</p>
+        <p className="text-xs text-base-content/60 pt-1">Shop foundation and operational parameters</p>
       </div>
 
       {errorMsg && (
@@ -183,15 +183,15 @@ export default function AdminSettingsPage() {
         </div>
       )}
       {notice && (
-        <div className="p-3 bg-gray-900 border border-gray-700 rounded-xl text-xs text-gray-300 mb-4">{notice}</div>
+        <div className="p-3 bg-base-200 border border-base-300 rounded-xl text-xs text-base-content/80 mb-4">{notice}</div>
       )}
-      {loading && <p className="text-sm text-gray-400">Loading…</p>}
+      {loading && <p className="text-sm text-base-content/60">Loading…</p>}
 
       {!loading && isOwner && (
-        <section className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3 mb-4">
+        <section className="bg-base-200 border border-base-300 rounded-xl p-4 space-y-3 mb-4">
           <div className="flex justify-between items-center">
             <h2 className="text-sm font-bold">Foundation</h2>
-            <span className="text-[11px] text-gray-500 uppercase tracking-wide">Owner only</span>
+            <span className="text-[11px] text-base-content/50 uppercase tracking-wide">Owner only</span>
           </div>
 
           {settings.currency && settings.currencyConfirmed === false && (
@@ -208,22 +208,22 @@ export default function AdminSettingsPage() {
           )}
 
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Currency (ISO 4217)</label>
+            <label className="block text-xs font-medium text-base-content/60 mb-1">Currency (ISO 4217)</label>
             <input
               value={currency}
               onChange={(e) => setCurrency(e.target.value.toUpperCase())}
               maxLength={4}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+              className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
               placeholder="USD"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Time zone</label>
+            <label className="block text-xs font-medium text-base-content/60 mb-1">Time zone</label>
             <select
               value={timeZone}
               onChange={(e) => setTimeZone(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+              className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
             >
               {TIMEZONES.map((tz) => (
                 <option key={tz} value={tz}>
@@ -234,11 +234,11 @@ export default function AdminSettingsPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Default locale</label>
+            <label className="block text-xs font-medium text-base-content/60 mb-1">Default locale</label>
             <select
               value={defaultLocale}
               onChange={(e) => setDefaultLocale(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+              className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
             >
               {LOCALES.map((l) => (
                 <option key={l} value={l}>
@@ -249,7 +249,7 @@ export default function AdminSettingsPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Enabled locales</label>
+            <label className="block text-xs font-medium text-base-content/60 mb-1">Enabled locales</label>
             <div className="flex gap-2">
               {LOCALES.map((l) => {
                 const active = enabledLocales.includes(l);
@@ -266,7 +266,7 @@ export default function AdminSettingsPage() {
                     className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
                       active
                         ? 'bg-purple-600 border-purple-400 text-white'
-                        : 'bg-gray-800 border-gray-700 text-gray-400'
+                        : 'bg-base-300 border-base-300 text-base-content/60'
                     }`}
                   >
                     {l}
@@ -287,25 +287,25 @@ export default function AdminSettingsPage() {
       )}
 
       {!loading && (
-        <section className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+        <section className="bg-base-200 border border-base-300 rounded-xl p-4 space-y-3">
           <div className="flex justify-between items-center">
             <h2 className="text-sm font-bold">Operational</h2>
-            <span className="text-[11px] text-gray-500 uppercase tracking-wide">Operator +</span>
+            <span className="text-[11px] text-base-content/50 uppercase tracking-wide">Operator +</span>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Confirmation notice (hours before)</label>
+            <label className="block text-xs font-medium text-base-content/60 mb-1">Confirmation notice (hours before)</label>
             <input
               type="number"
               min={1}
               max={168}
               value={confirmationNoticeHours}
               onChange={(e) => setConfirmationNoticeHours(Number(e.target.value))}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+              className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
             />
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-gray-300">
+          <label className="flex items-center gap-2 text-sm text-base-content/80">
             <input
               type="checkbox"
               checked={requireStaffApprovalForInCall}
@@ -316,7 +316,7 @@ export default function AdminSettingsPage() {
           </label>
 
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">Slot grid step (FR-442)</label>
+            <label className="block text-xs font-medium text-base-content/60 mb-1">Slot grid step (FR-442)</label>
             <div className="flex gap-2">
               {[15, 30].map((v) => (
                 <button
@@ -327,7 +327,7 @@ export default function AdminSettingsPage() {
                   className={`text-xs px-4 py-1.5 rounded-lg border transition-colors ${
                     slotGridStepMin === v
                       ? 'bg-purple-600 border-purple-400 text-white'
-                      : 'bg-gray-800 border-gray-700 text-gray-400'
+                      : 'bg-base-300 border-base-300 text-base-content/60'
                   }`}
                 >
                   {v} min

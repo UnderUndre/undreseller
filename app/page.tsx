@@ -32,20 +32,20 @@ export default async function HomePage() {
   const publicAddress = settings?.businessServiceAddressPublic ? settings.businessServiceAddress : null;
 
   return (
-    <div className="space-y-16 pb-24 text-white">
+    <div className="space-y-16 pb-24 text-base-content">
       {/* Business Branding Hero */}
       <div className="text-center max-w-3xl mx-auto pt-8 pb-4 space-y-4">
         {settings?.logoUrl && (
           <img
             src={settings.logoUrl}
             alt={businessName}
-            className="w-20 h-20 mx-auto rounded-2xl object-cover mb-2 border border-gray-800 shadow-md"
+            className="w-20 h-20 mx-auto rounded-2xl object-cover mb-2 border border-base-300 shadow-md"
           />
         )}
         <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight">
           {businessName}
         </h1>
-        <p className="text-base sm:text-lg text-gray-400 max-w-xl mx-auto">
+        <p className="text-base sm:text-lg text-base-content/60 max-w-xl mx-auto">
           {businessDescription}
         </p>
 
@@ -59,12 +59,12 @@ export default async function HomePage() {
       {/* Bookable Services Section (003.1 Booking-First MVP) */}
       {services.length > 0 && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+          <div className="flex items-center justify-between border-b border-base-300 pb-3">
             <div>
               <h2 className="text-2xl font-bold tracking-tight">Services & Appointments</h2>
-              <p className="text-xs text-gray-400 pt-0.5">Choose a service to schedule a visit or outcall</p>
+              <p className="text-xs text-base-content/60 pt-0.5">Choose a service to schedule a visit or outcall</p>
             </div>
-            <span className="text-xs text-gray-400 font-mono bg-gray-900 px-2.5 py-1 rounded-full border border-gray-800">
+            <span className="text-xs text-base-content/60 font-mono bg-base-200 px-2.5 py-1 rounded-full border border-base-300">
               {services.length} offered
             </span>
           </div>
@@ -73,18 +73,18 @@ export default async function HomePage() {
             {services.map((svc) => (
               <div
                 key={svc.id}
-                className="bg-gray-900/50 border border-gray-800 hover:border-purple-500/50 transition-all rounded-2xl p-6 flex flex-col justify-between"
+                className="bg-base-200/50 border border-base-300 hover:border-purple-500/50 transition-all rounded-2xl p-6 flex flex-col justify-between"
               >
                 <div className="space-y-3">
                   <div className="flex justify-between items-start gap-2">
                     <h3 className="font-semibold text-lg">{svc.title}</h3>
-                    <span className="text-xs bg-gray-800 text-gray-300 px-2 py-0.5 rounded font-mono">
+                    <span className="text-xs bg-base-300 text-base-content/80 px-2 py-0.5 rounded font-mono">
                       {svc.durationMin}m
                     </span>
                   </div>
 
                   {svc.description && (
-                    <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed">
+                    <p className="text-xs text-base-content/60 line-clamp-2 leading-relaxed">
                       {svc.description}
                     </p>
                   )}
@@ -120,9 +120,9 @@ export default async function HomePage() {
       {/* Featured Professionals Team Section (US12) */}
       {profiles.length > 0 && (
         <div className="space-y-6">
-          <div className="border-b border-gray-800 pb-3">
+          <div className="border-b border-base-300 pb-3">
             <h2 className="text-2xl font-bold tracking-tight">Our Specialists</h2>
-            <p className="text-xs text-gray-400 pt-0.5">Explore individual profiles and portfolios</p>
+            <p className="text-xs text-base-content/60 pt-0.5">Explore individual profiles and portfolios</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
@@ -130,7 +130,7 @@ export default async function HomePage() {
               <Link
                 key={p.id}
                 href={`/professionals/${p.slug}`}
-                className="group bg-gray-900/40 border border-gray-800 hover:border-purple-500/50 rounded-2xl p-6 transition-all block text-center space-y-3"
+                className="group bg-base-200/40 border border-base-300 hover:border-purple-500/50 rounded-2xl p-6 transition-all block text-center space-y-3"
               >
                 {p.photoUrl ? (
                   <img
@@ -148,7 +148,7 @@ export default async function HomePage() {
                     {p.staffMember.displayName}
                   </h4>
                   {p.headline && (
-                    <p className="text-xs text-gray-400 pt-1 line-clamp-1">{p.headline}</p>
+                    <p className="text-xs text-base-content/60 pt-1 line-clamp-1">{p.headline}</p>
                   )}
                 </div>
                 <span className="inline-block text-xs text-purple-400 font-medium pt-1">
@@ -164,7 +164,7 @@ export default async function HomePage() {
       <CartDrawer items={items as CatalogItem[]} />
 
       {items.length > 0 && (
-        <div className="space-y-6 pt-6 border-t border-gray-800/80">
+        <div className="space-y-6 pt-6 border-t border-base-300/80">
           <h2 className="text-xl font-bold tracking-tight">Store Catalog</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {items.map((item) => (
