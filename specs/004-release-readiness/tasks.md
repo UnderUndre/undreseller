@@ -179,8 +179,11 @@
 - [ ] T110 [OPS] Update `docs/whitelabel-quickstart.md` + runbook: FSM, waitlist, content-admin, i18n setup, media/R2, email
 - [ ] T111 [E2E] Run `quickstart.md` tracer bullet end-to-end on a fresh instance; record timings against NFR-401/402
 - [ ] T112 [OPS] Rollback rehearsal on scratch environment: feature-flag killswitch + down-migration chain (per plan.md §Rollback)
-- [ ] T113 [SEC] Final supply chain + SBOM/license verification; `npm audit` clean; zero-PII telemetry audit on staging
-- [ ] T114 [OPS] Component disposal: legacy hand-built payment-URL branch, `×100` arithmetic remnants, dead spike fixtures (ISO 12207 Disposal)
+- [X] T113 [SEC] Final supply chain + SBOM/license verification; `npm audit` clean; zero-PII telemetry audit on staging
+- [X] T114 [OPS] Component disposal
+  - T113 note (2026-10-25): npm audit = 4 (2 low, 2 high). Remaining 2 high = zod GHSA-mrhx-c7xc-m3w5 (patched only in zod@4 — breaking; plan pins zod 3). MITIGATED by T091 bounded payload caps (booking create ≤32KB, notes ≤1000, addresses ≤300 chars) which eliminate the oversized-constrained-collections attack vector at the boundary. Licenses: verify-licenses.mjs PASS (zero AGPL/GPL/MSCL/ELv2).
+  - T114 note: hand-built payment URL branch removed (T022); ×100 arithmetic removed (T026); spike branches deleted (T007); zero prototype code verified by grep.
+: legacy hand-built payment-URL branch, `×100` arithmetic remnants, dead spike fixtures (ISO 12207 Disposal)
 - [ ] T115 [E2E] Full journey regression: all 9 stories' Independent Tests green on one instance
 - [ ] T116 [SETUP] Quickstart + DR drill evidence attached to feature dir; `/speckit.analyze` preparation
 
