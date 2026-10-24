@@ -28,6 +28,10 @@ export interface ServiceSummary {
   outCallTravelAfterMin: number;
   cancellationCutoffHours: number;
   isActive: boolean;
+  /** 004 US9 additions */
+  currency: string;
+  sortOrder: number;
+  requiresFullPrepayment: boolean;
   inCallPricing?: ServicePriceBreakdown;
   outCallPricing?: ServicePriceBreakdown;
 }
@@ -49,6 +53,7 @@ export interface CreateServiceInput {
   outCallTravelAfterMin?: number;
   cancellationCutoffHours?: number;
   isActive?: boolean;
+  requiresFullPrepayment?: boolean;
 }
 
 export interface UpdateServiceInput {
@@ -66,6 +71,8 @@ export interface UpdateServiceInput {
   outCallTravelAfterMin?: number;
   cancellationCutoffHours?: number;
   isActive?: boolean;
+  requiresFullPrepayment?: boolean;
+  sortOrder?: number;
 }
 
 export async function listServices(options?: { activeOnly?: boolean }): Promise<ServiceSummary[]> {
@@ -77,7 +84,7 @@ export async function listServices(options?: { activeOnly?: boolean }): Promise<
       itemType: 'SERVICE',
       ...(options?.activeOnly ? { isActive: true } : {}),
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
   });
 
   return items.map((item) => {
@@ -105,6 +112,9 @@ export async function listServices(options?: { activeOnly?: boolean }): Promise<
       outCallTravelAfterMin: item.outCallTravelAfterMin,
       cancellationCutoffHours: item.cancellationCutoffHours,
       isActive: item.isActive,
+      currency: item.currency,
+      sortOrder: item.sortOrder,
+      requiresFullPrepayment: item.requiresFullPrepayment,
       inCallPricing,
       outCallPricing,
     };
@@ -138,6 +148,9 @@ export async function getServiceById(id: string): Promise<ServiceSummary | null>
     outCallTravelAfterMin: item.outCallTravelAfterMin,
     cancellationCutoffHours: item.cancellationCutoffHours,
     isActive: item.isActive,
+    currency: item.currency,
+    sortOrder: item.sortOrder,
+    requiresFullPrepayment: item.requiresFullPrepayment,
     inCallPricing: item.inCallEnabled ? resolveServicePrice(item, 'IN_CALL', currency) : undefined,
     outCallPricing: item.outCallEnabled ? resolveServicePrice(item, 'OUT_CALL', currency) : undefined,
   };
@@ -193,6 +206,7 @@ export async function createService(
       outCallTravelAfterMin: Math.max(0, input.outCallTravelAfterMin || 0),
       cancellationCutoffHours: Math.max(1, input.cancellationCutoffHours || 3),
       isActive: input.isActive ?? true,
+      requiresFullPrepayment: input.requiresFullPrepayment ?? false,
     },
   });
 
@@ -263,6 +277,10 @@ export async function updateService(
         ? { cancellationCutoffHours: Math.max(1, input.cancellationCutoffHours) }
         : {}),
       ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+      ...(input.requiresFullPrepayment !== undefined
+        ? { requiresFullPrepayment: input.requiresFullPrepayment }
+        : {}),
+      ...(input.sortOrder !== undefined ? { sortOrder: Math.max(0, input.sortOrder) } : {}),
     },
   });
 

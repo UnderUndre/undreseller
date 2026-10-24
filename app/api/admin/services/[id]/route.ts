@@ -1,25 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { authenticateStaff } from '@/lib/security/staffAuth';
 import { getServiceById, updateService } from '@/lib/kernel/serviceService';
 import { logger } from '@/lib/telemetry/logger';
+import { adminServiceUpdateSchema } from '@/lib/validation/adminSchemas';
 
-const updateServiceSchema = z.object({
-  title: z.string().trim().min(2).max(120).optional(),
-  description: z.string().trim().max(1000).optional(),
-  durationMin: z.number().int().min(15).max(480).optional(),
-  priceMinor: z.number().int().min(0).optional(),
-  inCallEnabled: z.boolean().optional(),
-  outCallEnabled: z.boolean().optional(),
-  outCallPriceMinor: z.number().int().min(0).nullable().optional(),
-  outCallTravelFeeMinor: z.number().int().min(0).optional(),
-  bufferBeforeMin: z.number().int().min(0).max(120).optional(),
-  bufferAfterMin: z.number().int().min(0).max(120).optional(),
-  outCallTravelBeforeMin: z.number().int().min(0).max(120).optional(),
-  outCallTravelAfterMin: z.number().int().min(0).max(120).optional(),
-  cancellationCutoffHours: z.number().int().min(1).max(72).optional(),
-  isActive: z.boolean().optional(),
-});
+const updateServiceSchema = adminServiceUpdateSchema;
 
 export async function GET(
   req: NextRequest,
