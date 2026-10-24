@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTelegram } from '../tma/TelegramProvider';
-import type { AvailableSlot } from '@/lib/booking/windows';
+import type { AvailableSlot, UnavailableSlot } from '@/lib/booking/windows';
 
 interface BookingSuccessState {
   bookingId: string;
@@ -55,6 +55,7 @@ export function SlotGrid({
   });
 
   const [slots, setSlots] = useState<AvailableSlot[]>([]);
+  const [unavailable, setUnavailable] = useState<UnavailableSlot[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<AvailableSlot | null>(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -93,6 +94,7 @@ export function SlotGrid({
           serviceId: service.id,
           date: selectedDate,
           mode,
+          includeUnavailable: '1',
           ...(performerSlug ? { professionalId: performerSlug } : {}),
         });
         const res = await fetch(`/api/booking/slots?${query.toString()}`);
@@ -103,6 +105,7 @@ export function SlotGrid({
         const data = await res.json();
         if (active) {
           setSlots(data.slots || []);
+          setUnavailable(data.unavailable || []);
         }
       } catch (err: unknown) {
         if (active) {
@@ -350,6 +353,15 @@ export function SlotGrid({
             onChange={(e) => setSelectedDate(e.target.value)}
             className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 font-mono"
           />
+          {/* T033: locale word-month label (Intl, no hand-rolled month names) */}
+          <p className="text-xs text-gray-500" aria-live="polite">
+            {new Intl.DateTimeFormat(undefined, {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric',
+            }).format(new Date(`${selectedDate}T12:00:00`))}
+          </p>
         </div>
 
         {/* Slots Grid */}
@@ -364,6 +376,14 @@ export function SlotGrid({
           {slots.length === 0 && !loadingSlots ? (
             <div className="text-center py-8 border border-dashed border-gray-800 rounded-xl">
               <p className="text-xs text-gray-400">No slots available for this date. Try another date.</p>
+              {unavailable.length > 0 && (
+                <p className="text-[11px] text-gray-500 mt-2 px-4">
+                  {unavailable.some((u) => u.reason === 'booked') &&
+                    'Some times are already booked. '}
+                  {unavailable.some((u) => u.reason === 'break') &&
+                    'Some times fall in a service break.'}
+                </p>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-56 overflow-y-auto pr-1">
