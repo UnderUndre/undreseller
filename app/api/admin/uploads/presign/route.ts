@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { authenticateStaff } from '@/lib/security/staffAuth';
 import { emitAuditEvent } from '@/lib/security/staffAuth';
 import { createPresignedPut, PresignValidationError } from '@/lib/uploads/presign';
+import { enforceRateLimit, rateLimitKey } from '@/lib/security/rateLimit';
 import { logger } from '@/lib/telemetry/logger';
 
 const presignSchema = z.object({
@@ -18,29 +19,16 @@ const presignSchema = z.object({
   extension: z.string().max(5).optional(),
 });
 
-// Simple per-actor rate limit: 30 presigns / 5 min (bounded map, small staff count)
-const RATE_LIMIT_MAX = 30;
-const RATE_WINDOW_MS = 5 * 60 * 1000;
-const rateBuckets = new Map<string, number[]>();
-
-function rateLimit(actorId: string): boolean {
-  const now = Date.now();
-  const bucket = (rateBuckets.get(actorId) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
-  if (bucket.length >= RATE_LIMIT_MAX) {
-    return false;
-  }
-  bucket.push(now);
-  rateBuckets.set(actorId, bucket);
-  return true;
-}
-
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const auth = await authenticateStaff(req, 'OPERATOR');
   if (!auth.authenticated || !auth.actor) {
     return auth.errorResponse ?? NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!rateLimit(auth.actor.actorId)) {
+  // T091 (FR-427): shared sliding-window limiter, 30 presigns / 5 min per actor.
+  if (
+    !enforceRateLimit(rateLimitKey('presign', auth.actor.actorId), 30, 5 * 60 * 1000).allowed
+  ) {
     return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 });
   }
 
