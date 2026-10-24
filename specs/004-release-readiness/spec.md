@@ -37,6 +37,10 @@
 - Q: Where does the content-admin UI ship, and in what order? → A: **In this spec (004)** as User Story 9 (P1) — the flagship instance and every client fork need non-developer content entry (today only `/admin/bookings` exists; content is seed/API-only). Sequencing is **research-first**: an external best-practices research prompt (`ai-research-prompt-3-content-admin.md`, this directory) runs before `/speckit.plan` refines the UX requirements.
 - Q: Landing/domain architecture for the flagship (affects FR-011-style deep links)? → A: Single root domain — `underundre.com` greets visitors with the bureau landing (served by the `undrllanding` repo), the flagship fork instance lives at `shop.underundre.com`. Recorded in `undrllanding/specs/001-init-separate-landings` §6.3.
 
+### Session 2026-10-24 — Content-Admin Research Integrated
+
+- Research artifact `content-admin-research.md` landed and encoded into US9 / FR-436–443. Decisions taken from it: mobile-first quick-create (≤4 required fields, ≤2 taps depth); one-tap active toggle; client-side image compression + presigned direct-to-object-storage upload (server never touches image bytes — OOM guard; Cloudflare R2 [COST]); soft delete with booking snapshots preserved; 15-minute duration quantum via selector; live edits with explicit save (no draft workflow); local draft persistence across app switches; immutable slugs or 301 redirects; OPERATOR excluded from system-foundation settings (currency/timezone/language/payouts — OWNER-only). Deferred: bulk ops, drag-and-drop, draft staging, cropper, AI descriptions, multilanguage content fields.
+
 ## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 — Trustworthy Payments & Booking Integrity (Priority: P1)
@@ -185,19 +189,21 @@ Close the audit's P1 debt class before exposing the product publicly: audit-log 
 
 ### User Story 9 — Content Administration UI (Priority: P1)
 
-The owner/operator manages storefront content — services, products, professional profiles and portfolio, and business settings — through an admin web UI instead of raw API calls. Today only the bookings screen exists; content entry is seed/API-only, which blocks the flagship instance (and every client fork) from being filled by a non-developer.
+The owner/operator manages storefront content — services, products, professional profiles and portfolio, and business settings — through a **mobile-first admin UI** instead of raw API calls. Today only the bookings screen exists; content entry is seed/API-only, which blocks the flagship instance (and every client fork) from being filled by a non-developer. The bar, per the content-admin research (`content-admin-research.md`, this directory): an owner on a phone sets up a working storefront — first service with price/duration/master/photo, profile, business basics — **within 10 minutes of first login**, with no screen deeper than 2 taps and no wizard longer than one sheet.
 
-**Why this priority**: The flagship launch and each white-label fork start with empty content; without a UI the only content path is developer-assisted. Detailed UX requirements are refined after the external best-practices research lands in this directory (see Clarifications — Scope Additions).
+**Why this priority**: The flagship launch and each white-label fork start with empty content; without a UI the only content path is developer-assisted. Competitor complaint mining shows "couldn't set up services from my phone" is a top reason SMBs abandon booking SaaS — the owner never reaches the booking flow this spec polishes elsewhere.
 
-**Independent Test**: Log in as OWNER; create a service (price, duration, location modes, image) and a product (stock); publish a professional profile with portfolio items; edit business settings — each change appears on the storefront without a redeploy. Log in as PERFORMER and verify catalog management is inaccessible.
+**Independent Test**: Log in as OWNER on a phone-sized viewport; create a service via the quick-create sheet (4 required fields: title, price, duration, master/all) and a product (stock); publish a professional profile with photo; edit business settings — each change appears on the storefront without a redeploy. Log in as PERFORMER and verify catalog management is inaccessible.
 
 **Acceptance Scenarios**:
 
-1. **Given** an OWNER/OPERATOR creating or editing a catalog entry, **When** submitting, **Then** validation matches the admin API contracts (prices in minor units, duration for services, stock for products) and the storefront reflects the change immediately via active/inactive gating.
-2. **Given** a professional profile, **When** it is unpublished or deactivated, **Then** its public page returns 404 and disappears from listings; portfolio items follow the same publication state.
-3. **Given** business settings (branding, contact links, default language, IANA timezone, currency), **When** edited, **Then** storefront, emails, and bots reflect them, and the currency-confirmation gate for live prices is respected.
-4. **Given** any content mutation, **When** performed, **Then** it is audit-logged and role-bounded (OWNER/OPERATOR manage content; PERFORMER cannot).
-5. **Given** an image upload for an item or profile, **When** the file type or size is invalid, **Then** it is rejected with a clear field-level error.
+1. **Given** an OWNER/OPERATOR creating a catalog entry via the quick-create sheet, **When** submitting, **Then** validation matches the admin API contracts (prices in minor units, duration for services, stock for products), advanced options (buffers, travel, location modes) are collapsed behind "more", and the storefront reflects the change immediately via active/inactive gating.
+2. **Given** the catalog list, **When** the owner taps an entry's active toggle, **Then** the item hides from the storefront in one tap, without entering the edit form.
+3. **Given** an image upload for an item or profile from a phone (HEIC/high-megapixel typical), **When** uploading, **Then** the image is resized/compressed client-side (WebP, ≤ ~200 KB) and uploaded directly to object storage via a presigned URL — the server never buffers or transforms image bytes (RAM ceiling), and invalid types/sizes are rejected with a clear field-level error.
+4. **Given** a professional profile, **When** it is unpublished or deactivated, **Then** its public page returns 404 and disappears from listings; portfolio items follow the same publication state. Its slug either never changes after creation, or a permanent redirect (301) is recorded from the old slug.
+5. **Given** business settings, **When** edited, **Then** storefront, emails, and bots reflect them; system-foundation settings (currency, timezone, default language, payout references) are OWNER-only, while OPERATOR manages operational content (catalog, schedules, profiles).
+6. **Given** any content mutation, **When** performed, **Then** it is audit-logged and role-bounded; edits apply live (no draft workflow) but require an explicit save action — no auto-save on blur for price fields.
+7. **Given** the owner switches apps mid-form on a phone, **When** returning, **Then** unsaved form state is still present (local draft persistence).
 
 ---
 
@@ -289,9 +295,14 @@ The product's visual language derives entirely from the shared `@underundre/unde
 - **FR-428**: Audit free-text fields MUST be PII-redacted before persistence, and service address snapshots MUST be included in scheduled retention purges consistent with other customer data.
 - **FR-429**: Destructive staff actions in the staff bot MUST require an explicit confirmation step, and customer notification on rejection MUST follow an owner-configurable policy (auto-message / alternative slot offer / manual follow-up).
 - **FR-435**: All booking, payment, and waitlist business operations MUST be exposed through internal application services with typed contracts — HTTP handlers, bots, and future API/MCP surfaces are thin controllers over these services, so adding an external surface never requires refactoring business logic.
-- **FR-436**: OWNER/OPERATOR MUST be able to manage catalog entries (services and products) through an admin UI — create, edit, deactivate (hard delete prohibited for booking-referenced entries), image, price in minor units, currency, duration and location modes for services, stock for products — with validation parity with the admin API contracts.
-- **FR-437**: The admin UI MUST manage professional profiles and portfolio publication (publish/unpublish, portfolio items) with profile-ownership rules; unpublished profiles return 404 on public pages.
-- **FR-438**: The admin UI MUST expose business settings editing (branding, contact links, default language, IANA timezone, currency confirmation gate for live prices); every content mutation MUST be audit-logged and role-bounded per the three-role RBAC.
+- **FR-436**: OWNER/OPERATOR MUST be able to manage catalog entries (services and products) through an admin UI — create, edit, deactivate/archive (soft delete; hard delete prohibited for booking-referenced entries), image, price in minor units, currency, duration and location modes for services, stock for products — with validation parity with the admin API contracts. Archived entries preserve booking snapshots (price/title/duration captured at booking time per 003 lineage).
+- **FR-437**: The admin UI MUST manage professional profiles and portfolio publication (publish/unpublish, portfolio items) with profile-ownership rules; unpublished profiles return 404 on public pages. Slugs are immutable after creation, or slug changes MUST record a permanent redirect (301) from the old slug.
+- **FR-438**: The admin UI MUST expose business settings editing split by role: system-foundation settings (currency, IANA timezone, default language, payout references, instance rename) are OWNER-only; OPERATOR manages operational content (catalog, schedules, professional profiles). Every content mutation MUST be audit-logged.
+- **FR-439**: The admin UI MUST provide a mobile-first quick-create sheet for services with at most 4 required fields (title, price, duration, master/all-masters) and advanced options collapsed behind an explicit "more" control; no admin flow may exceed 2 taps of depth from the admin root for create/toggle operations.
+- **FR-440**: The catalog list MUST expose a one-tap active/inactive toggle per entry that hides the item from the storefront without opening the edit form.
+- **FR-441**: Image uploads MUST be resized and compressed client-side (target ≤ ~200 KB WebP) and uploaded directly to S3-compatible object storage via presigned URLs (Cloudflare R2 recommended — zero egress, S3-compatible [COST]); the application server MUST NOT buffer or transform image bytes; local-disk media storage is prohibited.
+- **FR-442**: Service durations and buffers MUST be quantized to 15-minute steps and entered via selector (no free-form numeric input); the slot grid step (15/30 minutes) MUST remain a divisor-compatible instance setting — arbitrary durations that tear holes in the slot grid are rejected at validation.
+- **FR-443**: Content edits apply live (no draft/publish workflow) with an explicit save action for destructive or price-critical fields (no auto-save on blur); unsaved form state MUST persist locally across mobile app switches.
 
 ### Non-Functional Requirements (NFR) _(ISO/IEC/IEEE 29148:2018)_
 
@@ -341,6 +352,7 @@ The product's visual language derives entirely from the shared `@underundre/unde
 
 ## Out of Scope
 
+- Content-admin advanced patterns (per `content-admin-research.md`): bulk operations (e.g., raise all prices 10%), drag-and-drop reordering (arrow controls only), draft/staging environment for the storefront, built-in image cropper, AI-generated content descriptions, multilanguage content fields (content stays authored in the instance's single default language — FR-414).
 - MCP server, external agent APIs, and webhooks/OpenAPI surface (post-release; REST first per mcp-server-research).
 - Any LLM-powered feature (receptionist, NL parsing, content generation) — post-launch behind a cloud-provider abstraction only; local LLM/embeddings are architecturally forbidden on the ≤500 MB instance.
 - No-show risk prediction (requires ≥ ~1000 bookings of historical data).
