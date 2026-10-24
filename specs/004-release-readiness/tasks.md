@@ -177,15 +177,23 @@
 ## Phase 12: Polish & Cross-Cutting
 
 - [ ] T110 [OPS] Update `docs/whitelabel-quickstart.md` + runbook: FSM, waitlist, content-admin, i18n setup, media/R2, email
-- [ ] T111 [E2E] Run `quickstart.md` tracer bullet end-to-end on a fresh instance; record timings against NFR-401/402
-- [ ] T112 [OPS] Rollback rehearsal on scratch environment: feature-flag killswitch + down-migration chain (per plan.md §Rollback)
+- [~] T111 [E2E] Run `quickstart.md` tracer bullet end-to-end on a fresh instance; record timings against NFR-401/402
+- [~] T112 [OPS] Rollback rehearsal on scratch environment: feature-flag killswitch + down-migration chain (per plan.md §Rollback)
 - [X] T113 [SEC] Final supply chain + SBOM/license verification; `npm audit` clean; zero-PII telemetry audit on staging
 - [X] T114 [OPS] Component disposal
   - T113 note (2026-10-25): npm audit = 4 (2 low, 2 high). Remaining 2 high = zod GHSA-mrhx-c7xc-m3w5 (patched only in zod@4 — breaking; plan pins zod 3). MITIGATED by T091 bounded payload caps (booking create ≤32KB, notes ≤1000, addresses ≤300 chars) which eliminate the oversized-constrained-collections attack vector at the boundary. Licenses: verify-licenses.mjs PASS (zero AGPL/GPL/MSCL/ELv2).
   - T114 note: hand-built payment URL branch removed (T022); ×100 arithmetic removed (T026); spike branches deleted (T007); zero prototype code verified by grep.
 : legacy hand-built payment-URL branch, `×100` arithmetic remnants, dead spike fixtures (ISO 12207 Disposal)
-- [ ] T115 [E2E] Full journey regression: all 9 stories' Independent Tests green on one instance
+- [~] T115 [E2E] Full journey regression: all 9 stories' Independent Tests green on one instance
 - [ ] T116 [SETUP] Quickstart + DR drill evidence attached to feature dir; `/speckit.analyze` preparation
+
+
+### Phase 12 execution status (2026-10-25)
+
+- **T110 [X]** — quickstart/runbook updated.
+- **T111 [~] BLOCKED (environment)** — quickstart tracer bullet on a fresh instance requires the staging VPS (no Postgres client/Docker on the dev box). All unit-level prerequisites are green: gates pass, migrations deploy cleanly against the local Postgres.
+- **T112 [~] BLOCKED-PARTIAL (environment)** — killswitch semantics verified by tests (feature-flags.test.ts: unset/false restores legacy paths); down.sql additive-only verified by db-gist-and-migration test. The actual scratch-env rehearsal (flag flip + down-migration on a deployed copy) needs the staging environment. Evidence to attach on staging: flag-flip checklist + `prisma migrate resolve --rolled-back` output.
+- **T115 [~] BLOCKED-PARTIAL (environment)** — unit-level full regression GREEN: 48 suites / 357 tests + i18n gate PASS + design-token gate PASS + license gate PASS. Playwright journeys (tests/e2e/booking-flow.spec.ts, commerce-flow.spec.ts) require a running instance — schedule for staging acceptance.
 
 ---
 
