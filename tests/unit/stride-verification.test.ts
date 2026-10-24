@@ -59,7 +59,7 @@ function sign(payload: Record<string, unknown>): string {
   return createHmac('sha512', SECRET).update(JSON.stringify(sorted)).digest('hex');
 }
 
-const IPN_PAYLOAD = {
+const IPN_PAYLOAD: Record<string, unknown> = {
   payment_id: 777,
   payment_status: 'finished',
   pay_address: 'TRX-ADDR',
@@ -221,8 +221,8 @@ describe('STRIDE E — RBAC split probes (foundation vs operational settings)', 
     const operatorAttempt = partitionSettingsBody({ currency: 'JPY', slotGridStepMin: 15 });
     // The settings route enforces OWNER on non-empty `foundation`; here we assert
     // the partition primitive cannot be fooled into calling currency operational.
-    expect(operatorAttempt.foundation.currency).toBe('JPY');
-    expect(operatorAttempt.operational.currency).toBeUndefined();
+    expect((operatorAttempt.foundation as Record<string, unknown>).currency).toBe('JPY');
+    expect((operatorAttempt.operational as Record<string, unknown>).currency).toBeUndefined();
   });
 });
 
