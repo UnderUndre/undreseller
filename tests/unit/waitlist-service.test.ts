@@ -1,5 +1,3 @@
-import { prisma } from '@/lib/db/prisma';
-
 jest.mock('@/lib/db/prisma', () => ({
   prisma: {
     item: { findFirst: jest.fn() },
@@ -23,6 +21,8 @@ jest.mock('@/lib/telemetry/logger', () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
+import { prisma } from '@/lib/db/prisma';
+
 import {
   claimOffer,
   expireStaleOffers,
@@ -35,7 +35,6 @@ import {
   MAX_OFFERS_PER_USER_PER_DAY,
   OFFER_TTL_MS,
 } from '@/lib/waitlist/waitlistService';
-import { prisma } from '@/lib/db/prisma';
 
 const baseWindow = {
   windowStartAt: new Date('2026-11-01T00:00:00Z'),
@@ -126,10 +125,12 @@ describe('Waitlist Service (T070, FR-419/420/433)', () => {
       { id: 'e-2', customerTgId: 'tg-2', customerContact: null },
     ]);
     // tg-1 was offered 2h ago
-    (prisma.waitlistOffer.findMany as jest.Mock).mockImplementation((({ where }: { where: { waitlistEntry: { customerTgId: string } } }) =>
-      where.waitlistEntry.customerTgId === 'tg-1'
-        ? [{ sentAt: new Date(Date.now() - 2 * 60 * 60 * 1000) }]
-        : []) as unknown);
+    (prisma.waitlistOffer.findMany as jest.Mock).mockImplementation(
+      (args: { where: { waitlistEntry: { customerTgId: string } } }) =>
+        args.where.waitlistEntry.customerTgId === 'tg-1'
+          ? [{ sentAt: new Date(Date.now() - 2 * 60 * 60 * 1000) }]
+          : []
+    );
 
     const { entries } = await fanoutForSlot({ slotReservationId: 'res-1' });
     expect(entries.map((e) => e.customerTgId)).toEqual(['tg-2']);

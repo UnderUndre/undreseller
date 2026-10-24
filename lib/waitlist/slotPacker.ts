@@ -58,8 +58,8 @@ export function packAnyAvailable(
     if (aTime !== bTime) return aTime - bTime;
 
     // Tie: prefer the slot that doesn't fragment (gap ≤ shortest service)
-    const aGap = (a as PackableSlot).gapMin ?? 0;
-    const bGap = (b as PackableSlot).gapMin ?? 0;
+    const aGap = (a as { gapMin?: number }).gapMin ?? 0;
+    const bGap = (b as { gapMin?: number }).gapMin ?? 0;
     const aFrag = aGap > ctx.shortestServiceMin ? 1 : 0;
     const bFrag = bGap > ctx.shortestServiceMin ? 1 : 0;
     return aFrag - bFrag;

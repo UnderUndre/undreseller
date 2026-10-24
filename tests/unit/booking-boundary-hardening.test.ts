@@ -8,8 +8,16 @@
  */
 
 jest.mock('@/lib/kernel/bookingService', () => ({
-  createBooking: jest.fn().mockResolvedValue({ id: 'bk-1', status: 'HELD' }),
+  createBooking: jest.fn().mockResolvedValue({ id: 'bk-1', status: 'HELD', bookingId: 'bk-1' }),
   SlotConflictError: class SlotConflictError extends Error {},
+}));
+
+jest.mock('@/lib/kernel/customFieldService', () => ({
+  validateAnswersForService: jest.fn().mockResolvedValue({}),
+  persistBookingAnswers: jest.fn().mockResolvedValue(undefined),
+  CustomFieldValidationError: class CustomFieldValidationError extends Error {
+    readonly code = 'FIELD_INVALID';
+  },
 }));
 
 import { NextRequest } from 'next/server';
