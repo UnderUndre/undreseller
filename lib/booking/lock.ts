@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db/prisma';
 import { logger } from '@/lib/telemetry/logger';
 import { acquireResourceSlotLock } from './advisoryLock';
 import { dispatchStaffOrderPagerCard } from '@/lib/bot/staffBot';
+import { resolveStaffLocale } from '@/lib/i18n/botStrings';
 import {
   validateAndBuildServiceCart,
   sanitizeCustomerNotes,
@@ -316,6 +317,8 @@ export async function createSlotHoldLock(params: CreateHoldParams): Promise<Hold
   const sanitizedNotes = sanitizeCustomerNotes(customerNotes);
   const normalizedPhone = normalizePhoneE164(customerPhone);
 
+  // T041 (FR-412-equivalent): staff pager locale rides ShopSettings.defaultLocale.
+  let instanceDefault: string | null = null;
   const result = await prisma.$transaction(async (tx) => {
     // 1. Resource-scoped advisory lock: SELECT pg_advisory_xact_lock(hashtext('resource_slot_lock_' || $resourceId))
     await acquireResourceSlotLock(tx, resourceId);
@@ -432,6 +435,7 @@ export async function createSlotHoldLock(params: CreateHoldParams): Promise<Hold
 
     // 6. Client history segmentation (FR-015): New vs Regular client
     const settings = await tx.shopSettings.findUnique({ where: { id: 1 } });
+    instanceDefault = settings?.defaultLocale ?? null;
     const autoCancelSetting = settings?.autoCancelForNewClients ?? true;
 
     let completedVisits = 0;
@@ -590,7 +594,8 @@ export async function createSlotHoldLock(params: CreateHoldParams): Promise<Hold
           customerNotes: sanitizedNotes,
           isNewClient: result.order.isNewClient,
         },
-        staffChatId
+        staffChatId,
+        resolveStaffLocale(instanceDefault)
       );
     } catch (err: unknown) {
       logger.error('[STAFF_CARD_DISPATCH_ERROR]', { orderId: result.order.id, error: String(err) });

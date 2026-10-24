@@ -5,6 +5,7 @@ import { verifyTelegramInitData } from '@/lib/security/initData';
 import { checkRateLimit } from '@/lib/security/rateLimiter';
 import { logger } from '@/lib/telemetry/logger';
 import { dispatchStaffOrderPagerCard } from '@/lib/bot/staffBot';
+import { resolveStaffLocale } from '@/lib/i18n/botStrings';
 import { getPrimaryPaymentProvider } from '@/lib/payments/providerContract';
 import '@/lib/payments/nowpayments'; // side-effect: registers the NOWPAYMENTS factory (FR-401)
 
@@ -79,6 +80,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const settings = await prisma.shopSettings.findUnique({ where: { id: 1 } });
+    // T041 (FR-412-equivalent): staff pager locale rides ShopSettings.defaultLocale.
+    const staffLocale = resolveStaffLocale(settings?.defaultLocale ?? null);
     const prepaymentTiming = settings?.prepaymentTiming || 'IMMEDIATE';
     const staffChatId = settings?.staffDestinationChatId || process.env.STAFF_CHAT_ID || null;
 
@@ -134,7 +137,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             customerNotes: updated.customerNotes,
             isNewClient: updated.autoCancelOnNoConfirmation,
           },
-          staffChatId
+          staffChatId,
+          staffLocale
         );
       }
 
@@ -245,7 +249,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           customerNotes: null,
           isNewClient: true, // Product orders are always new clients
         },
-        staffChatId
+        staffChatId,
+        staffLocale
       );
     }
 

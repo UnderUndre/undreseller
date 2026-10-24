@@ -98,8 +98,8 @@
 **Goal**: 100% chrome coverage ru/en on web, both bots, admin, emails; ICU plurals; word-month dates.
 **Independent Test**: Switch ru/en across surfaces; `de` fallback; plural checks (US3 scenarios).
 
-- [ ] T040 [FE] [US3] Web chrome i18n: all pages/components keyed; locale switcher storing user override
-- [ ] T041 [BE] [US3] Bot strings i18n: client + staff bots via `from.language_code` (grammY middleware over shared dictionaries)
+- [x] T040 [FE] [US3] Web chrome i18n: all pages/components keyed; locale switcher storing user override
+- [x] T041 [BE] [US3] Bot strings i18n: client + staff bots via `from.language_code` (grammY middleware over shared dictionaries)
 - [X] T042 [BE] [US3] Admin UI + email template dictionaries (ru/en)
 - [X] T043 [BE] [US3] UserPreference language override API + anonymous-web session cookie fallback (FR-412)
 - [X] T044 [SETUP] [US3] i18n AST coverage gate (S3 findings → production script): 100% of chrome keys resolve in both locales; adding a locale proven data-only by gate re-run (FR-411); wired into test suite (NFR-406)

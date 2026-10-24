@@ -1,3 +1,4 @@
+import { resolveStaffLocale } from '@/lib/i18n/botStrings';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { inngest, isInngestConfigured } from '@/lib/jobs/inngest';
@@ -66,6 +67,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const messageId = typeof messageObj?.message_id === 'number' ? messageObj.message_id : undefined;
 
   const settings = await prisma.shopSettings.findUnique({ where: { id: 1 } });
+  // T041 (FR-412-equivalent): staff surface locale rides ShopSettings.defaultLocale.
+  const staffLocale = resolveStaffLocale(settings?.defaultLocale ?? null);
   const authCheck = authorizeStaffCallback({
     chatId,
     fromUserId,
@@ -147,7 +150,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         customerTgUsername: order.customerTgUsername,
         hasWhatsApp: order.hasWhatsApp,
         hasTelegram: order.hasTelegram,
-      });
+      }, staffLocale);
 
       // Мини-ответ на callback, чтобы убрать «часики» на кнопке.
       await staffBot.api.answerCallbackQuery(callbackQueryId);
@@ -235,7 +238,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             startTimeIso: order.reservation?.startTime?.toISOString() ?? null,
             endTimeIso: order.reservation?.endTime?.toISOString() ?? null,
             magicRescheduleUrl: result.magicRescheduleUrl ?? null,
-          });
+          }, staffLocale);
 
           // Мини-ответ на callback, чтобы убрать «часики» на кнопке.
           await staffBot.api.answerCallbackQuery(callbackQueryId);

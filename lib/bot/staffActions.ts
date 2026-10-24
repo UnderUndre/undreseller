@@ -7,6 +7,11 @@ import {
 } from './magicReschedule';
 import { enqueueStaffMessageRedaction } from './staffBot';
 import { enqueueTelegramOutbox, OUTBOX_PRIORITY } from './telegramOutbox';
+import {
+  formatBotString,
+  getStaffBotStrings,
+  resolveStaffLocale,
+} from '@/lib/i18n/botStrings';
 
 export type StaffActionType = 'approve' | 'reject' | 'reschedule' | 'blacklist' | 'fulfill' | 'copy_contacts';
 
@@ -386,6 +391,9 @@ export async function executeStaffCallbackTransaction(params: {
   }
 
   const now = new Date();
+  // T041 (FR-412-equivalent): staff locale = ShopSettings.defaultLocale
+  // (no per-staff override column — documented in botStrings.ts).
+  let instanceDefault: string | null = null;
   const txResult = await prisma.$transaction(async (tx) => {
     await tx.inboxEvent.create({
       data: {
@@ -416,6 +424,7 @@ export async function executeStaffCallbackTransaction(params: {
     const settings = await tx.shopSettings.findUnique({ where: { id: 1 } });
     const prepaymentTiming =
       (settings?.prepaymentTiming as 'IMMEDIATE' | 'AFTER_STAFF_APPROVAL') || 'IMMEDIATE';
+    instanceDefault = settings?.defaultLocale ?? null;
 
     const pureOutcome = executeStaffOrderActionPure({
       order: {
@@ -568,19 +577,24 @@ export async function executeStaffCallbackTransaction(params: {
 
   // Enqueue client notification if client has Telegram ID
   if (order.customerTgId) {
+    // T041 (FR-411): client notices keyed by the staff-surface locale
+    // (ShopSettings.defaultLocale via resolveStaffLocale).
+    const notices = getStaffBotStrings(resolveStaffLocale(instanceDefault)).clientNotices;
     let clientNotice: string | null = null;
     if (action === 'approve') {
       clientNotice =
         pureOutcome.updatedOrder.status === 'AWAITING_PAYMENT'
-          ? `✅ Мастер подтвердил вашу запись #${order.orderNumber}! Пожалуйста, оплатите счёт в течение 15 минут.`
-          : `✅ Ваша запись #${order.orderNumber} подтверждена мастером! Ждём вас.`;
+          ? formatBotString(notices.approveAwaitingPayment, { orderNumber: order.orderNumber })
+          : formatBotString(notices.approveConfirmed, { orderNumber: order.orderNumber });
     } else if (action === 'reject') {
-      clientNotice = `❌ К сожалению, запись #${order.orderNumber} была отклонена мастером.`;
+      clientNotice = formatBotString(notices.rejected, { orderNumber: order.orderNumber });
     } else if (action === 'blacklist') {
-      clientNotice =
-        'Ваша запись аннулирована в связи с нарушением правил сервиса (запрос скидки/торга при фиксированном прайсе). Доступ к онлайн-записи ограничен';
+      clientNotice = notices.blacklisted;
     } else if (action === 'reschedule' && pureOutcome.magicRescheduleUrl) {
-      clientNotice = `🔄 Мастер предложил перенести запись #${order.orderNumber}. Выберите новое удобное время по одноразовой ссылке: ${pureOutcome.magicRescheduleUrl}`;
+      clientNotice = formatBotString(notices.rescheduleOffered, {
+        orderNumber: order.orderNumber,
+        url: pureOutcome.magicRescheduleUrl,
+      });
     }
 
     // FR-429 (T093): rejection notices follow the owner-configurable policy.
