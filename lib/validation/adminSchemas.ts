@@ -5,6 +5,7 @@
  */
 
 import { z } from 'zod';
+import { HTML_TAG_REGEX } from '../../config/shop.config';
 
 export const FOUNDATION_SETTINGS_FIELDS = [
   'currency',
@@ -141,6 +142,53 @@ export const foundationSettingsSchema = z.object({
     .optional(),
   enabledLocales: z.array(z.string().trim().min(2).max(10)).min(1).optional(),
 });
+
+// ---------------------------------------------------------------------------
+// Custom booking fields (T080, US6, FR-423/434)
+// ---------------------------------------------------------------------------
+
+export const CUSTOM_FIELD_TYPES = ['TEXT', 'NUMBER', 'SINGLE_SELECT', 'CHECKBOX'] as const;
+export const MAX_ACTIVE_CUSTOM_FIELDS = 10;
+export const MAX_CUSTOM_FIELD_OPTIONS = 20;
+
+const fieldLabelSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .refine((v) => !HTML_TAG_REGEX.test(v), { message: 'HTML tags are not allowed' });
+
+export const adminFieldCreateSchema = z.object({
+  label: fieldLabelSchema,
+  type: z.enum(CUSTOM_FIELD_TYPES),
+  required: z.boolean().default(false),
+  /** SINGLE_SELECT: allowed values. NUMBER: { min, max } bounds. */
+  options: z.array(z.string().trim().min(1).max(100)).max(MAX_CUSTOM_FIELD_OPTIONS).optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  /** Per-service binding; empty/omitted = instance-wide (unbound). */
+  boundItemIds: z.array(z.string().uuid()).max(100).optional(),
+  sortOrder: z.number().int().min(0).optional(),
+});
+
+export const adminFieldUpdateSchema = z.object({
+  label: fieldLabelSchema.optional(),
+  required: z.boolean().optional(),
+  options: z.array(z.string().trim().min(1).max(100)).max(MAX_CUSTOM_FIELD_OPTIONS).optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  boundItemIds: z.array(z.string().uuid()).max(100).optional(),
+  sortOrder: z.number().int().min(0).optional(),
+  /** Archive toggle — deactivation only, hard delete prohibited (FR-423). */
+  archived: z.boolean().optional(),
+});
+
+export type AdminFieldCreateInput = z.infer<typeof adminFieldCreateSchema>;
+export type AdminFieldUpdateInput = z.infer<typeof adminFieldUpdateSchema>;
+
+/** Customer answer payload for the booking API (one entry per field key/id). */
+export const customFieldAnswerSchema = z.union([z.string(), z.number(), z.boolean()]);
+export type CustomFieldAnswerValue = z.infer<typeof customFieldAnswerSchema>;
 
 export type OperationalSettingsInput = z.infer<typeof operationalSettingsSchema>;
 export type FoundationSettingsInput = z.infer<typeof foundationSettingsSchema>;
