@@ -54,7 +54,7 @@ describe('Bot Quick Actions (T051, FR-416)', () => {
   });
 
   it('my bookings: reply includes order lines; empty list shows noBookings message', async () => {
-    const reply = jest.fn(async () => null);
+    const reply = jest.fn(async (_text: string, _opts?: unknown) => null);
     (prisma.userPreference.findUnique as jest.Mock).mockResolvedValue(null);
     (prisma.shopSettings.findUnique as jest.Mock).mockResolvedValue({ defaultLocale: 'en' });
 
@@ -68,11 +68,11 @@ describe('Bot Quick Actions (T051, FR-416)', () => {
     ]);
     const { showMyBookings } = await import('@/lib/bot/quickActions');
     await showMyBookings({ from: { id: 1, language_code: 'en' }, reply });
-    expect(reply.mock.calls[0][0]).toContain('Haircut');
+    expect(String(reply.mock.calls[0]?.[0])).toContain('Haircut');
 
     (prisma.order.findMany as jest.Mock).mockResolvedValueOnce([]);
     await showMyBookings({ from: { id: 1, language_code: 'en' }, reply });
-    expect(reply.mock.calls[1][0]).toContain('no active bookings');
+    expect(String(reply.mock.calls[1]?.[0])).toContain('no active bookings');
   });
 
   it('cancel via token: success and CancellationError paths', async () => {
