@@ -35,10 +35,10 @@ export default async function ProfessionalPage({
           <img
             src={profile.photoUrl}
             alt={profile.displayName}
-            className="w-28 h-28 sm:w-32 sm:h-32 rounded-full object-cover border-2 border-blue-500/40 shadow-lg"
+            className="w-28 h-28 sm:w-32 sm:h-32 rounded-full object-cover border-2 border-purple-500/40 shadow-lg"
           />
         ) : (
-          <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-blue-600/20 border-2 border-blue-500/40 flex items-center justify-center text-3xl font-bold text-blue-400">
+          <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-purple-600/20 border-2 border-purple-500/40 flex items-center justify-center text-3xl font-bold text-purple-400">
             {profile.displayName.slice(0, 1).toUpperCase()}
           </div>
         )}
@@ -48,7 +48,7 @@ export default async function ProfessionalPage({
             {profile.displayName}
           </h1>
           {profile.headline && (
-            <p className="text-base text-blue-400 font-medium">{profile.headline}</p>
+            <p className="text-base text-purple-400 font-medium">{profile.headline}</p>
           )}
           {profile.biography && (
             <p className="text-sm text-gray-300 leading-relaxed pt-2 whitespace-pre-line">
@@ -74,7 +74,7 @@ export default async function ProfessionalPage({
             {profile.services.map((svc) => (
               <div
                 key={svc.id}
-                className="bg-gray-900/40 border border-gray-800/80 hover:border-blue-500/50 transition-all rounded-xl p-5 flex flex-col justify-between"
+                className="bg-gray-900/40 border border-gray-800/80 hover:border-purple-500/50 transition-all rounded-xl p-5 flex flex-col justify-between"
               >
                 <div className="space-y-2">
                   <div className="flex justify-between items-start gap-2">
@@ -90,12 +90,12 @@ export default async function ProfessionalPage({
                   {/* Pricing and modes */}
                   <div className="pt-2 flex flex-wrap gap-2 text-xs">
                     {svc.inCallEnabled && (
-                      <span className="bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 px-2 py-1 rounded">
+                      <span className="bg-green-900/60 text-green-300 border border-green-800/60 px-2 py-1 rounded">
                         In-Studio {svc.pricing?.inCallTotal ? `• ${svc.pricing.inCallTotal}` : ''}
                       </span>
                     )}
                     {svc.outCallEnabled && (
-                      <span className="bg-purple-950/60 text-purple-300 border border-purple-800/60 px-2 py-1 rounded">
+                      <span className="bg-purple-900/60 text-purple-300 border border-purple-800/60 px-2 py-1 rounded">
                         Outcall {svc.pricing?.outCallTotal ? `• ${svc.pricing.outCallTotal}` : ''}
                       </span>
                     )}
@@ -105,7 +105,7 @@ export default async function ProfessionalPage({
                 <div className="pt-5">
                   <Link
                     href={`/book?serviceId=${svc.id}&performerSlug=${profile.slug}`}
-                    className="block w-full text-center bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors shadow-sm"
+                    className="block w-full text-center bg-purple-600 hover:bg-purple-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors shadow-sm"
                   >
                     Book Appointment
                   </Link>

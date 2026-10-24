@@ -50,7 +50,7 @@ export default async function HomePage() {
         </p>
 
         {publicAddress && (
-          <p className="text-xs text-emerald-400 font-mono pt-1">
+          <p className="text-xs text-green-400 font-mono pt-1">
             📍 Studio Address: {publicAddress}
           </p>
         )}
@@ -73,7 +73,7 @@ export default async function HomePage() {
             {services.map((svc) => (
               <div
                 key={svc.id}
-                className="bg-gray-900/50 border border-gray-800 hover:border-blue-500/50 transition-all rounded-2xl p-6 flex flex-col justify-between"
+                className="bg-gray-900/50 border border-gray-800 hover:border-purple-500/50 transition-all rounded-2xl p-6 flex flex-col justify-between"
               >
                 <div className="space-y-3">
                   <div className="flex justify-between items-start gap-2">
@@ -91,12 +91,12 @@ export default async function HomePage() {
 
                   <div className="pt-2 flex flex-wrap gap-2 text-xs">
                     {svc.inCallEnabled && (
-                      <span className="bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 px-2.5 py-1 rounded-md">
+                      <span className="bg-green-900/60 text-green-300 border border-green-800/60 px-2.5 py-1 rounded-md">
                         In-Studio {svc.inCallPricing ? `• ${svc.inCallPricing.formattedTotal}` : ''}
                       </span>
                     )}
                     {svc.outCallEnabled && (
-                      <span className="bg-purple-950/60 text-purple-300 border border-purple-800/60 px-2.5 py-1 rounded-md">
+                      <span className="bg-purple-900/60 text-purple-300 border border-purple-800/60 px-2.5 py-1 rounded-md">
                         Outcall {svc.outCallPricing ? `• ${svc.outCallPricing.formattedTotal}` : ''}
                       </span>
                     )}
@@ -106,7 +106,7 @@ export default async function HomePage() {
                 <div className="pt-6">
                   <Link
                     href={`/book?serviceId=${svc.id}`}
-                    className="block w-full text-center bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 px-4 rounded-xl text-sm transition-colors shadow-sm"
+                    className="block w-full text-center bg-purple-600 hover:bg-purple-500 text-white font-medium py-2.5 px-4 rounded-xl text-sm transition-colors shadow-sm"
                   >
                     Book Now
                   </Link>
@@ -130,28 +130,28 @@ export default async function HomePage() {
               <Link
                 key={p.id}
                 href={`/professionals/${p.slug}`}
-                className="group bg-gray-900/40 border border-gray-800 hover:border-blue-500/50 rounded-2xl p-6 transition-all block text-center space-y-3"
+                className="group bg-gray-900/40 border border-gray-800 hover:border-purple-500/50 rounded-2xl p-6 transition-all block text-center space-y-3"
               >
                 {p.photoUrl ? (
                   <img
                     src={p.photoUrl}
                     alt={p.staffMember.displayName}
-                    className="w-20 h-20 rounded-full mx-auto object-cover border-2 border-blue-500/30 group-hover:scale-105 transition-transform"
+                    className="w-20 h-20 rounded-full mx-auto object-cover border-2 border-purple-500/30 group-hover:scale-105 transition-transform"
                   />
                 ) : (
-                  <div className="w-20 h-20 rounded-full bg-blue-900/30 border-2 border-blue-500/30 mx-auto flex items-center justify-center text-2xl font-bold text-blue-400">
+                  <div className="w-20 h-20 rounded-full bg-purple-900/30 border-2 border-purple-500/30 mx-auto flex items-center justify-center text-2xl font-bold text-purple-400">
                     {p.staffMember.displayName.slice(0, 1)}
                   </div>
                 )}
                 <div>
-                  <h4 className="font-semibold text-base group-hover:text-blue-400 transition-colors">
+                  <h4 className="font-semibold text-base group-hover:text-purple-400 transition-colors">
                     {p.staffMember.displayName}
                   </h4>
                   {p.headline && (
                     <p className="text-xs text-gray-400 pt-1 line-clamp-1">{p.headline}</p>
                   )}
                 </div>
-                <span className="inline-block text-xs text-blue-400 font-medium pt-1">
+                <span className="inline-block text-xs text-purple-400 font-medium pt-1">
                   View Profile & Portfolio →
                 </span>
               </Link>

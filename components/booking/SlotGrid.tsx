@@ -190,7 +190,7 @@ export function SlotGrid({
     return (
       <div className="bg-gray-900/80 border border-gray-800 rounded-2xl p-6 sm:p-8 space-y-6 text-white max-w-xl mx-auto backdrop-blur-sm">
         <div className="text-center space-y-2">
-          <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto text-3xl font-bold border border-emerald-500/40">
+          <div className="w-16 h-16 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center mx-auto text-3xl font-bold border border-green-500/40">
             ✓
           </div>
           <h2 className="text-2xl font-extrabold tracking-tight">
@@ -221,7 +221,7 @@ export function SlotGrid({
           {bookingSuccess.fulfillmentMode === 'IN_CALL' && bookingSuccess.serviceAddress && (
             <div className="pt-3">
               <span className="text-gray-400 block text-xs">Studio Location:</span>
-              <span className="font-semibold text-emerald-400 block pt-0.5">
+              <span className="font-semibold text-green-400 block pt-0.5">
                 📍 {bookingSuccess.serviceAddress}
               </span>
             </div>
@@ -242,7 +242,7 @@ export function SlotGrid({
 
           <div className="flex justify-between pt-3">
             <span className="text-gray-400">Total Price:</span>
-            <span className="font-extrabold text-base text-emerald-400">
+            <span className="font-extrabold text-base text-green-400">
               {formatPrice(bookingSuccess.totalMinor)}
             </span>
           </div>
@@ -251,7 +251,7 @@ export function SlotGrid({
         {/* Cancellation Section */}
         <div className="border-t border-gray-800 pt-4 space-y-2 text-center">
           {cancelStatus ? (
-            <p className="text-sm text-amber-400 font-medium">{cancelStatus}</p>
+            <p className="text-sm text-warning font-medium">{cancelStatus}</p>
           ) : (
             <>
               <p className="text-xs text-gray-400">Need to reschedule or cancel your visit?</p>
@@ -259,7 +259,7 @@ export function SlotGrid({
                 type="button"
                 onClick={handleCancellation}
                 disabled={cancelLoading}
-                className="text-xs text-rose-400 hover:text-rose-300 underline font-medium transition-colors"
+                className="text-xs text-error hover:text-error underline font-medium transition-colors"
               >
                 {cancelLoading ? 'Cancelling...' : 'Cancel Appointment'}
               </button>
@@ -280,7 +280,7 @@ export function SlotGrid({
             <p className="text-xs text-gray-400 pt-1">{service.durationMin} minutes</p>
           </div>
           <div className="text-right">
-            <span className="text-2xl font-extrabold text-emerald-400">
+            <span className="text-2xl font-extrabold text-green-400">
               {formatPrice(totalMinor)}
             </span>
             {isOutCall && travelFeeMinor > 0 && (
@@ -297,7 +297,7 @@ export function SlotGrid({
               onClick={() => setMode('IN_CALL')}
               className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
                 mode === 'IN_CALL'
-                  ? 'bg-blue-600 text-white shadow'
+                  ? 'bg-purple-600 text-white shadow'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
@@ -318,7 +318,7 @@ export function SlotGrid({
         )}
 
         {isOutCall && outCallCoverageDescription && (
-          <p className="text-xs text-purple-300 bg-purple-950/40 border border-purple-800/40 rounded-lg p-2.5">
+          <p className="text-xs text-purple-300 bg-purple-900/40 border border-purple-800/40 rounded-lg p-2.5">
             ℹ️ Coverage Note: {outCallCoverageDescription}
           </p>
         )}
@@ -335,7 +335,7 @@ export function SlotGrid({
             value={selectedDate}
             min={new Date().toISOString().split('T')[0]}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
+            className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 font-mono"
           />
         </div>
 
@@ -345,7 +345,7 @@ export function SlotGrid({
             <label className="block text-xs font-semibold uppercase tracking-wider text-gray-400">
               Available Time Slots
             </label>
-            {loadingSlots && <span className="text-xs text-blue-400 animate-pulse">Checking slots...</span>}
+            {loadingSlots && <span className="text-xs text-purple-400 animate-pulse">Checking slots...</span>}
           </div>
 
           {slots.length === 0 && !loadingSlots ? (
@@ -367,7 +367,7 @@ export function SlotGrid({
                     onClick={() => setSelectedSlot(s)}
                     className={`py-2 px-3 text-xs font-mono font-medium rounded-lg border transition-all text-center ${
                       isSelected
-                        ? 'bg-blue-600 border-blue-400 text-white shadow-sm'
+                        ? 'bg-purple-600 border-purple-400 text-white shadow-sm'
                         : 'bg-gray-950 border-gray-800 text-gray-300 hover:border-gray-700'
                     }`}
                   >
@@ -390,7 +390,7 @@ export function SlotGrid({
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
                 placeholder="Jane Doe"
-                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
               />
             </div>
             <div className="space-y-1.5">
@@ -401,7 +401,7 @@ export function SlotGrid({
                 value={customerContact}
                 onChange={(e) => setCustomerContact(e.target.value)}
                 placeholder="+374 99 123456 or name@example.com"
-                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
               />
             </div>
           </div>
@@ -430,13 +430,13 @@ export function SlotGrid({
               value={customerNote}
               onChange={(e) => setCustomerNote(e.target.value)}
               placeholder="Any special requests or details..."
-              className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+              className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
             />
           </div>
         </div>
 
         {errorMsg && (
-          <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl text-xs text-rose-300">
+          <div className="p-3 bg-error-surface/40 border border-error/60 rounded-xl text-xs text-error">
             {errorMsg}
           </div>
         )}
@@ -444,7 +444,7 @@ export function SlotGrid({
         <button
           type="submit"
           disabled={bookingLoading || !selectedSlot}
-          className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all shadow-md"
+          className="w-full bg-purple-600 hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all shadow-md"
         >
           {bookingLoading ? 'Securing Slot...' : `Confirm Booking • ${formatPrice(totalMinor)}`}
         </button>

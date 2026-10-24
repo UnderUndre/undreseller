@@ -71,7 +71,7 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
             <button
               type="button"
               onClick={() => setSelectedIds([])}
-              className="text-xs text-rose-400 hover:text-rose-300 underline"
+              className="text-xs text-error hover:text-error underline"
             >
               Очистить ({selectedIds.length})
             </button>
@@ -93,7 +93,7 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
                 onClick={() => toggleService(srv.id)}
                 className={`text-left p-3.5 rounded-lg border transition flex items-center justify-between ${
                   isSelected
-                    ? 'bg-blue-950/60 border-blue-500 text-white'
+                    ? 'bg-purple-900/60 border-purple-500 text-white'
                     : 'bg-gray-950/60 border-gray-800 text-gray-300 hover:border-gray-700'
                 }`}
               >
@@ -105,7 +105,7 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
                 </div>
                 <span
                   className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                    isSelected ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400'
+                    isSelected ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400'
                   }`}
                 >
                   {isSelected ? '✓' : '+'}
@@ -117,15 +117,15 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
       </div>
 
       {selectedServices.length > 0 && (
-        <div className="fixed bottom-4 left-4 right-4 max-w-3xl mx-auto z-50 bg-gray-900/95 backdrop-blur border border-blue-500/60 rounded-2xl p-4 shadow-2xl">
+        <div className="fixed bottom-4 left-4 right-4 max-w-3xl mx-auto z-50 bg-gray-900/95 backdrop-blur border border-purple-500/60 rounded-2xl p-4 shadow-2xl">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
-                <span className="bg-blue-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
+                <span className="bg-purple-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
                   {selectedServices.length} усл.
                 </span>
                 <span className="text-white font-bold text-base">{formattedTotal}</span>
-                <span className="text-xs text-blue-300 font-mono">
+                <span className="text-xs text-purple-300 font-mono">
                   · ⏱ {totalDurationMin} мин подряд
                 </span>
               </div>
@@ -140,7 +140,7 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
 
             <Link
               href={bookHref}
-              className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-6 rounded-xl text-center shadow-lg transition text-sm"
+              className="bg-purple-600 hover:bg-purple-500 text-white font-bold py-2.5 px-6 rounded-xl text-center shadow-lg transition text-sm"
             >
               Выбрать время ({totalDurationMin} мин) →
             </Link>
@@ -156,7 +156,7 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
                   <button
                     type="button"
                     onClick={() => toggleService(srv.id)}
-                    className="text-rose-400 hover:text-rose-300 ml-2"
+                    className="text-error hover:text-error ml-2"
                   >
                     Удалить
                   </button>

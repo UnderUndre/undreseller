@@ -77,7 +77,7 @@ export default function AdminBookingsPage() {
           </Link>
           <button
             onClick={loadBookings}
-            className="text-xs bg-blue-600 hover:bg-blue-500 font-medium px-3 py-1.5 rounded-lg transition-colors"
+            className="text-xs bg-purple-600 hover:bg-purple-500 font-medium px-3 py-1.5 rounded-lg transition-colors"
           >
             Refresh
           </button>
@@ -92,7 +92,7 @@ export default function AdminBookingsPage() {
             onClick={() => setFilterMode(f)}
             className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
               filterMode === f
-                ? 'bg-blue-600 border-blue-400 text-white'
+                ? 'bg-purple-600 border-purple-400 text-white'
                 : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-white'
             }`}
           >
@@ -102,7 +102,7 @@ export default function AdminBookingsPage() {
       </div>
 
       {errorMsg && (
-        <div className="p-4 bg-rose-950/40 border border-rose-800/60 rounded-xl text-xs text-rose-300">
+        <div className="p-4 bg-error-surface/40 border border-error/60 rounded-xl text-xs text-error">
           {errorMsg}
         </div>
       )}
@@ -140,8 +140,8 @@ export default function AdminBookingsPage() {
                     <span
                       className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold mb-1 ${
                         b.fulfillmentMode === 'IN_CALL'
-                          ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/60'
-                          : 'bg-purple-950/80 text-purple-300 border border-purple-800/60'
+                          ? 'bg-green-900/80 text-green-300 border border-green-800/60'
+                          : 'bg-purple-900/80 text-purple-300 border border-purple-800/60'
                       }`}
                     >
                       {b.fulfillmentMode || 'IN_CALL'}
@@ -159,12 +159,12 @@ export default function AdminBookingsPage() {
                     <span
                       className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${
                         b.status === 'CONFIRMED'
-                          ? 'bg-blue-950 text-blue-300 border border-blue-800'
+                          ? 'bg-purple-900 text-purple-300 border border-purple-800'
                           : b.status === 'PENDING'
-                          ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                          ? 'bg-warning-surface text-warning border border-warning'
                           : b.status === 'COMPLETED'
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                          : 'bg-rose-950 text-rose-300 border border-rose-800'
+                          ? 'bg-green-900 text-green-300 border border-green-800'
+                          : 'bg-error-surface text-error border border-error'
                       }`}
                     >
                       {b.status}
@@ -175,13 +175,13 @@ export default function AdminBookingsPage() {
                       <>
                         <button
                           onClick={() => handleAction(b.bookingId, 'APPROVE_COVERAGE')}
-                          className="bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-1 rounded text-[11px] font-medium"
+                          className="bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded text-[11px] font-medium"
                         >
                           Approve
                         </button>
                         <button
                           onClick={() => handleAction(b.bookingId, 'REJECT_COVERAGE')}
-                          className="bg-rose-700 hover:bg-rose-600 text-white px-2 py-1 rounded text-[11px] font-medium"
+                          className="bg-error hover:bg-error text-white px-2 py-1 rounded text-[11px] font-medium"
                         >
                           Reject
                         </button>
@@ -190,7 +190,7 @@ export default function AdminBookingsPage() {
                     {b.status === 'CONFIRMED' && (
                       <button
                         onClick={() => handleAction(b.bookingId, 'COMPLETE')}
-                        className="bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded text-[11px] font-medium"
+                        className="bg-purple-600 hover:bg-purple-500 text-white px-2 py-1 rounded text-[11px] font-medium"
                       >
                         Complete
                       </button>

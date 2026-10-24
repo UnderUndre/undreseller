@@ -68,7 +68,7 @@ export default async function CatalogItemPage({ params }: Props) {
 
       <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-8 shadow-xl">
         <div className="flex items-center gap-3 mb-4">
-          <span className="text-xs uppercase font-extrabold tracking-wider text-blue-400 bg-blue-950 px-2.5 py-1 rounded">
+          <span className="text-xs uppercase font-extrabold tracking-wider text-purple-400 bg-purple-900 px-2.5 py-1 rounded">
             {item.itemType}
           </span>
           {item.itemType === 'SERVICE' && item.durationMin && (
@@ -77,7 +77,7 @@ export default async function CatalogItemPage({ params }: Props) {
             </span>
           )}
           {item.itemType === 'PRODUCT' && item.stock !== null && (
-            <span className="text-xs text-emerald-400 font-mono">
+            <span className="text-xs text-green-400 font-mono">
               📦 Stock: {item.stock}
             </span>
           )}
@@ -91,7 +91,7 @@ export default async function CatalogItemPage({ params }: Props) {
         <div className="flex items-baseline gap-4 py-6 border-t border-b border-gray-800 my-6">
           <span className="text-3xl font-black text-white">{formattedPrice}</span>
           {item.starsPrice && (
-            <span className="text-sm font-bold text-yellow-400 bg-yellow-950/40 px-3 py-1 rounded-full border border-yellow-700/50">
+            <span className="text-sm font-bold text-warning bg-warning-surface/40 px-3 py-1 rounded-full border border-warning/50">
               ⭐ {item.starsPrice.toLocaleString()} Stars (XTR)
             </span>
           )}
@@ -101,14 +101,14 @@ export default async function CatalogItemPage({ params }: Props) {
           {item.itemType === 'SERVICE' ? (
             <Link
               href={`/book?itemId=${item.id}`}
-              className="w-full text-center bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition"
+              className="w-full text-center bg-purple-600 hover:bg-purple-500 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition"
             >
               Select Time & Book Slot →
             </Link>
           ) : (
             <Link
               href={`/checkout?itemId=${item.id}`}
-              className="w-full text-center bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition"
+              className="w-full text-center bg-green-600 hover:bg-green-500 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition"
             >
               Buy with Crypto or Stars →
             </Link>

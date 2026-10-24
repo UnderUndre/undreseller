@@ -103,9 +103,9 @@ export function CheckoutModal({
   if (invoiceResult) {
     if (invoiceResult.paymentMethod === 'PAY_ON_SITE') {
       return (
-        <div className="bg-emerald-950/50 border border-emerald-500/50 rounded-2xl p-8 text-center space-y-4">
+        <div className="bg-green-900/50 border border-green-500/50 rounded-2xl p-8 text-center space-y-4">
           <div className="text-4xl">✅</div>
-          <h3 className="text-2xl font-bold text-emerald-400">
+          <h3 className="text-2xl font-bold text-green-400">
             Бронирование подтверждено (Оплата при визите)
           </h3>
           <p className="text-gray-300 text-sm">
@@ -118,9 +118,9 @@ export function CheckoutModal({
 
     if (invoiceResult.deferredUntilStaffApproval) {
       return (
-        <div className="bg-amber-950/50 border border-amber-500/50 rounded-2xl p-8 text-center space-y-4">
+        <div className="bg-warning-surface/50 border border-warning/50 rounded-2xl p-8 text-center space-y-4">
           <div className="text-4xl">⏳</div>
-          <h3 className="text-2xl font-bold text-amber-300">
+          <h3 className="text-2xl font-bold text-warning">
             Ожидается подтверждение мастера (AFTER_STAFF_APPROVAL)
           </h3>
           <p className="text-gray-300 text-sm">
@@ -133,9 +133,9 @@ export function CheckoutModal({
 
     if (invoiceResult.paymentMethod === 'TELEGRAM_STARS') {
       return (
-        <div className="bg-yellow-950/40 border border-yellow-500/50 rounded-2xl p-8 text-center space-y-4">
+        <div className="bg-warning-surface/40 border border-warning/50 rounded-2xl p-8 text-center space-y-4">
           <div className="text-4xl">⭐</div>
-          <h3 className="text-2xl font-bold text-yellow-400">Telegram Stars Invoice Issued</h3>
+          <h3 className="text-2xl font-bold text-warning">Telegram Stars Invoice Issued</h3>
           <p className="text-gray-300 text-sm">
             Invoice for order <strong>{invoiceResult.order?.orderNumber}</strong> has been generated.
           </p>
@@ -150,9 +150,9 @@ export function CheckoutModal({
     }
 
     return (
-      <div className="bg-blue-950/40 border border-blue-500/50 rounded-2xl p-8 text-center space-y-4">
+      <div className="bg-purple-900/40 border border-purple-500/50 rounded-2xl p-8 text-center space-y-4">
         <div className="text-4xl">🌐</div>
-        <h3 className="text-2xl font-bold text-blue-400">NOWPayments Crypto Invoice</h3>
+        <h3 className="text-2xl font-bold text-purple-400">NOWPayments Crypto Invoice</h3>
         <p className="text-gray-300 text-sm">
           Pay securely in BTC, ETH, USDT, TON or 150+ other cryptocurrencies.
         </p>
@@ -161,7 +161,7 @@ export function CheckoutModal({
             href={invoiceResult.invoiceUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-block bg-blue-600 hover:bg-blue-500 text-white font-extrabold py-3.5 px-8 rounded-xl shadow-lg transition"
+            className="inline-block bg-purple-600 hover:bg-purple-500 text-white font-extrabold py-3.5 px-8 rounded-xl shadow-lg transition"
           >
             Open Hosted Invoice →
           </a>
@@ -179,14 +179,14 @@ export function CheckoutModal({
           <strong className="text-white">{priceFormatted}</strong>
         </p>
         {prepaymentTiming === 'AFTER_STAFF_APPROVAL' && orderStatus === 'PENDING' && (
-          <p className="text-xs text-amber-300 mt-2">
+          <p className="text-xs text-warning mt-2">
             ℹ️ Включён режим оплаты после одобрения мастера (AFTER_STAFF_APPROVAL). При выборе онлайн-предоплаты счёт на 15 минут выставляется после подтверждения записи мастером.
           </p>
         )}
       </div>
 
       {errorMsg && (
-        <div className="p-3 bg-rose-950/80 border border-rose-500 rounded-lg text-rose-200 text-xs">
+        <div className="p-3 bg-error-surface/80 border border-error rounded-lg text-error text-xs">
           ⚠️ {errorMsg}
         </div>
       )}
@@ -236,12 +236,12 @@ export function CheckoutModal({
             onClick={() => handleSelectRail('PAY_ON_SITE')}
             className={`flex flex-col items-center justify-center p-5 rounded-xl border text-white font-bold transition ${
               defaultPaymentType === 'PAY_ON_SITE'
-                ? 'border-emerald-500 bg-emerald-950/50 hover:bg-emerald-950/70'
-                : 'border-emerald-700/50 bg-emerald-950/20 hover:bg-emerald-950/40'
+                ? 'border-green-500 bg-green-900/50 hover:bg-green-900/70'
+                : 'border-green-700/50 bg-green-900/20 hover:bg-green-900/40'
             }`}
           >
             <span className="text-2xl mb-1">💵</span>
-            <span className="text-base text-emerald-300">Оплата на месте (PAY_ON_SITE)</span>
+            <span className="text-base text-green-300">Оплата на месте (PAY_ON_SITE)</span>
             <span className="text-xs text-gray-400 font-normal mt-1">
               Без онлайн-предоплаты — наличными или картой при визите
             </span>
@@ -253,10 +253,10 @@ export function CheckoutModal({
             type="button"
             disabled={loading}
             onClick={() => handleSelectRail('TELEGRAM_STARS')}
-            className="flex flex-col items-center justify-center p-6 rounded-xl border border-yellow-700/50 bg-yellow-950/30 hover:bg-yellow-950/60 text-white font-bold transition group"
+            className="flex flex-col items-center justify-center p-6 rounded-xl border border-warning/50 bg-warning-surface/30 hover:bg-warning-surface/60 text-white font-bold transition group"
           >
             <span className="text-3xl mb-2 group-hover:scale-110 transition">⭐</span>
-            <span className="text-base text-yellow-300">Telegram Stars</span>
+            <span className="text-base text-warning">Telegram Stars</span>
             <span className="text-xs text-gray-400 font-normal mt-1">
               {starsPrice ? `${starsPrice.toLocaleString()} XTR` : 'Digital in-app tokens'}
             </span>
@@ -266,10 +266,10 @@ export function CheckoutModal({
             type="button"
             disabled={loading}
             onClick={() => handleSelectRail('CRYPTO_GATEWAY')}
-            className="flex flex-col items-center justify-center p-6 rounded-xl border border-blue-700/50 bg-blue-950/30 hover:bg-blue-950/60 text-white font-bold transition group"
+            className="flex flex-col items-center justify-center p-6 rounded-xl border border-purple-700/50 bg-purple-900/30 hover:bg-purple-900/60 text-white font-bold transition group"
           >
             <span className="text-3xl mb-2 group-hover:scale-110 transition">🪙</span>
-            <span className="text-base text-blue-300">Crypto Gateway</span>
+            <span className="text-base text-purple-300">Crypto Gateway</span>
             <span className="text-xs text-gray-400 font-normal mt-1">BTC, TON, USDT, ETH</span>
           </button>
         </div>

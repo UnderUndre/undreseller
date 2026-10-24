@@ -189,6 +189,7 @@ Close the audit's P1 debt class before exposing the product publicly: audit-log 
 - **FR-416**: The client bot MUST provide: my bookings, cancel (existing token flow), support contact, and language switching; a booking journey MUST be reachable within 3 taps from the bot menu.
 - **FR-417**: The Mini App MUST follow Telegram client theme parameters; forced color schemes are prohibited.
 - **FR-418**: Public professional pages MUST expose a deep link returning the visitor into the Telegram bot with professional context.
+- **FR-431**: All brand and semantic color usage across all surfaces MUST derive from the shared `@underundre/undesign` token system (single source of truth: brand scales, semantic tokens, light/dark surfaces); generic palette utilities MUST NOT be used for brand or semantic roles.
 
 **Waitlist & any-available**
 

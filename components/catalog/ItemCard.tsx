@@ -22,10 +22,10 @@ export function ItemCard({ item }: { item: CatalogItem }) {
   });
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900/80 p-6 flex flex-col justify-between shadow-lg hover:border-blue-500/50 transition">
+    <div className="rounded-xl border border-gray-800 bg-gray-900/80 p-6 flex flex-col justify-between shadow-lg hover:border-purple-500/50 transition">
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-blue-400 bg-blue-950/60 px-2 py-0.5 rounded">
+          <span className="text-xs font-semibold uppercase tracking-wider text-purple-400 bg-purple-900/60 px-2 py-0.5 rounded">
             {item.itemType}
           </span>
           {item.itemType === 'SERVICE' && item.durationMin && (
@@ -34,7 +34,7 @@ export function ItemCard({ item }: { item: CatalogItem }) {
             </span>
           )}
           {item.itemType === 'PRODUCT' && item.stock !== null && (
-            <span className="text-xs text-emerald-400 font-mono">
+            <span className="text-xs text-green-400 font-mono">
               📦 In stock: {item.stock}
             </span>
           )}
@@ -49,7 +49,7 @@ export function ItemCard({ item }: { item: CatalogItem }) {
           <div>
             <span className="text-2xl font-extrabold text-white">{formattedPrice}</span>
             {item.starsPrice && (
-              <span className="ml-2 text-xs font-bold text-yellow-400">
+              <span className="ml-2 text-xs font-bold text-warning">
                 ⭐ {item.starsPrice.toLocaleString()} XTR
               </span>
             )}
@@ -59,14 +59,14 @@ export function ItemCard({ item }: { item: CatalogItem }) {
         {item.itemType === 'SERVICE' ? (
           <Link
             href={`/book?itemId=${item.id}`}
-            className="w-full block text-center bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 px-4 rounded-lg transition"
+            className="w-full block text-center bg-purple-600 hover:bg-purple-500 text-white font-medium py-2.5 px-4 rounded-lg transition"
           >
             Book Appointment
           </Link>
         ) : (
           <Link
             href={`/checkout?itemId=${item.id}`}
-            className="w-full block text-center bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 px-4 rounded-lg transition"
+            className="w-full block text-center bg-green-600 hover:bg-green-500 text-white font-medium py-2.5 px-4 rounded-lg transition"
           >
             Buy Now
           </Link>
