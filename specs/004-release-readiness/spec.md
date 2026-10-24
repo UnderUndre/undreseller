@@ -142,6 +142,22 @@ Close the audit's P1 debt class before exposing the product publicly: audit-log 
 5. **Given** a checkout attempt mixing services and physical products in one order, **When** submitted, **Then** the defined release policy (blocked with split guidance — see Assumptions) is applied consistently in UI and API.
 6. **Given** the release DR drill, **When** executed, **Then** it performs an actual restore from a real backup and records measured RTO/RPO, not simulated numbers.
 
+### User Story 8 — Brand Design System Adoption (Priority: P2)
+
+The product's visual language derives entirely from the shared `@underundre/undesign` token system — the single source of truth for brand colors, scales, semantic colors, and light/dark surfaces — instead of ad-hoc palette choices. What has already landed as the first slice (commit `1b7bd23`): brand scales (purple/orange/green) and semantic tokens (error/warning) wired into the styles and ~140 generic-palette class usages replaced across all surfaces. What remains for release: migrating neutral grays to the system's surface tokens, enabling both shipped themes (`undrlla` light / `undrlla-dark`), and hooking theme selection to the Telegram client theme (FR-417).
+
+**Why this priority**: A white-label product sold under one brand must look like that brand on every surface; the token system also makes the light-theme work (required by FR-417, where the current forced dark mode breaks light-theme clients) a configuration change rather than a redesign.
+
+**Independent Test**: Inspect every surface (storefront, item page, booking, checkout, professional pages, admin, both bots' inline keyboards, emails) in both themes; verify no generic-palette or raw-hex color usage remains for brand/semantic roles, and that switching the theme token flips all surfaces consistently.
+
+**Acceptance Scenarios**:
+
+1. **Given** any surface in either theme, **When** rendered, **Then** all brand and semantic colors resolve from the design-token variables (no raw hex, no generic palette utilities in brand/semantic roles — FR-431).
+2. **Given** neutral surfaces and text (currently Tailwind grays), **When** the migration completes, **Then** they use the system's surface tokens (`base-100/200/300/content`), following the active theme.
+3. **Given** the light theme `undrlla` and the dark theme `undrlla-dark`, **When** the theme is switched, **Then** all surfaces flip consistently with no unreadable combinations (verified contrast on semantic tokens in both themes).
+4. **Given** a Telegram Mini App session, **When** the client theme is light or dark, **Then** the active theme follows the client (integration with FR-417 themeParams).
+5. **Given** a design-token package update, **When** applied, **Then** all surfaces pick it up without per-component changes.
+
 ### Edge Cases
 
 - DST-transition days: slot grid must match wall-clock hours (US2-SC1); a slot that "moves" across the transition must not double-book.
