@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import { TgDeepLinkBook } from '@/components/booking/TgDeepLinkBook';
 import { getPublicProfileBySlug } from '@/lib/kernel/professionalProfileService';
 import { shopConfig } from '@/config/shop.config';
 
@@ -103,12 +104,14 @@ export default async function ProfessionalPage({
                 </div>
 
                 <div className="pt-5">
-                  <Link
-                    href={`/book?serviceId=${svc.id}&performerSlug=${profile.slug}`}
+                  {/* T053/FR-418: tg:// deep link with startapp inside Telegram; /book on web */}
+                  <TgDeepLinkBook
+                    serviceId={svc.id}
+                    performerSlug={profile.slug}
                     className="block w-full text-center bg-purple-600 hover:bg-purple-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors shadow-sm"
                   >
                     Book Appointment
-                  </Link>
+                  </TgDeepLinkBook>
                 </div>
               </div>
             ))}

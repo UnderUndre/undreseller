@@ -115,7 +115,7 @@
 - [X] T050 [BE] [US4] `setChatMenuButton` (web_app) on bot init — persistent storefront entry (FR-415)
 - [ ] T051 [BE] [US4] Bot quick actions: my bookings, cancel via token flow, support contact, language switch (FR-416); ≤3-tap journey test
 - [ ] T052 [FE] [US4] Mini App themeParams → undesign theme toggle (light/dark) per S1 findings; both themes shipped (FR-417)
-- [ ] T053 [FE] [US4] Professionals pages: `tg://` deep links with startapp context (FR-418)
+- [X] T053 [FE] [US4] Professionals pages: `tg://` deep links with startapp context (FR-418)
 - [ ] T054 [E2E] [US4] Hybrid journey: menu → Mini App → slot → book → cancel via bot; theme flip visual check
 
 ---
