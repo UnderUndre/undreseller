@@ -122,6 +122,7 @@ export async function fanoutForSlot(params: {
 
   const candidates = await prisma.waitlistEntry.findMany({
     where: {
+      customerTgId: { not: null },
       status: 'ACTIVE',
       windowStartAt: { lte: now },
       windowEndAt: { gte: now },
@@ -149,7 +150,7 @@ export async function fanoutForSlot(params: {
       continue;
     }
 
-    eligible.push(candidate);
+    eligible.push({ entryId: candidate.id, customerTgId: candidate.customerTgId ?? '', customerContact: candidate.customerContact });
   }
 
   for (const candidate of eligible) {
@@ -163,7 +164,7 @@ export async function fanoutForSlot(params: {
       },
     });
     logger.info('[WAITLIST_OFFER_SENT]', {
-      entryId: candidate.entryId,
+      waitlistEntryId: candidate.entryId,
       slotReservationId: params.slotReservationId,
       tokenHash: createHash('sha256').update(token).digest('hex').slice(0, 12) + '…',
     });

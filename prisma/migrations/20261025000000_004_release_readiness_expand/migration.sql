@@ -36,7 +36,7 @@ CREATE TYPE "NotificationDeliveryStatus" AS ENUM ('ACCEPTED', 'FAILED');
 -- US5: waitlist auto-fill entries (PII: customerTgId/customerContact)
 CREATE TABLE IF NOT EXISTS "WaitlistEntry" (
     "id" TEXT NOT NULL,
-    "customerTgId" TEXT NOT NULL,
+    "customerTgId" TEXT,
     "customerContact" TEXT,
     "serviceId" TEXT,
     "professionalProfileId" TEXT,

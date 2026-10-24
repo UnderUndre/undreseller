@@ -931,7 +931,8 @@ model OperatorAction {
 /// Waitlist auto-fill entry (US5, FR-419/420). PII: customerTgId/customerContact.
 model WaitlistEntry {
   id                    String              @id @default(uuid())
-  customerTgId          String
+  // Nullable: nightly purge clears PII on closed entries (T092/FR-428)
+  customerTgId          String?
   customerContact       String?
   serviceId             String?
   service               Item?               @relation(fields: [serviceId], references: [id])

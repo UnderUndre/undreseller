@@ -294,6 +294,25 @@ export const nightlyPurge = inngest.createFunction(
         where: { attemptAt: { lte: ninetyDaysAgo } },
       });
 
+      // 004 T092/FR-428: PII closure for new surfaces
+      // (a) custom-field answers on terminal reservations past retention (PII)
+      const fieldAnswers30d = await prisma.bookingFieldAnswer.deleteMany({
+        where: { slotReservation: { order: { status: { in: ['CANCELLED', 'FULFILLED'] } }, createdAt: { lte: thirtyDaysAgo } } },
+      });
+      // (b) out-call address snapshots on terminal reservations (PII)
+      const addressSnapshots30d = await prisma.slotReservation.updateMany({
+        where: { order: { status: { in: ['CANCELLED', 'FULFILLED'] } }, createdAt: { lte: thirtyDaysAgo }, serviceAddressSnapshot: { not: null } },
+        data: { serviceAddressSnapshot: null },
+      });
+      // (c) waitlist offers/entries: closed rows past 90d (PII: tg ids, contacts)
+      const waitlistOffers90d = await prisma.waitlistOffer.deleteMany({
+        where: { status: { in: ['TAKEN', 'EXPIRED'] }, sentAt: { lte: ninetyDaysAgo } },
+      });
+      const waitlistEntries90d = await prisma.waitlistEntry.updateMany({
+        where: { status: { in: ['FULFILLED', 'EXPIRED', 'CANCELLED'] }, createdAt: { lte: ninetyDaysAgo } },
+        data: { customerTgId: null, customerContact: null },
+      });
+
       const inboxScrub7d = await prisma.inboxEvent.updateMany({
         where: {
           status: { in: ['SENT', 'FAILED'] },
