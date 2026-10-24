@@ -170,7 +170,7 @@
 
 - [X] T100 [FE] [US8] Gray neutrals → `base-*` surface tokens across all surfaces (inventory → replace → both-theme visual pass)
 - [X] T101 [FE] [US8] Light theme `undrlla` first-class: semantic contrast pairs verified both themes (US8-SC3); forced-dark remnants removed
-- [ ] T102 [SETUP] [US8] grep gate: zero generic-palette/raw-hex in brand/semantic roles (FR-431) — CI-able script
+- [X] T102 [SETUP] [US8] grep gate: zero generic-palette/raw-hex in brand/semantic roles (FR-431) — CI-able script
 
 ---
 
