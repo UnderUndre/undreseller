@@ -305,7 +305,7 @@ export function executeStaffOrderActionPure(params: {
         updatedOrder: updated,
         emittedEvent: 'order/fulfilled',
         removeInlineKeyboard: true,
-        triggerGdprRedaction: false,
+        triggerGdprRedaction: true,
       };
     }
 

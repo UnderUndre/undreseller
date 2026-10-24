@@ -53,10 +53,16 @@ describe('Admin Authentication & Scope (T-007, T-008)', () => {
     expect(authenticateAdmin(reqWrong).authenticated).toBe(false);
   });
 
-  it('admin-auth scope test: asserts no User/Account/Session/OAuth models exist in Prisma Client', () => {
+  it('admin-auth scope test: staff sign-in models exist (004 T017) and org/tenant models stay forbidden', () => {
     const prismaModelNames = Object.keys(Prisma.ModelName);
-    const forbiddenModels = ['User', 'Account', 'Session', 'Team', 'Organization', 'Membership', 'Role'];
 
+    // 004 plan: staff web sign-in uses Account (bootstrap-owner scrypt hash) + Session.
+    // These models must exist — the 003 "token-only" assertion is superseded by 004 FR-427.
+    for (const required of ['User', 'Account', 'Session']) {
+      expect(prismaModelNames).toContain(required);
+    }
+
+    const forbiddenModels = ['Team', 'Organization', 'Membership', 'Role'];
     for (const forbidden of forbiddenModels) {
       expect(prismaModelNames).not.toContain(forbidden);
     }
