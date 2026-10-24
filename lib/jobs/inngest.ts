@@ -281,6 +281,11 @@ export const nightlyPurge = inngest.createFunction(
         },
       });
 
+      // 004 T014: NotificationDeliveryLog 90-day retention (FR-409)
+      const deliveryLog90d = await prisma.notificationDeliveryLog.deleteMany({
+        where: { attemptAt: { lte: ninetyDaysAgo } },
+      });
+
       const inboxScrub7d = await prisma.inboxEvent.updateMany({
         where: {
           status: { in: ['SENT', 'FAILED'] },

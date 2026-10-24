@@ -41,6 +41,16 @@ const DENYLIST_KEYS = new Set([
   'initialpassword',
   'initial_password',
   'betterauth',
+  // 004 T014: new notification surfaces
+  'customercontact',
+  'customer_contact',
+  'target',
+  'targethashraw',
+  'offertoken',
+  'offer_token',
+  'languageoverride',
+  'emailhtml',
+  'email_html',
 ]);
 
 function sanitizeValue(key: string, value: unknown): unknown {
