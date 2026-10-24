@@ -101,7 +101,7 @@
 - [ ] T040 [FE] [US3] Web chrome i18n: all pages/components keyed; locale switcher storing user override
 - [ ] T041 [BE] [US3] Bot strings i18n: client + staff bots via `from.language_code` (grammY middleware over shared dictionaries)
 - [ ] T042 [BE] [US3] Admin UI + email template dictionaries (ru/en)
-- [ ] T043 [BE] [US3] UserPreference language override API + anonymous-web session cookie fallback (FR-412)
+- [X] T043 [BE] [US3] UserPreference language override API + anonymous-web session cookie fallback (FR-412)
 - [X] T044 [SETUP] [US3] i18n AST coverage gate (S3 findings → production script): 100% of chrome keys resolve in both locales; adding a locale proven data-only by gate re-run (FR-411); wired into test suite (NFR-406)
 - [ ] T045 [E2E] [US3] i18n acceptance: ru/en journeys, CLDR plurals, unsupported-code fallback, content-stays-authored check (FR-414)
 
