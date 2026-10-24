@@ -10,7 +10,7 @@
 **Status**: Draft
 **Input**: User description: "подготовить приложение к релизу — i18n (ru/en/uk), чистый TG-бот гибрид с Mini App, унификация оплаты по FR-316, waitlist и any-available-staff, кастомные поля брони" + decisions from research Q&A (market outside RF; i18n scope = all surfaces; crypto external-link compromise accepted).
 **Research inputs**: `research.md`, `competitors-research.md`, `ai-features-research.md`, `mcp-server-research.md`, `003-tasks-audit.md`, `backlog-carried-over-0032.md` (this directory).
-**Business plan constraint**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` v18.4 — Sprint B lineage (booking-first template, 3 roles, ≤1 external integration, white-label one-instance-per-business, ≤500 MB RSS per instance); online payments belong to post-Sprint-B releases (this one).
+**Business plan constraint**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` v18.4 — Sprint B lineage (booking-first template, 3 roles, ≤1 external integration, white-label one-instance-per-business, ≤500 MB RSS per instance). The plan deferred online payments **past the original Sprint B scope**; this release (004) **is** that post-Sprint-B release where payments ship — unified behind a neutral provider contract (FR-401), not as new commercial scope.
 
 ## Clarifications
 
@@ -18,6 +18,19 @@
 
 - Q: Release policy for mixed carts (service + physical product in one order)? → A: **Blocked at checkout with guidance to place two separate orders**, until the 003.2 fulfillment pack ships (FR-426).
 - Q: Default deposit policy when online payment is enabled? → A: **No deposit by default** (pay at venue; booking confirms via hold/staff semantics) — first-booking conversion outweighs no-show protection at launch, and crypto refunds carry gas costs, no reverse gateway, and volatility exposure. Prepayment becomes a **per-service owner setting** ("require full prepayment"); fixed/percentage deposits are deferred to the payment-plans pack (003.2 backlog) since partial-deposit logic does not exist in the codebase.
+
+### Session 2026-10-24 — Review Integration (external spec review, 10 findings)
+
+- Q: FSM for bookings **without** payment — who confirms? → A: Two tracks. FREE track: `IN_CALL` booking auto-confirms immediately (unless the instance enables staff approval — the setting exists); `OUT_CALL` always requires staff coverage confirmation (003 lineage); the free track never enters HELD. PREPAID track: HELD → PAYMENT_PENDING → CONFIRMED per FR-403.
+- Q: Late blockchain confirmation after the slot was released and re-booked — what is automatic? → A: The second customer's booking stands; the system automatically creates a staff resolution task with SLA, records a refund request for the late payer, and notifies both parties (FR-432; codifies existing collision-path behavior).
+- Q: Waitlist vs new storefront customer — who owns the freed slot? → A: **Notification priority, not reservation**: the slot returns to public availability immediately; waitlist claims and storefront bookings race through the same atomic booking path (FR-420).
+- Q: Waitlist claim TTL? → A: Free service → claim creates the booking immediately; prepaid service → claim creates HELD with the standard payment TTL; unclaimed offers expire silently (FR-433).
+- Q: Custom-field lifecycle after the owner removes a field? → A: Deactivation only; historical answers preserved with a definition snapshot, purged together with booking data; hard delete prohibited (FR-423).
+- Q: Text-field size cap? → A: ≤1000 characters per text answer, bounded numerics, API payload caps (FR-434).
+- Q: Where is the explicit language choice stored? → A: Once, on the user profile keyed by Telegram identity (bot and web share it); anonymous web sessions fall back to a session cookie (FR-412).
+- Q: What does `delivered` mean for Telegram? → A: Nothing claimable — bots cannot confirm delivery; the log records `accepted` (provider acknowledged) / `failed` only (FR-409).
+- Q: Sprint B vs payments confusion in the header? → A: Header rewritten — 004 is explicitly the post-Sprint-B release where payments ship (see above).
+- Q: Future MCP without refactoring? → A: FR-435 — all booking/payment/waitlist operations go through internal application services with typed contracts, so MCP/API surfaces stay thin layers.
 
 ## User Scenarios & Testing _(mandatory)_
 
@@ -27,7 +40,29 @@ A customer books a slot and pays online (optional per instance). Money and calen
 
 **Why this priority**: Every audit (003-tasks-audit, research forensic passes) ranks double-booking and payment reconciliation as the only monetary P0 class; a release with a broken money path cannot be sold under the Sprint B contract.
 
-**Independent Test**: Simulate a full crypto payment lifecycle with a stubbed gateway (waiting → confirming → finished; partially_paid; expired) against one slot and verify state transitions, notifications, and slot availability at each step.
+**Booking FSM (two tracks)**:
+
+```
+FREE track (service does not require prepayment):
+  AVAILABLE ── book IN_CALL ──► CONFIRMED            (auto; unless instance enables staff approval)
+  AVAILABLE ── book IN_CALL (approval on) ──► PENDING_APPROVAL ── staff approve ──► CONFIRMED
+  AVAILABLE ── book OUT_CALL ──► PENDING_APPROVAL ── staff approve ──► CONFIRMED
+                                                   └── staff reject ──► AVAILABLE (+ client notified)
+  any unconfirmed ── customer cancels / request invalidated ──► AVAILABLE
+  CONFIRMED ── cancel via token (policy window) ──► CANCELLED (slot → AVAILABLE)
+  [free track never enters HELD — there is nothing to pay]
+
+PREPAID track (service requires full prepayment):
+  AVAILABLE ── book ──► HELD (TTL 15 min) ── invoice issued ──► PAYMENT_PENDING
+  HELD / PAYMENT_PENDING ── TTL expired / gateway failed|expired ──► AVAILABLE
+  PAYMENT_PENDING ── gateway "confirming" ──► hold FROZEN (no TTL release until terminal status)
+  PAYMENT_PENDING ── gateway "finished" ──► CONFIRMED
+  PAYMENT_PENDING ── gateway "partially_paid" ──► UNDERPAID (staff resolution, no auto-confirm)
+  gateway "finished" AFTER slot released and re-booked ──► PAID_REQUIRES_RESOLUTION
+      (staff task + SLA + refund request; second booking stands — FR-432)
+```
+
+**Independent Test**: Simulate a full crypto payment lifecycle with a stubbed gateway (waiting → confirming → finished; partially_paid; expired) against one slot and verify state transitions, notifications, and slot availability at each step; separately verify the FREE track auto-confirm and OUT_CALL approval paths.
 
 **Acceptance Scenarios**:
 
@@ -37,6 +72,7 @@ A customer books a slot and pays online (optional per instance). Money and calen
 4. **Given** an instance with no payment provider configured, **When** a customer books, **Then** the booking completes on hold/staff-confirmation semantics identical to 003 behavior.
 5. **Given** amounts in currencies with 0 or 3 decimal places (JPY, KWD) or crypto units, **When** stored and displayed, **Then** values use the currency registry's minor-unit scale with no hardcoded ×100 arithmetic.
 6. **Given** a service flagged "require full prepayment", **When** a customer books it, **Then** the slot confirms only after a verified payment; **Given** a default (no-deposit) service, **When** booked, **Then** confirmation follows hold/staff semantics with no payment step.
+7. **Given** a prepaid slot whose hold expired at 12:00, a second customer booked it at 12:01, and a blockchain confirmation arrives at 12:03, **When** the callback is processed, **Then** the system automatically: keeps the second customer's booking, creates a staff resolution task with an SLA, records a refund request for the late payer, and notifies both the late payer ("payment received, slot already taken, refund initiated") and staff — with zero automatic cancellation of the second booking.
 
 ---
 
@@ -52,7 +88,7 @@ Bookings happen in the business's real timezone, including DST transitions, and 
 
 1. **Given** an instance configured with a non-UTC IANA timezone, **When** availability is computed for a DST-transition day, **Then** offered slots match the wall-clock business hours (no one-hour shift).
 2. **Given** a booking confirmation whose Telegram send fails, **When** the failure is detected, **Then** an email fallback is dispatched within 5 minutes and both attempts appear in the delivery log.
-3. **Given** any booking lifecycle event, **When** staff opens the delivery history for that booking, **Then** every notification attempt shows channel, status (sent/delivered/failed), and timestamp.
+3. **Given** any booking lifecycle event, **When** staff opens the delivery history for that booking, **Then** every notification attempt shows channel, status (accepted/failed), and timestamp.
 4. **Given** a slot made unavailable by service buffers or an existing booking, **When** the customer views the slot grid, **Then** the reason is communicated ("booked" / "break") instead of silently hiding it.
 
 ---
@@ -179,7 +215,8 @@ The product's visual language derives entirely from the shared `@underundre/unde
 
 - **FR-401**: Payment integrations MUST use a provider-neutral contract with providers selected from deployment configuration; the booking flow MUST operate end to end with zero providers configured (003 FR-316 lineage).
 - **FR-402**: Online payment MUST create invoices through the provider's server-side API and return the provider's payment URL; construction of payment links from templates/order IDs is prohibited.
-- **FR-403**: A booking MUST progress through an explicit state machine: AVAILABLE → HELD (bounded TTL) → PAYMENT_PENDING → CONFIRMED, with transitions to AVAILABLE on timeout/failure, and to UNDERPAID on partial payment requiring human resolution with customer and staff notification.
+- **FR-403**: A booking MUST follow the explicit two-track state machine defined in User Story 1. FREE track: `IN_CALL` bookings auto-confirm immediately unless the instance enables staff approval; `OUT_CALL` bookings always enter `PENDING_APPROVAL` until staff confirms coverage (rejection releases the slot and notifies the customer); the free track never enters HELD. PREPAID track: AVAILABLE → HELD (TTL 15 minutes) → PAYMENT_PENDING → CONFIRMED, with transitions to AVAILABLE on timeout/failure, to UNDERPAID on partial payment requiring human resolution, and to PAID_REQUIRES_RESOLUTION when a terminal payment arrives after the slot was re-booked (FR-432).
+- **FR-432**: A terminal payment arriving for a released-and-re-booked slot MUST automatically: preserve the second booking, create a staff resolution task with an SLA, record a refund request for the late payer, and notify both the late payer and staff — no automatic cancellation of the later booking.
 - **FR-404**: The first gateway status indicating an in-progress transaction (`confirming` or equivalent) MUST freeze/extend the slot hold until a terminal status arrives.
 - **FR-405**: Monetary amounts MUST be stored and computed in the currency's registry-defined minor units (scale 0/2/3 and provider wire scales translated at the provider boundary); hardcoded decimal arithmetic is prohibited (003 FR-303 lineage).
 - **FR-406**: Payment callbacks MUST be signature-verified and processed idempotently keyed on the provider payment identifier (regression: existing HMAC + inbox dedup behavior).
@@ -189,13 +226,13 @@ The product's visual language derives entirely from the shared `@underundre/unde
 **Calendar & notifications**
 
 - **FR-408**: Availability MUST be computed in the business's configured IANA timezone, correctly handling DST transitions; the slot grid MUST communicate unavailability reasons (booked vs break/buffer).
-- **FR-409**: Every booking lifecycle event (created, confirmed, cancelled, rejected, rescheduled) MUST notify the customer via Telegram; on delivery failure an email fallback MUST fire; all attempts MUST be recorded in a delivery log visible to authorized staff.
+- **FR-409**: Every booking lifecycle event (created, confirmed, cancelled, rejected, rescheduled) MUST notify the customer via Telegram; on send failure an email fallback MUST fire; all attempts MUST be recorded in a delivery log visible to authorized staff with statuses `accepted` (provider acknowledged the message) and `failed` (provider rejected or retries exhausted) — the platform MUST NOT claim a per-user `delivered` state, which Telegram bots cannot confirm.
 - **FR-410**: Dates across all surfaces MUST render in locale-aware word-month formats.
 
 **Internationalization**
 
 - **FR-411**: All user-facing strings across web, client bot, staff bot, admin, and email templates MUST be externalized with ru and en complete at launch and uk addable post-launch without code changes.
-- **FR-412**: Language resolution MUST follow: explicit user choice > Telegram `language_code` > instance default; unsupported codes fall back to the instance default.
+- **FR-412**: Language resolution MUST follow: explicit user choice > Telegram `language_code` > instance default; unsupported codes fall back to the instance default. The explicit choice MUST be stored once on the user profile, keyed by the Telegram identity (so bot and web render the same language for the same person); anonymous web sessions fall back to a session cookie until the user is identified.
 - **FR-413**: Pluralized strings MUST follow CLDR plural categories for the active locale.
 - **FR-414**: Owner-authored content MUST remain in its authored language regardless of UI locale (UI chrome translation only).
 
@@ -210,13 +247,15 @@ The product's visual language derives entirely from the shared `@underundre/unde
 **Waitlist & any-available**
 
 - **FR-419**: A customer MUST be able to join a waitlist specifying service, optional master preference, and a time window, from the slot grid and from cancellation flows.
-- **FR-420**: A cancellation MUST trigger waitlist offers to the best-matching bounded batch of entries via Telegram inline actions; claims MUST be atomic single-winner; losers receive a definitive "taken" outcome.
+- **FR-420**: A cancellation MUST trigger waitlist offers to the best-matching bounded batch of entries via Telegram inline actions; claims MUST be atomic single-winner; losers receive a definitive "taken" outcome. The freed slot returns to public availability immediately — waitlist grants **notification priority, not reservation**: waitlist claims and storefront bookings race through the same atomic booking path with identical semantics (offers are worded "if still available").
+- **FR-433**: A waitlist claim on a free service MUST create the booking immediately; a claim on a prepaid service MUST create a HELD reservation under the standard payment TTL (FR-403); unclaimed offers MUST expire silently after the broadcast window with no slot side effects.
 - **FR-421**: An "any available staff" option MUST propose the soonest valid slots across masters, deterministically minimizing calendar fragmentation; probabilistic/model-based scheduling is prohibited in this release.
 - **FR-422**: The admin surface MUST show waitlist outcome counts (offers sent, slots recovered) per period.
 
 **Custom booking fields**
 
-- **FR-423**: Owners/operators MUST be able to define up to 10 booking fields per instance of types text, number, single-select, checkbox — optionally bound to specific services, with required flags and validation.
+- **FR-423**: Owners/operators MUST be able to define up to 10 booking fields per instance of types text, number, single-select, checkbox — optionally bound to specific services, with required flags and validation. Removing a field MUST be a deactivation (soft delete): the definition and historical answers are preserved with a snapshot of the definition (label, type), remain visible to staff on past bookings, and are purged only together with the booking's retention purge; hard delete with data loss is prohibited.
+- **FR-434**: Custom-field answers MUST be bounded: text answers ≤ 1000 characters, numeric answers range-validated, and total booking payload size capped at the API boundary.
 - **FR-424**: Custom field answers MUST be stored with the booking and visible only to authorized staff roles.
 
 **Hardening**
@@ -226,6 +265,7 @@ The product's visual language derives entirely from the shared `@underundre/unde
 - **FR-427**: Booking create/cancel, waitlist claim, and bot command endpoints MUST enforce per-contact rate limits and bounded payload sizes.
 - **FR-428**: Audit free-text fields MUST be PII-redacted before persistence, and service address snapshots MUST be included in scheduled retention purges consistent with other customer data.
 - **FR-429**: Destructive staff actions in the staff bot MUST require an explicit confirmation step, and customer notification on rejection MUST follow an owner-configurable policy (auto-message / alternative slot offer / manual follow-up).
+- **FR-435**: All booking, payment, and waitlist business operations MUST be exposed through internal application services with typed contracts — HTTP handlers, bots, and future API/MCP surfaces are thin controllers over these services, so adding an external surface never requires refactoring business logic.
 
 ### Non-Functional Requirements (NFR) _(ISO/IEC/IEEE 29148:2018)_
 
