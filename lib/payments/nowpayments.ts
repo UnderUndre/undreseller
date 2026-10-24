@@ -1,5 +1,13 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { fulfillPayment } from './fulfillment';
+import {
+  assertValidInvoiceAmount,
+  registerPaymentProviderFactory,
+  type PaymentProvider,
+  type ParsedCallback,
+  type CallbackStatus,
+} from './providerContract';
+import { getCurrencyMetadata } from '../../config/currency-registry';
 import { logger } from '@/lib/telemetry/logger';
 import { bot, sendWithRetry } from '@/lib/bot/telegramBot';
 
@@ -17,6 +25,138 @@ export interface NowPaymentsIPNPayload {
   purchase_id?: string;
   [key: string]: unknown;
 }
+
+// ---------------------------------------------------------------------------
+// NOWPayments adapter (T022, contracts/payment-provider.md)
+// Server-side invoice creation via POST https://api.nowpayments.io/v1/invoice.
+// paymentUrl is ALWAYS provider-issued — hand-built URLs are prohibited (003 audit).
+// ---------------------------------------------------------------------------
+
+const NOWPAYMENTS_API_BASE = process.env.NOWPAYMENTS_API_BASE || 'https://api.nowpayments.io/v1';
+
+/** Maps NOWPayments IPN statuses onto the provider-neutral CallbackStatus union. */
+export function mapNowPaymentsStatus(rawStatus: string): CallbackStatus {
+  const status = (rawStatus || '').toLowerCase();
+  switch (status) {
+    case 'waiting':
+      return 'waiting';
+    case 'confirming':
+    case 'confirmed':
+    case 'sending':
+      return 'confirming';
+    case 'finished':
+      return 'finished';
+    case 'partially_paid':
+      return 'partially_paid';
+    case 'failed':
+    case 'refunded':
+      return 'failed';
+    case 'expired':
+      return 'expired';
+    default:
+      throw new Error(`Unknown NOWPayments payment_status: '${rawStatus}'`);
+  }
+}
+
+/**
+ * Converts a provider wire amount (major units of `currency`) into registry
+ * minor units using CurrencyMetadata scale — never hard-coded ×100 (T026).
+ */
+export function nowPaymentsWireAmountToMinor(amount: number, currency: string): number {
+  const meta = getCurrencyMetadata(currency);
+  const minorUnit = meta ? meta.minorUnit : 2;
+  return Math.round(amount * Math.pow(10, minorUnit));
+}
+
+export function createNowPaymentsProvider(
+  config: { apiKey?: string } = {}
+): PaymentProvider {
+  const apiKey = config.apiKey ?? process.env.NOWPAYMENTS_API_KEY;
+  if (!apiKey) {
+    throw new Error('NOWPAYMENTS adapter requires NOWPAYMENTS_API_KEY');
+  }
+
+  return {
+    id: 'NOWPAYMENTS',
+    capabilities: { fiat: false, crypto: true, refunds: 'manual' },
+
+    async createInvoice(input) {
+      assertValidInvoiceAmount(input.amountMinor);
+      const meta = getCurrencyMetadata(input.currency);
+      if (!meta) {
+        throw new Error(`Unknown currency in registry: ${input.currency}`);
+      }
+      // Translate registry minor units back to provider wire scale (major units).
+      const priceAmount = input.amountMinor / Math.pow(10, meta.minorUnit);
+
+      const response = await fetch(`${NOWPAYMENTS_API_BASE}/invoice`, {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          order_id: input.orderId,
+          price_amount: priceAmount,
+          price_currency: meta.code,
+          // Amounts are fixed server-side; success/cancel land back on the shop.
+          success_url: `${input.callbackBaseUrl}/checkout?paid=1&orderId=${input.orderId}`,
+          cancel_url: `${input.callbackBaseUrl}/checkout?cancelled=1&orderId=${input.orderId}`,
+        }),
+      });
+
+      if (!response.ok) {
+        const bodyText = await response.text().catch(() => '');
+        throw new Error(
+          `NOWPayments invoice creation failed: HTTP ${response.status}${bodyText ? ` — ${bodyText.slice(0, 200)}` : ''}`
+        );
+      }
+
+      const data = (await response.json()) as { id?: string | number; invoice_url?: string };
+      if (!data.id || !data.invoice_url) {
+        throw new Error('NOWPayments invoice response missing id/invoice_url');
+      }
+
+      return {
+        providerPaymentId: String(data.id),
+        // Provider-issued URL — never assembled locally.
+        paymentUrl: data.invoice_url,
+      };
+    },
+
+    verifyCallback(rawBody: string, signature: string | null): boolean {
+      return verifyNowPaymentsSignature(rawBody, signature);
+    },
+
+    parseCallback(rawBody: string): ParsedCallback {
+      const payload = JSON.parse(rawBody) as NowPaymentsIPNPayload;
+      if (!payload.order_id) {
+        throw new Error('Missing order_id in NOWPayments callback');
+      }
+      const currency = (payload.price_currency || 'USD').toUpperCase();
+      const minorUnit = getCurrencyMetadata(currency)?.minorUnit ?? 2;
+      const scale = Math.pow(10, minorUnit);
+      const quotedMinor = Math.round(Number(payload.price_amount) * scale);
+      // actually_paid is denominated in the (crypto) pay currency; convert to the
+      // quoted fiat registry scale via the pay ratio, then to minor units.
+      const payAmount = Number(payload.pay_amount);
+      const ratio = payAmount > 0 ? Number(payload.actually_paid) / payAmount : 0;
+      const paidMinor = Math.round(quotedMinor * ratio);
+
+      return {
+        providerPaymentId: String(payload.payment_id),
+        orderId: payload.order_id,
+        status: mapNowPaymentsStatus(String(payload.payment_status)),
+        paidMinor,
+        quotedMinor,
+      };
+    },
+  };
+}
+
+// Registry self-registration (FR-401): PAYMENT_PROVIDERS=NOWPAYMENTS activates the adapter.
+registerPaymentProviderFactory('NOWPAYMENTS', () => createNowPaymentsProvider());
+
 
 export function verifyNowPaymentsSignature(
   rawBody: string | Record<string, unknown>,

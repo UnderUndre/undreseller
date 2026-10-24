@@ -68,7 +68,7 @@
 
 - [X] T020 [BE] [US1] `lib/kernel/bookingFsm.ts` — pure two-track transition functions + exhaustive unit tests (auto-confirm IN_CALL unless flag, OUT_CALL PENDING_APPROVAL, HELD TTL 15m, freeze, UNDERPAID, AVAILABLE rollbacks)
 - [X] T021 [BE] [US1] Integrate FSM into `lib/kernel/bookingService.ts`: per-service `requiresFullPrepayment` gating, free-track semantics via existing `requireStaffApprovalForInCall`, snapshots untouched (003 lineage)
-- [ ] T022 [BE] [US1] NowPayments adapter behind contract: server-side invoice via provider API; **remove hand-built payment URL** in `app/api/checkout/route.ts` (audit finding); providerPaymentId linkage
+- [X] T022 [BE] [US1] NowPayments adapter behind contract: server-side invoice via provider API; **remove hand-built payment URL** in `app/api/checkout/route.ts` (audit finding); providerPaymentId linkage
 - [ ] T023 [BE] [US1] Confirming-freeze: `holdFrozenAt` on first `confirming`; deadlineSweeper/invoiceExpiry respect freeze; unit tests for TTL-vs-freeze race
 - [ ] T024 [BE] [US1] UNDERPAID flow: staff alert + customer top-up/cancel message via notification dispatcher; no auto-confirm (tests)
 - [ ] T025 [BE] [US1] Stars adapter implements the contract (existing stars tests green — regression only)

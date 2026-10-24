@@ -61,7 +61,7 @@ export async function fulfillPayment(
       await acquireItemSlotLock(tx, itemId);
     }
 
-    // 4. Record immutable PaymentEvent
+    // 4. Record immutable PaymentEvent + explicit provider ledger link (T022, data-model 1.2)
     await tx.paymentEvent.create({
       data: {
         orderId: order.id,
@@ -72,6 +72,24 @@ export async function fulfillPayment(
         accepted: true,
       },
     });
+
+    if (providerRef) {
+      await tx.paymentAllocationLink.upsert({
+        where: {
+          provider_providerPaymentId: {
+            provider,
+            providerPaymentId: providerRef,
+          },
+        },
+        create: {
+          orderId: order.id,
+          provider,
+          providerPaymentId: providerRef,
+          allocationKind: 'FULL_PAYMENT',
+        },
+        update: {},
+      });
+    }
 
     let requiresOperatorAction = false;
     let operatorActionReason: string | null = null;
