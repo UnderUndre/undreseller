@@ -185,7 +185,7 @@
   - T114 note: hand-built payment URL branch removed (T022); ×100 arithmetic removed (T026); spike branches deleted (T007); zero prototype code verified by grep.
 : legacy hand-built payment-URL branch, `×100` arithmetic remnants, dead spike fixtures (ISO 12207 Disposal)
 - [~] T115 [E2E] Full journey regression: all 9 stories' Independent Tests green on one instance
-- [ ] T116 [SETUP] Quickstart + DR drill evidence attached to feature dir; `/speckit.analyze` preparation
+- [X] T116 [SETUP] Quickstart + DR drill evidence attached to feature dir; `/speckit.analyze` preparation
 
 
 ### Phase 12 execution status (2026-10-25)
