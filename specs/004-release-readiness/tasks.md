@@ -157,7 +157,7 @@
 
 ## Phase 10: US7 — Privacy & Abuse Hardening (Priority: P2)
 
-- [ ] T090 [BE] [US7] Zod-refine OUT_CALL address at booking boundary (FR-425) + mixed-cart block with split guidance in checkout UI/API (FR-426)
+- [X] T090 [BE] [US7] Zod-refine OUT_CALL address at booking boundary (FR-425) + mixed-cart block with split guidance in checkout UI/API (FR-426)
 - [ ] T091 [BE] [US7] Rate limits: booking create/cancel, waitlist join/claim, presign, bot commands (FR-427); bounded payload caps
 - [X] T092 [BE] [US7] PII closure: `AuditEvent.reason` redaction pre-persist; `serviceAddressSnapshot` + BookingFieldAnswer + delivery-log + waitlist offers/entries retention in nightlyPurge AND on GDPR user deletion (FR-428); automated log-scan (SC-403)
 - [ ] T093 [BE] [US7] Staff bot: confirm barrier on destructive actions (`showAlert`), configurable rejection notification policy (FR-429)
