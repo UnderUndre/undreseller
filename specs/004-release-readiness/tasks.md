@@ -54,7 +54,7 @@
 - [X] T014 [BE] `lib/notifications/` delivery log (ACCEPTED/FAILED, salted target hash, 90d retention hook) + logger deny-list extension for new surfaces; zero-PII log-scan unit test
 - [X] T015 [BE] `lib/email/` adapter interface + provider adapter (Resend-recommended HTTP API behind interface) + mock contract test (FR-409 fallback readiness)
 - [X] T016 [BE] Feature flags in `lib/config/integrationProfile.ts` for FSM/payment-provider/waitlist/i18n cutover with killswitch verification test (legacy read paths restorable without DDL); OPS drill of the killswitch covered by T112
-- [ ] T017 [BE] Staff web sign-in (antigravity F2): `POST /api/auth/sign-in` — scrypt password verify against the existing `Account` hash (bootstrap-owner lineage), session create in `prisma.session`, HttpOnly/Secure/SameSite cookie, rotation on login; break-glass ADMIN_TOKEN unchanged; login rate limit + lockout (5 fails → 15-min lockout, staff-visible event — FR-427); unit + auth tests
+- [X] T017 [BE] Staff web sign-in (antigravity F2): `POST /api/auth/sign-in` — scrypt password verify against the existing `Account` hash (bootstrap-owner lineage), session create in `prisma.session`, HttpOnly/Secure/SameSite cookie, rotation on login; break-glass ADMIN_TOKEN unchanged; login rate limit + lockout (5 fails → 15-min lockout, staff-visible event — FR-427); unit + auth tests
 - [ ] T018 [FE] Mobile login page `/admin/login` (OWNER/OPERATOR/PERFORMER) wired to T017, redirect to `/admin/catalog`; optional enhancement: staff-bot `/login` command issuing a **single-use** magic link — 5-minute TTL, invalidated by a newer link, revocable by OWNER (mobile-first, no password typing)
 
 **Checkpoint**: Foundation ready — green baseline, schema expanded, contracts scaffolded.
