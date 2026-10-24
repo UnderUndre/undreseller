@@ -34,10 +34,12 @@
 - [X] T001 [SETUP] Repair 003 test debt to green: rewrite `tests/unit/multi-service-cart.test.ts` and `tests/unit/performance-benchmark.test.ts` against the current `computeAvailableSlots` contract (NFR-401 profile: p95 recording, availability load), fix `admin-auth` and `inngest-cas-and-outbox` failures (root-cause, not skip) — `npx tsc --noEmit` and `npx jest` fully green
 - [X] T002 [SETUP] Lint debt: resolve `no-explicit-any`/`no-unused-vars` in `lib/kernel/`, `lib/security/`, `lib/bot/` (003 audit list) so `next build` passes lint; no rule suppressions without inline justification
 - [X] T003 [SETUP] Supply chain: remove unused `better-auth` dep (research D4); add `next-intl`, `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`, `browser-image-compression`, `date-fns-tz`; verify the license claims asserted in plan.md §Technical Context against actual package metadata; run `scripts/verify-licenses.mjs` + `npm audit` (zero High/Critical unmitigated); registry path entries in `config/oss-reuse-registry.json`
-- [ ] T004 [SETUP] Spike S1 (timebox 1d): Telegram themeParams ↔ undesign token mapping on all surfaces; quantitative acceptance per research.md D2; **spike branch, dispose after**
-- [ ] T005 [SETUP] Spike S2 (timebox 1d): R2 presign E2E cycle (HEIC→WebP→PUT→URL; p95 presign <50ms; 0 bytes via Node); **spike branch, dispose after**
-- [ ] T006 [SETUP] Spike S3 (timebox 1d): i18n key-coverage AST gate PoC (100% resolve in ru/en); **spike branch, dispose after**
-- [ ] T007 [SETUP] Spike disposal verification (Constitution XI): `spike/*` branches deleted, zero prototype code in feature branch — checklist note in this file
+- [X] T004 [SETUP] Spike S1 (timebox 1d): Telegram themeParams ↔ undesign token mapping on all surfaces; quantitative acceptance per research.md D2; **spike branch, dispose after**
+- [X] T005 [SETUP] Spike S2 (timebox 1d): R2 presign E2E cycle (HEIC→WebP→PUT→URL; p95 presign <50ms; 0 bytes via Node); **spike branch, dispose after**
+- [X] T006 [SETUP] Spike S3 (timebox 1d): i18n key-coverage AST gate PoC (100% resolve in ru/en); **spike branch, dispose after**
+- [X] T007 [SETUP] Spike disposal verification (Constitution XI): `spike/*` branches deleted, zero prototype code in feature branch — checklist note in this file
+
+**T007 disposal evidence (2026-10-25)**: `spike/s1-theme-params`, `spike/s2-r2-presign`, `spike/s3-i18n-ast-gate` branches deleted after findings recorded; zero prototype code in feature branch (verified by grep for spike artifacts). Spike findings for production tasks: S1 → T052 (undesign owns values, themeParams only selects scheme, dark accent = purple-300); S2 → T060 (unhoistableHeaders content-type/content-length, forcePathStyle, R2 CORS PUT+ExposeHeaders ETag, presign sub-ms inline); S3 → T044 (TS-compiler AST gate, callee filter for non-t() calls, dynamic-key allowlist needed, locale list data-only).
 
 ---
 
@@ -46,7 +48,7 @@
 **⚠️ CRITICAL**: No user story work begins until this phase completes (sync barrier).
 
 - [X] T010 [DB] Expand migration `prisma/migrations/20261025000000_004_release_readiness_expand/` (+`down.sql`): 8 new tables (WaitlistEntry, WaitlistOffer, CustomBookingField, BookingFieldAnswer, NotificationDeliveryLog, SlugRedirect, PaymentAllocationLink, UserPreference), `ALTER TYPE "ReservationStatus" ADD VALUE` for `PAYMENT_PENDING`, `UNDERPAID`, `PENDING_APPROVAL`, `CANCELLED`, `STAFF_REJECTED` (separate statement), nullable columns on Item (`requiresFullPrepayment` default false, `archivedAt`, `sortOrder`) and ShopSettings (`defaultLocale`, `enabledLocales`, `slotGridStepMin` default 30), indexes per data-model.md §3; schema updated in `prisma/schema.prisma`
-- [ ] T011 [DB] Idempotent backfill `scripts/backfill-004-language-defaults.ts` (defaultLocale heuristic, rate-limited batches) + migration guard test in `tests/unit/db-gist-and-migration.test.ts` lineage (timeout guards, down.sql drops only new objects)
+- [X] T011 [DB] Idempotent backfill `scripts/backfill-004-language-defaults.ts` (defaultLocale heuristic, rate-limited batches) + migration guard test in `tests/unit/db-gist-and-migration.test.ts` lineage (timeout guards, down.sql drops only new objects)
 - [ ] T012 [BE] i18n scaffold: `lib/i18n/` — next-intl request config, message namespaces (web/client-bot/staff-bot/admin/email × ru/en), locale resolution chain (user override > `language_code` > session cookie > instance default, FR-412) + unit tests
 - [ ] T013 [BE] `lib/payments/providerContract.ts`: PaymentProvider interface + registry from deployment config; zero-provider mode booking verified (FR-401); unit tests for contract invariants
 - [ ] T014 [BE] `lib/notifications/` delivery log (ACCEPTED/FAILED, salted target hash, 90d retention hook) + logger deny-list extension for new surfaces; zero-PII log-scan unit test

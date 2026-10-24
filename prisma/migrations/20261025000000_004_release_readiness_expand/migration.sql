@@ -1,4 +1,6 @@
 -- 004 Release Readiness — Phase 1 Expand (additive only, Constitution X)
+SET statement_timeout = '5s';
+SET lock_timeout = '2s';
 -- All changes nullable/defaulted so pre-004 code keeps running unchanged.
 
 -- ===== 1. Enum expansion (004 US1 FSM two-track) =====
