@@ -7,7 +7,7 @@ import {
   type ParsedCallback,
   type CallbackStatus,
 } from './providerContract';
-import { getCurrencyMetadata } from '../../config/currency-registry';
+import { getCurrencyMetadata, majorToMinorUnits } from '../../config/currency-registry';
 import { handleUnderpaidPayment } from './underpaid';
 import { logger } from '@/lib/telemetry/logger';
 
@@ -63,9 +63,7 @@ export function mapNowPaymentsStatus(rawStatus: string): CallbackStatus {
  * minor units using CurrencyMetadata scale — never hard-coded ×100 (T026).
  */
 export function nowPaymentsWireAmountToMinor(amount: number, currency: string): number {
-  const meta = getCurrencyMetadata(currency);
-  const minorUnit = meta ? meta.minorUnit : 2;
-  return Math.round(amount * Math.pow(10, minorUnit));
+  return majorToMinorUnits(amount, currency);
 }
 
 export function createNowPaymentsProvider(
@@ -236,7 +234,9 @@ export async function processNowPaymentsNotification(
   }
 
   // Fulfillment: 100% or within 99% threshold
-  const amountMinor = Math.round(Number(payload.price_amount) * 100);
+  // T026: registry minor-unit scale via CurrencyMetadata — never hard-coded ×100.
+  const fulfillCurrency = payload.price_currency?.toUpperCase() || 'USD';
+  const amountMinor = nowPaymentsWireAmountToMinor(Number(payload.price_amount), fulfillCurrency);
   const providerRef = String(payload.payment_id);
 
   const result = await fulfillPayment({
@@ -244,7 +244,7 @@ export async function processNowPaymentsNotification(
     provider: 'CRYPTO_GATEWAY',
     providerRef,
     amountMinor,
-    currency: payload.price_currency?.toUpperCase() || 'USD',
+    currency: fulfillCurrency,
   });
 
   return { status: result.status };

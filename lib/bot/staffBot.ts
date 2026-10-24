@@ -1,6 +1,7 @@
 import { Bot, InlineKeyboard } from 'grammy';
 import type { UserFromGetMe } from '@grammyjs/types';
 import { logger } from '@/lib/telemetry/logger';
+import { getCurrencyMetadata } from '../../config/currency-registry';
 import { enqueueTelegramOutbox, OUTBOX_PRIORITY, classifyTelegramError } from './telegramOutbox';
 
 const staffToken = process.env.STAFF_BOT_TOKEN || 'DUMMY_STAFF_TOKEN_FOR_BUILD';
@@ -60,7 +61,9 @@ export interface StaffOrderCardData {
 }
 
 export function formatStaffOrderCard(data: StaffOrderCardData): string {
-  const formattedPrice = (data.totalMinor / 100).toFixed(2);
+  // T026: registry minor-unit scale (JPY 0 / KWD 3), never hard-coded /100.
+  const minorUnit = getCurrencyMetadata(data.currency)?.minorUnit ?? 2;
+  const formattedPrice = (data.totalMinor / Math.pow(10, minorUnit)).toFixed(minorUnit);
   const clientSegmentLabel = data.isNewClient ? '🆕 Новый клиент' : '⭐ Постоянный клиент';
   const paymentLabel =
     data.paymentType === 'PAY_ON_SITE' ? '💵 Оплата на месте' : '💳 Онлайн-предоплата';
