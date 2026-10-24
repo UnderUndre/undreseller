@@ -125,7 +125,7 @@
 **Goal**: Mobile-first admin (3 tabs, quick-create ≤4 fields, one-tap toggles, presigned R2 uploads); OWNER/OPERATOR split; slug immutability.
 **Independent Test**: OWNER on 390px viewport creates service+product+profile+settings in ≤10 min (US9 bar).
 
-- [ ] T060 [BE] [US9] `lib/uploads/presign.ts` + `POST /api/admin/uploads/presign` (R2, TTL ≤5 min, **ContentLength+ContentType cryptographically signed into the PUT**, type/size conditions, OWNER/OPERATOR, rate-limited — FR-441; bucket lifecycle rule purges unlinked objects >48 h)
+- [X] T060 [BE] [US9] `lib/uploads/presign.ts` + `POST /api/admin/uploads/presign` (R2, TTL ≤5 min, **ContentLength+ContentType cryptographically signed into the PUT**, type/size conditions, OWNER/OPERATOR, rate-limited — FR-441; bucket lifecycle rule purges unlinked objects >48 h)
 - [ ] T061 [FE] [US9] Admin scaffold: 3-tab bottom nav; `/admin/catalog` — list with one-tap active toggle, arrow reorder, quick-create sheet (4 required fields + collapsed "more", 15-min duration selector), shared zod validation with API (FR-436/439/440); gated on T018 login
 - [ ] T062 [FE] [US9] ImageUploader: `browser-image-compression` (WebP ≤1200px ≤200KB) → presign → direct PUT; type/size field-level errors
 - [ ] T063 [FE] [US9] `/admin/team`: profiles, portfolio publication, working hours; profile ownership rules
