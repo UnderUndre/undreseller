@@ -10,38 +10,41 @@
 import Link from 'next/link';
 import { prisma } from '@/lib/db/prisma';
 import { claimOffer } from '@/lib/waitlist/waitlistService';
+import { getTranslations } from 'next-intl/server';
 
 export const dynamic = 'force-dynamic';
 
-const FAIL_COPY: Record<string, { title: string; detail: string }> = {
-  INVALID_TOKEN: {
-    title: 'Link not recognised',
-    detail: 'This claim link is invalid. If you received several offers, use the most recent message.',
-  },
-  ALREADY_USED: {
-    title: 'Offer already taken',
-    detail: 'Someone claimed this slot before you — or you already claimed it. The slot is no longer held for this offer.',
-  },
-  EXPIRED: {
-    title: 'Offer expired',
-    detail: 'This offer expired silently after its window. You can still book the slot from the storefront if it is available.',
-  },
+// T040 (FR-411): outcome copy keyed in messages/web.waitlistClaim (ru/en).
+type FailReason = 'INVALID_TOKEN' | 'ALREADY_USED' | 'EXPIRED';
+
+const FAIL_KEYS: Record<Exclude<FailReason, 'INVALID_TOKEN'> | 'INVALID_TOKEN', { title: string; detail: string }> = {
+  INVALID_TOKEN: { title: 'invalidTokenTitle', detail: 'invalidTokenDetail' },
+  ALREADY_USED: { title: 'alreadyUsedTitle', detail: 'alreadyUsedDetail' },
+  EXPIRED: { title: 'expiredTitle', detail: 'expiredDetail' },
 };
 
 export default async function WaitlistClaimPage(props: {
   searchParams: Promise<{ token?: string }>;
 }) {
   const { token } = await props.searchParams;
+  // T040 (FR-411): chrome i18n — claim outcomes are chrome, service title is authored data.
+  const t = await getTranslations('web.waitlistClaim');
 
   if (!token) {
-    return <ClaimOutcome title="Link not recognised" detail={FAIL_COPY.INVALID_TOKEN.detail} />;
+    return (
+      <ClaimOutcome
+        title={t('invalidTokenTitle')}
+        detail={t('invalidTokenDetail')}
+        browseLabel={t('browseSlots')}
+      />
+    );
   }
 
   const result = await claimOffer({ token });
 
   if (!result.ok) {
-    const copy = FAIL_COPY[result.reason ?? 'INVALID_TOKEN'] ?? FAIL_COPY.INVALID_TOKEN;
-    return <ClaimOutcome title={copy.title} detail={copy.detail} />;
+    const keys = FAIL_KEYS[(result.reason as FailReason) ?? 'INVALID_TOKEN'] ?? FAIL_KEYS.INVALID_TOKEN;
+    return <ClaimOutcome title={t(keys.title)} detail={t(keys.detail)} browseLabel={t('browseSlots')} />;
   }
 
   const entry = await prisma.waitlistEntry.findUnique({
@@ -59,23 +62,20 @@ export default async function WaitlistClaimPage(props: {
           <div className="w-14 h-14 bg-success/20 text-success rounded-full flex items-center justify-center mx-auto text-2xl font-bold border border-success/40">
             ✓
           </div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Slot claimed!</h1>
-          <p className="text-sm text-base-content/60">
-            The slot is yours to finish booking — it stays open to everyone until your booking is
-            confirmed, so complete it now.
-          </p>
+          <h1 className="text-2xl font-extrabold tracking-tight">{t('claimedTitle')}</h1>
+          <p className="text-sm text-base-content/60">{t('claimedBody')}</p>
         </div>
 
         {serviceTitle && (
           <div className="bg-base-100 rounded-xl p-4 text-sm border border-base-300">
             <div className="flex justify-between">
-              <span className="text-base-content/60">Service:</span>
+              <span className="text-base-content/60">{t('service')}</span>
               <span className="font-semibold">{serviceTitle}</span>
             </div>
             {entry?.service?.durationMin && (
               <div className="flex justify-between pt-2">
-                <span className="text-base-content/60">Duration:</span>
-                <span className="font-semibold">{entry.service.durationMin} minutes</span>
+                <span className="text-base-content/60">{t('duration')}</span>
+                <span className="font-semibold">{t('minutes', { minutes: entry.service.durationMin })}</span>
               </div>
             )}
           </div>
@@ -86,14 +86,14 @@ export default async function WaitlistClaimPage(props: {
             href={`/book?serviceId=${encodeURIComponent(serviceId)}`}
             className="block w-full text-center bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all shadow-md"
           >
-            Complete booking{serviceTitle ? ` — ${serviceTitle}` : ''}
+            {t('completeBooking', { suffix: serviceTitle ? ` — ${serviceTitle}` : '' })}
           </Link>
         ) : (
           <Link
             href="/book"
             className="block w-full text-center bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all shadow-md"
           >
-            Open storefront to book
+            {t('openStorefront')}
           </Link>
         )}
       </div>
@@ -101,7 +101,7 @@ export default async function WaitlistClaimPage(props: {
   );
 }
 
-function ClaimOutcome({ title, detail }: { title: string; detail: string }) {
+function ClaimOutcome({ title, detail, browseLabel }: { title: string; detail: string; browseLabel: string }) {
   return (
     <div className="max-w-xl mx-auto px-4 py-10">
       <div className="bg-base-200 border border-base-300 rounded-2xl p-6 sm:p-8 space-y-4 text-base-content text-center">
@@ -111,7 +111,7 @@ function ClaimOutcome({ title, detail }: { title: string; detail: string }) {
           href="/book"
           className="inline-block bg-purple-600 hover:bg-purple-500 text-white font-bold py-2.5 px-5 rounded-xl text-sm transition-all"
         >
-          Browse available slots
+          {browseLabel}
         </Link>
       </div>
     </div>

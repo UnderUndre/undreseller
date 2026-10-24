@@ -8,6 +8,7 @@
  */
 
 import React from 'react';
+import { useTranslations } from 'next-intl';
 
 export interface BookingCustomField {
   id: string;
@@ -31,6 +32,9 @@ export default function CustomFieldsBlock({
   answers: CustomAnswers;
   onChange: (answers: CustomAnswers) => void;
 }) {
+  // T040 (FR-411): block chrome; field labels/options are admin-authored content (FR-414).
+  const t = useTranslations('web.booking');
+
   if (fields.length === 0) return null;
 
   function update(key: string, value: string | number | boolean) {
@@ -43,7 +47,7 @@ export default function CustomFieldsBlock({
   return (
     <div className="space-y-4 pt-2 border-t border-base-300">
       <label className="block text-xs font-semibold uppercase tracking-wider text-base-content/60">
-        Additional Details
+        {t('additionalDetails')}
       </label>
       {fields.map((field) => {
         const value = answers[field.key];
@@ -86,7 +90,7 @@ export default function CustomFieldsBlock({
                 onChange={(e) => update(field.key, e.target.value)}
                 className={inputClass}
               >
-                <option value="">— select —</option>
+                <option value="">{t('selectOption')}</option>
                 {(field.optionsJson?.options ?? []).map((opt) => (
                   <option key={opt} value={opt}>
                     {opt}
@@ -103,7 +107,7 @@ export default function CustomFieldsBlock({
                   onChange={(e) => update(field.key, e.target.checked)}
                   className="accent-purple-600"
                 />
-                Yes
+                {t('yes')}
               </label>
             )}
           </div>

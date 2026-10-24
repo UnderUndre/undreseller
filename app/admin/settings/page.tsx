@@ -11,6 +11,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import AdminNav from '@/components/admin/AdminNav';
+import { useTranslations } from 'next-intl';
 
 interface ShopSettings {
   currency?: string;
@@ -27,6 +28,9 @@ const TIMEZONES = ['UTC', 'Europe/Moscow', 'Asia/Yerevan', 'Europe/Berlin', 'Ame
 const LOCALES = ['en', 'ru', 'hy'];
 
 export default function AdminSettingsPage() {
+  // T040 (FR-411): admin chrome i18n.
+  const t = useTranslations('admin.settings');
+  const tCommon = useTranslations('admin.common');
   const [settings, setSettings] = useState<ShopSettings>({});
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,10 +60,10 @@ export default function AdminSettingsPage() {
         fetch('/api/admin/settings'),
         fetch('/api/admin/staff/me').catch(() => null),
       ]);
-      if (settingsRes.status === 401) throw new Error('Please sign in with staff credentials');
+      if (settingsRes.status === 401) throw new Error(tCommon('errorGeneric'));
       if (!settingsRes.ok) {
         const data = await settingsRes.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to load settings');
+        throw new Error(data.error || tCommon('errorGeneric'));
       }
       const data = await settingsRes.json();
       const s: ShopSettings = data.settings || {};
@@ -80,7 +84,7 @@ export default function AdminSettingsPage() {
         setRole(null);
       }
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Error loading settings');
+      setErrorMsg(err instanceof Error ? err.message : tCommon('errorGeneric'));
     } finally {
       setLoading(false);
     }
@@ -114,9 +118,9 @@ export default function AdminSettingsPage() {
         requireStaffApprovalForInCall,
         slotGridStepMin,
       });
-      setNotice('Operational settings saved.');
+      setNotice(t('operationalSaved'));
     } catch (err: unknown) {
-      setNotice(err instanceof Error ? err.message : 'Save failed');
+      setNotice(err instanceof Error ? err.message : tCommon('errorGeneric'));
     } finally {
       setSaving(false);
     }
@@ -136,21 +140,19 @@ export default function AdminSettingsPage() {
       if (currencyChanged) {
         // FR-438 confirm gate: change saved with currencyConfirmed=false;
         // confirmation is an explicit OWNER action.
-        const confirmed = confirm(
-          `Change currency to ${currency.toUpperCase()}? Existing prices will be reinterpreted in the new currency. Confirm to enable this currency.`
-        );
+        const confirmed = confirm(t('currencyConfirmDialog', { currency: currency.toUpperCase() }));
         if (confirmed) {
           await patch({ currencyConfirmed: true });
-          setNotice('Currency changed and confirmed.');
+          setNotice(t('currencyChanged'));
         } else {
-          setNotice('Currency saved but NOT confirmed — confirm later from this page.');
+          setNotice(t('currencyNotConfirmedNotice'));
         }
       } else {
-        setNotice('Foundation settings saved.');
+        setNotice(t('foundationSaved'));
       }
       await load();
     } catch (err: unknown) {
-      setNotice(err instanceof Error ? err.message : 'Save failed');
+      setNotice(err instanceof Error ? err.message : tCommon('errorGeneric'));
     } finally {
       setSaving(false);
     }
@@ -161,10 +163,10 @@ export default function AdminSettingsPage() {
     setNotice(null);
     try {
       await patch({ currencyConfirmed: true });
-      setNotice('Currency confirmed.');
+      setNotice(t('currencyConfirmedNotice'));
       await load();
     } catch (err: unknown) {
-      setNotice(err instanceof Error ? err.message : 'Confirm failed');
+      setNotice(err instanceof Error ? err.message : tCommon('errorGeneric'));
     } finally {
       setSaving(false);
     }
@@ -173,8 +175,8 @@ export default function AdminSettingsPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 text-base-content pb-24">
       <div className="border-b border-base-300 pb-4 mb-4">
-        <h1 className="text-xl font-extrabold tracking-tight">Settings</h1>
-        <p className="text-xs text-base-content/60 pt-1">Shop foundation and operational parameters</p>
+        <h1 className="text-xl font-extrabold tracking-tight">{t('title')}</h1>
+        <p className="text-xs text-base-content/60 pt-1">{t('subtitle')}</p>
       </div>
 
       {errorMsg && (
@@ -185,30 +187,30 @@ export default function AdminSettingsPage() {
       {notice && (
         <div className="p-3 bg-base-200 border border-base-300 rounded-xl text-xs text-base-content/80 mb-4">{notice}</div>
       )}
-      {loading && <p className="text-sm text-base-content/60">Loading…</p>}
+      {loading && <p className="text-sm text-base-content/60">{tCommon('loading')}</p>}
 
       {!loading && isOwner && (
         <section className="bg-base-200 border border-base-300 rounded-xl p-4 space-y-3 mb-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-sm font-bold">Foundation</h2>
-            <span className="text-[11px] text-base-content/50 uppercase tracking-wide">Owner only</span>
+            <h2 className="text-sm font-bold">{t('foundation')}</h2>
+            <span className="text-[11px] text-base-content/50 uppercase tracking-wide">{t('ownerOnly')}</span>
           </div>
 
           {settings.currency && settings.currencyConfirmed === false && (
             <div className="p-3 bg-yellow-900/30 border border-yellow-700/60 rounded-lg text-xs text-yellow-200 flex items-center justify-between gap-2">
-              <span>Currency {settings.currency} is not confirmed yet.</span>
+              <span>{t('currencyNotConfirmed', { currency: settings.currency ?? '' })}</span>
               <button
                 onClick={() => void confirmCurrency()}
                 disabled={saving}
                 className="bg-yellow-600 hover:bg-yellow-500 text-black font-semibold px-3 py-1 rounded-lg disabled:opacity-50"
               >
-                Confirm currency
+                {t('confirmCurrency')}
               </button>
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-medium text-base-content/60 mb-1">Currency (ISO 4217)</label>
+            <label className="block text-xs font-medium text-base-content/60 mb-1">{t('currency')}</label>
             <input
               value={currency}
               onChange={(e) => setCurrency(e.target.value.toUpperCase())}
@@ -219,7 +221,7 @@ export default function AdminSettingsPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-base-content/60 mb-1">Time zone</label>
+            <label className="block text-xs font-medium text-base-content/60 mb-1">{t('timeZone')}</label>
             <select
               value={timeZone}
               onChange={(e) => setTimeZone(e.target.value)}
@@ -234,7 +236,7 @@ export default function AdminSettingsPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-base-content/60 mb-1">Default locale</label>
+            <label className="block text-xs font-medium text-base-content/60 mb-1">{t('defaultLocale')}</label>
             <select
               value={defaultLocale}
               onChange={(e) => setDefaultLocale(e.target.value)}
@@ -249,7 +251,7 @@ export default function AdminSettingsPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-base-content/60 mb-1">Enabled locales</label>
+            <label className="block text-xs font-medium text-base-content/60 mb-1">{t('enabledLocales')}</label>
             <div className="flex gap-2">
               {LOCALES.map((l) => {
                 const active = enabledLocales.includes(l);
@@ -281,7 +283,7 @@ export default function AdminSettingsPage() {
             disabled={saving}
             className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
           >
-            {saving ? 'Saving…' : 'Save Foundation'}
+            {saving ? tCommon('saving') : t('saveFoundation')}
           </button>
         </section>
       )}
@@ -289,12 +291,12 @@ export default function AdminSettingsPage() {
       {!loading && (
         <section className="bg-base-200 border border-base-300 rounded-xl p-4 space-y-3">
           <div className="flex justify-between items-center">
-            <h2 className="text-sm font-bold">Operational</h2>
-            <span className="text-[11px] text-base-content/50 uppercase tracking-wide">Operator +</span>
+            <h2 className="text-sm font-bold">{t('operational')}</h2>
+            <span className="text-[11px] text-base-content/50 uppercase tracking-wide">{t('operatorPlus')}</span>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-base-content/60 mb-1">Confirmation notice (hours before)</label>
+            <label className="block text-xs font-medium text-base-content/60 mb-1">{t('confirmationNotice')}</label>
             <input
               type="number"
               min={1}
@@ -312,11 +314,11 @@ export default function AdminSettingsPage() {
               onChange={(e) => setRequireStaffApprovalForInCall(e.target.checked)}
               className="accent-purple-600"
             />
-            Require staff approval for IN_CALL bookings
+            {t('requireApproval')}
           </label>
 
           <div>
-            <label className="block text-xs font-medium text-base-content/60 mb-1">Slot grid step (FR-442)</label>
+            <label className="block text-xs font-medium text-base-content/60 mb-1">{t('slotStep')}</label>
             <div className="flex gap-2">
               {[15, 30].map((v) => (
                 <button
@@ -330,7 +332,7 @@ export default function AdminSettingsPage() {
                       : 'bg-base-300 border-base-300 text-base-content/60'
                   }`}
                 >
-                  {v} min
+                  {t('min', { value: v })}
                 </button>
               ))}
             </div>
@@ -341,7 +343,7 @@ export default function AdminSettingsPage() {
             disabled={saving}
             className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
           >
-            {saving ? 'Saving…' : 'Save Operational'}
+            {saving ? tCommon('saving') : t('saveOperational')}
           </button>
         </section>
       )}

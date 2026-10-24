@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 
 export interface CatalogItem {
   id: string;
@@ -16,6 +17,8 @@ export interface CatalogItem {
 }
 
 export function ItemCard({ item }: { item: CatalogItem }) {
+  // T040 (FR-411): chrome labels only — item.title/description stay authored (FR-414).
+  const t = useTranslations('web.item');
   const formattedPrice = (item.priceMinor / 100).toLocaleString('en-US', {
     style: 'currency',
     currency: item.currency || 'USD',
@@ -30,12 +33,12 @@ export function ItemCard({ item }: { item: CatalogItem }) {
           </span>
           {item.itemType === 'SERVICE' && item.durationMin && (
             <span className="text-xs text-base-content/60 font-mono">
-              ⏱ {item.durationMin} min
+              {t('minutes', { minutes: item.durationMin ?? 0 })}
             </span>
           )}
           {item.itemType === 'PRODUCT' && item.stock !== null && (
             <span className="text-xs text-green-400 font-mono">
-              📦 In stock: {item.stock}
+              {t('inStock', { stock: item.stock ?? 0 })}
             </span>
           )}
         </div>
@@ -61,14 +64,14 @@ export function ItemCard({ item }: { item: CatalogItem }) {
             href={`/book?itemId=${item.id}`}
             className="w-full block text-center bg-purple-600 hover:bg-purple-500 text-white font-medium py-2.5 px-4 rounded-lg transition"
           >
-            Book Appointment
+            {t('bookAppointment')}
           </Link>
         ) : (
           <Link
             href={`/checkout?itemId=${item.id}`}
             className="w-full block text-center bg-green-600 hover:bg-green-500 text-white font-medium py-2.5 px-4 rounded-lg transition"
           >
-            Buy Now
+            {t('buyNow')}
           </Link>
         )}
       </div>

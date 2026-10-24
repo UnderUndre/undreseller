@@ -2,6 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
+
+// T040: filter tab -> message key suffix (admin.bookings.filter*).
+const FILTER_LABELS = { ALL: 'All', PENDING: 'Pending', CONFIRMED: 'Confirmed', OUT_CALL: 'OutCall' } as const;
 
 interface AdminBookingRow {
   bookingId: string;
@@ -17,6 +21,9 @@ interface AdminBookingRow {
 }
 
 export default function AdminBookingsPage() {
+  // T040 (FR-411): admin chrome i18n; booking rows carry authored/business data.
+  const t = useTranslations('admin.bookings');
+  const tCommon = useTranslations('admin.common');
   const [bookings, setBookings] = useState<AdminBookingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -28,14 +35,14 @@ export default function AdminBookingsPage() {
     try {
       const res = await fetch('/api/admin/bookings');
       if (!res.ok) {
-        if (res.status === 401) throw new Error('Unauthorized: please sign in with staff credentials');
+        if (res.status === 401) throw new Error(tCommon('errorGeneric'));
         const data = await res.json();
-        throw new Error(data.error || 'Failed to load bookings');
+        throw new Error(data.error || t('actionFailed'));
       }
       const data = await res.json();
       setBookings(data.bookings || []);
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Error loading bookings');
+      setErrorMsg(err instanceof Error ? err.message : t('actionFailed'));
     } finally {
       setLoading(false);
     }
@@ -46,7 +53,7 @@ export default function AdminBookingsPage() {
   }, []);
 
   async function handleAction(bookingId: string, action: string) {
-    if (!confirm(`Are you sure you want to perform '${action}' on this booking?`)) return;
+    if (!confirm(t('actionConfirm', { action }))) return;
 
     try {
       const res = await fetch(`/api/admin/bookings/${bookingId}`, {
@@ -56,11 +63,11 @@ export default function AdminBookingsPage() {
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Action failed');
+        throw new Error(data.error || t('actionFailed'));
       }
       await loadBookings();
     } catch (err: unknown) {
-      alert(`Action error: ${err instanceof Error ? err.message : 'Action failed'}`);
+      alert(t('actionError', { error: err instanceof Error ? err.message : t('actionFailed') }));
     }
   }
 
@@ -76,9 +83,9 @@ export default function AdminBookingsPage() {
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6 text-base-content pb-24">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-base-300 pb-4">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Staff Booking Operations</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight">{t('title')}</h1>
           <p className="text-xs text-base-content/60 pt-1">
-            Role-bounded appointment management, outcall coverage review, and fulfillments (FR-326)
+            {t('subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -86,20 +93,20 @@ export default function AdminBookingsPage() {
             href="/"
             className="text-xs bg-base-300 hover:bg-base-300 px-3 py-1.5 rounded-lg transition-colors"
           >
-            Public Site
+            {tCommon('publicSite')}
           </Link>
           <button
             onClick={loadBookings}
             className="text-xs bg-purple-600 hover:bg-purple-500 font-medium px-3 py-1.5 rounded-lg transition-colors"
           >
-            Refresh
+            {tCommon('refresh')}
           </button>
         </div>
       </div>
 
       {/* Filter tabs */}
       <div className="flex gap-2">
-        {['ALL', 'PENDING', 'CONFIRMED', 'OUT_CALL'].map((f) => (
+        {(['ALL', 'PENDING', 'CONFIRMED', 'OUT_CALL'] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilterMode(f)}
@@ -109,7 +116,7 @@ export default function AdminBookingsPage() {
                 : 'bg-base-200 border-base-300 text-base-content/60 hover:text-base-content'
             }`}
           >
-            {f}
+            {t(`filter${FILTER_LABELS[f]}`)}
           </button>
         ))}
       </div>
@@ -121,23 +128,23 @@ export default function AdminBookingsPage() {
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-sm text-base-content/60 animate-pulse">Loading appointments...</div>
+        <div className="text-center py-12 text-sm text-base-content/60 animate-pulse">{t('loading')}</div>
       ) : filteredBookings.length === 0 ? (
         <div className="text-center py-16 border border-dashed border-base-300 rounded-xl">
-          <p className="text-xs text-base-content/60">No bookings match the selected filter.</p>
+          <p className="text-xs text-base-content/60">{t('noBookings')}</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-base-300 bg-base-200/40">
           <table className="w-full text-left text-xs divide-y divide-base-300">
             <thead className="bg-base-100/80 text-base-content/60 uppercase tracking-wider font-semibold">
               <tr>
-                <th className="py-3 px-4">Order #</th>
-                <th className="py-3 px-4">Service</th>
-                <th className="py-3 px-4">Customer</th>
-                <th className="py-3 px-4">Mode & Address</th>
-                <th className="py-3 px-4">Schedule</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+                <th className="py-3 px-4">{t('colOrder')}</th>
+                <th className="py-3 px-4">{t('colService')}</th>
+                <th className="py-3 px-4">{t('colCustomer')}</th>
+                <th className="py-3 px-4">{t('colMode')}</th>
+                <th className="py-3 px-4">{t('colSchedule')}</th>
+                <th className="py-3 px-4">{t('colStatus')}</th>
+                <th className="py-3 px-4 text-right">{t('colActions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-base-300/60">
@@ -199,13 +206,13 @@ export default function AdminBookingsPage() {
                           onClick={() => handleAction(b.bookingId, 'APPROVE_COVERAGE')}
                           className="bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded text-[11px] font-medium"
                         >
-                          Approve
+                          {t('approve')}
                         </button>
                         <button
                           onClick={() => handleAction(b.bookingId, 'REJECT_COVERAGE')}
                           className="bg-error hover:bg-error text-base-content px-2 py-1 rounded text-[11px] font-medium"
                         >
-                          Reject
+                          {t('reject')}
                         </button>
                       </>
                     )}
@@ -214,7 +221,7 @@ export default function AdminBookingsPage() {
                         onClick={() => handleAction(b.bookingId, 'COMPLETE')}
                         className="bg-purple-600 hover:bg-purple-500 text-white px-2 py-1 rounded text-[11px] font-medium"
                       >
-                        Complete
+                        {t('complete')}
                       </button>
                     )}
                   </td>

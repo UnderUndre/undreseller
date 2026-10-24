@@ -8,6 +8,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import AdminNav from '@/components/admin/AdminNav';
+import { useTranslations } from 'next-intl';
 
 interface AdminField {
   id: string;
@@ -47,6 +48,9 @@ const emptyForm: FormState = {
 };
 
 export default function AdminFieldsPage() {
+  // T040 (FR-411): admin chrome i18n; field labels/options are authored data.
+  const t = useTranslations('admin.fields');
+  const tCommon = useTranslations('admin.common');
   const [fields, setFields] = useState<AdminField[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -61,12 +65,12 @@ export default function AdminFieldsPage() {
       const res = await fetch('/api/admin/fields');
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to load fields');
+        throw new Error(data.error || tCommon('errorGeneric'));
       }
       const data = await res.json();
       setFields(data.fields || []);
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Error loading fields');
+      setErrorMsg(err instanceof Error ? err.message : tCommon('errorGeneric'));
     } finally {
       setLoading(false);
     }
@@ -136,13 +140,13 @@ export default function AdminFieldsPage() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Save failed');
+        throw new Error(data.error || tCommon('errorGeneric'));
       }
       setForm(null);
-      setNotice(form.id ? 'Field updated.' : 'Field created.');
+      setNotice(form.id ? t('updated') : t('created'));
       await loadFields();
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Save failed');
+      setErrorMsg(err instanceof Error ? err.message : tCommon('errorGeneric'));
     } finally {
       setSaving(false);
     }
@@ -150,7 +154,7 @@ export default function AdminFieldsPage() {
 
   async function handleArchiveToggle(field: AdminField) {
     const archiving = field.archivedAt === null;
-    if (!confirm(archiving ? `Archive "${field.label}"? Historical answers are preserved.` : `Re-activate "${field.label}"?`))
+    if (!confirm(archiving ? t('archiveConfirm', { label: field.label }) : t('restoreConfirm', { label: field.label })))
       return;
     try {
       const res = await fetch(`/api/admin/fields/${field.id}`, {
@@ -160,11 +164,11 @@ export default function AdminFieldsPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Archive toggle failed');
+        throw new Error(data.error || tCommon('errorGeneric'));
       }
       await loadFields();
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Archive toggle failed');
+      setErrorMsg(err instanceof Error ? err.message : tCommon('errorGeneric'));
     }
   }
 
@@ -174,10 +178,9 @@ export default function AdminFieldsPage() {
     <div className="max-w-3xl mx-auto px-4 py-8 pb-28 space-y-6 text-base-content">
       <div className="flex justify-between items-start gap-3 border-b border-base-300 pb-4">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Booking Fields</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight">{t('title')}</h1>
           <p className="text-xs text-base-content/60 pt-1">
-            Custom questions on the booking form — up to {MAX_ACTIVE_CUSTOM_FIELDS} active. Archiving
-            keeps historical answers.
+            {t('subtitle', { count: MAX_ACTIVE_CUSTOM_FIELDS })}
           </p>
         </div>
         <button
@@ -185,7 +188,7 @@ export default function AdminFieldsPage() {
           disabled={activeCount >= MAX_ACTIVE_CUSTOM_FIELDS}
           className="bg-purple-600 hover:bg-purple-500 disabled:bg-base-300 disabled:text-base-content/50 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
         >
-          + Add Field
+          {t('addField')}
         </button>
       </div>
 
@@ -204,7 +207,7 @@ export default function AdminFieldsPage() {
       {form && (
         <form onSubmit={handleSave} className="bg-base-200/60 border border-base-300 rounded-xl p-4 space-y-3">
           <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-base-content/60">Label *</label>
+            <label className="block text-xs font-semibold text-base-content/60">{t('titleLabel')}</label>
             <input
               required
               maxLength={200}
@@ -217,7 +220,7 @@ export default function AdminFieldsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-base-content/60">Type *</label>
+              <label className="block text-xs font-semibold text-base-content/60">{t('typeLabel')}</label>
               <select
                 value={form.type}
                 onChange={(e) => setForm({ ...form, type: e.target.value as FormState['type'] })}
@@ -237,13 +240,13 @@ export default function AdminFieldsPage() {
                 onChange={(e) => setForm({ ...form, required: e.target.checked })}
                 className="accent-purple-600"
               />
-              Required
+              {t('required')}
             </label>
           </div>
 
           {form.type === 'SINGLE_SELECT' && (
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-base-content/60">Options (comma-separated) *</label>
+              <label className="block text-xs font-semibold text-base-content/60">{t('optionsLabel')}</label>
               <input
                 value={form.options}
                 onChange={(e) => setForm({ ...form, options: e.target.value })}
@@ -256,7 +259,7 @@ export default function AdminFieldsPage() {
           {form.type === 'NUMBER' && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-base-content/60">Min</label>
+                <label className="block text-xs font-semibold text-base-content/60">{t('min')}</label>
                 <input
                   type="number"
                   value={form.min}
@@ -265,7 +268,7 @@ export default function AdminFieldsPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-base-content/60">Max</label>
+                <label className="block text-xs font-semibold text-base-content/60">{t('max')}</label>
                 <input
                   type="number"
                   value={form.max}
@@ -278,7 +281,7 @@ export default function AdminFieldsPage() {
 
           <div className="space-y-1.5">
             <label className="block text-xs font-semibold text-base-content/60">
-              Bound service IDs (comma-separated, empty = all services)
+              {t('boundIds')}
             </label>
             <input
               value={form.boundItemIds}
@@ -294,14 +297,14 @@ export default function AdminFieldsPage() {
               disabled={saving}
               className="bg-purple-600 hover:bg-purple-500 disabled:bg-base-300 text-white text-xs font-semibold px-4 py-2 rounded-lg"
             >
-              {saving ? 'Saving…' : form.id ? 'Save Changes' : 'Create Field'}
+              {saving ? tCommon('saving') : form.id ? t('saveChanges') : t('createField')}
             </button>
             <button
               type="button"
               onClick={() => setForm(null)}
               className="bg-base-300 hover:bg-base-300 text-xs font-medium px-4 py-2 rounded-lg"
             >
-              Cancel
+              {tCommon('cancel')}
             </button>
           </div>
         </form>
@@ -309,10 +312,10 @@ export default function AdminFieldsPage() {
 
       {/* Field list */}
       {loading ? (
-        <div className="text-center py-12 text-sm text-base-content/60 animate-pulse">Loading fields…</div>
+        <div className="text-center py-12 text-sm text-base-content/60 animate-pulse">{t('loading')}</div>
       ) : fields.length === 0 ? (
         <div className="text-center py-16 border border-dashed border-base-300 rounded-xl">
-          <p className="text-xs text-base-content/60">No custom fields yet. Add one to collect extra answers at booking.</p>
+          <p className="text-xs text-base-content/60">{t('noFields')}</p>
         </div>
       ) : (
         <ul className="space-y-2">
@@ -330,7 +333,7 @@ export default function AdminFieldsPage() {
                 </div>
                 <div className="text-[11px] text-base-content/60 font-mono truncate">
                   {field.type}
-                  {field.boundItemIds.length === 0 ? ' · all services' : ` · ${field.boundItemIds.length} service(s)`}
+                  {field.boundItemIds.length === 0 ? t('allServices') : t('boundCount', { count: field.boundItemIds.length })}
                 </div>
               </div>
               <div className="flex gap-1.5 whitespace-nowrap">
@@ -339,7 +342,7 @@ export default function AdminFieldsPage() {
                   disabled={field.archivedAt !== null}
                   className="bg-base-300 hover:bg-base-300 disabled:opacity-40 text-[11px] font-medium px-2.5 py-1.5 rounded-lg"
                 >
-                  Edit
+                  {tCommon('edit')}
                 </button>
                 <button
                   onClick={() => handleArchiveToggle(field)}
@@ -349,7 +352,7 @@ export default function AdminFieldsPage() {
                       : 'bg-error hover:bg-error text-base-content'
                   }`}
                 >
-                  {field.archivedAt ? 'Restore' : 'Archive'}
+                  {field.archivedAt ? t('restore') : t('archive')}
                 </button>
               </div>
             </li>

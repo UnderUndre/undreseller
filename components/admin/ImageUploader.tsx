@@ -10,6 +10,7 @@
 
 import React, { useRef, useState } from 'react';
 import { CLIENT_PRESIGN_LIMITS as PRESIGN_LIMITS } from '@/lib/uploads/presignLimits';
+import { useTranslations } from 'next-intl';
 
 export interface UploadedImage {
   publicUrl: string;
@@ -26,6 +27,8 @@ interface ImageUploaderProps {
 export const MAX_UPLOAD_BYTES = 200 * 1024; // 200KB post-compression target
 
 export default function ImageUploader({ folder, label, onUploaded, onError }: ImageUploaderProps) {
+  // T040 (FR-411): uploader chrome; the `label` prop comes from the parent page.
+  const t = useTranslations('admin.uploads');
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -33,10 +36,16 @@ export default function ImageUploader({ folder, label, onUploaded, onError }: Im
 
   function validate(file: File): string | null {
     if (!(PRESIGN_LIMITS.allowedContentTypes as readonly string[]).includes(file.type)) {
-      return `Unsupported type "${file.type || 'unknown'}". Allowed: ${PRESIGN_LIMITS.allowedContentTypes.join(', ')}`;
+      return t('unsupportedType', {
+        type: file.type || 'unknown',
+        allowed: PRESIGN_LIMITS.allowedContentTypes.join(', '),
+      });
     }
     if (file.size > PRESIGN_LIMITS.maxContentLength) {
-      return `File too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Max ${PRESIGN_LIMITS.maxContentLength / 1024 / 1024}MB before compression.`;
+      return t('tooLarge', {
+        size: (file.size / 1024 / 1024).toFixed(1),
+        max: PRESIGN_LIMITS.maxContentLength / 1024 / 1024,
+      });
     }
     return null;
   }
@@ -62,7 +71,7 @@ export default function ImageUploader({ folder, label, onUploaded, onError }: Im
       });
 
       if (compressed.size > PRESIGN_LIMITS.maxContentLength) {
-        throw new Error('Compressed image still exceeds the 5MB upload ceiling');
+        throw new Error(t('compressCeiling'));
       }
 
       // 1. Presign
@@ -99,7 +108,7 @@ export default function ImageUploader({ folder, label, onUploaded, onError }: Im
       setPreviewUrl(presign.publicUrl);
       onUploaded({ publicUrl: presign.publicUrl, key: presign.key });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Upload failed';
+      const message = err instanceof Error ? err.message : t('uploadFailed');
       setFieldError(message);
       onError?.(message);
     } finally {
@@ -132,7 +141,7 @@ export default function ImageUploader({ folder, label, onUploaded, onError }: Im
           className="block w-full text-xs text-base-content/60 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-purple-600 file:text-white file:text-xs file:font-medium hover:file:bg-purple-500 disabled:opacity-50"
         />
       </div>
-      {busy && <p className="text-xs text-purple-400">Compressing &amp; uploading…</p>}
+      {busy && <p className="text-xs text-purple-400">{t('compressing')}</p>}
       {fieldError && <p className="text-xs text-error">{fieldError}</p>}
     </div>
   );

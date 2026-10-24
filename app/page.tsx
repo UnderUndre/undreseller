@@ -3,11 +3,13 @@ import { prisma } from '@/lib/db/prisma';
 import { ItemCard, CatalogItem } from '@/components/catalog/ItemCard';
 import { CartDrawer } from '@/components/catalog/CartDrawer';
 import { shopConfig } from '@/config/shop.config';
+import { getTranslations } from 'next-intl/server';
 import { listServices } from '@/lib/kernel/serviceService';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
+  const t = await getTranslations('web.home');
   const [items, services, profiles, settings] = await Promise.all([
     prisma.item.findMany({
       where: { isActive: true },
@@ -51,7 +53,7 @@ export default async function HomePage() {
 
         {publicAddress && (
           <p className="text-xs text-green-400 font-mono pt-1">
-            📍 Studio Address: {publicAddress}
+            {t('studioAddress', { address: publicAddress })}
           </p>
         )}
       </div>
@@ -61,11 +63,11 @@ export default async function HomePage() {
         <div className="space-y-6">
           <div className="flex items-center justify-between border-b border-base-300 pb-3">
             <div>
-              <h2 className="text-2xl font-bold tracking-tight">Services & Appointments</h2>
-              <p className="text-xs text-base-content/60 pt-0.5">Choose a service to schedule a visit or outcall</p>
+              <h2 className="text-2xl font-bold tracking-tight">{t('servicesHeading')}</h2>
+              <p className="text-xs text-base-content/60 pt-0.5">{t('servicesSub')}</p>
             </div>
             <span className="text-xs text-base-content/60 font-mono bg-base-200 px-2.5 py-1 rounded-full border border-base-300">
-              {services.length} offered
+              {t('offered', { count: services.length })}
             </span>
           </div>
 
@@ -79,7 +81,7 @@ export default async function HomePage() {
                   <div className="flex justify-between items-start gap-2">
                     <h3 className="font-semibold text-lg">{svc.title}</h3>
                     <span className="text-xs bg-base-300 text-base-content/80 px-2 py-0.5 rounded font-mono">
-                      {svc.durationMin}m
+                      {t('duration', { minutes: svc.durationMin })}
                     </span>
                   </div>
 
@@ -92,12 +94,12 @@ export default async function HomePage() {
                   <div className="pt-2 flex flex-wrap gap-2 text-xs">
                     {svc.inCallEnabled && (
                       <span className="bg-green-900/60 text-green-300 border border-green-800/60 px-2.5 py-1 rounded-md">
-                        In-Studio {svc.inCallPricing ? `• ${svc.inCallPricing.formattedTotal}` : ''}
+                        {t('inStudio', { price: svc.inCallPricing ? `• ${svc.inCallPricing.formattedTotal}` : '' })}
                       </span>
                     )}
                     {svc.outCallEnabled && (
                       <span className="bg-purple-900/60 text-purple-300 border border-purple-800/60 px-2.5 py-1 rounded-md">
-                        Outcall {svc.outCallPricing ? `• ${svc.outCallPricing.formattedTotal}` : ''}
+                        {t('outcall', { price: svc.outCallPricing ? `• ${svc.outCallPricing.formattedTotal}` : '' })}
                       </span>
                     )}
                   </div>
@@ -108,7 +110,7 @@ export default async function HomePage() {
                     href={`/book?serviceId=${svc.id}`}
                     className="block w-full text-center bg-purple-600 hover:bg-purple-500 text-white font-medium py-2.5 px-4 rounded-xl text-sm transition-colors shadow-sm"
                   >
-                    Book Now
+{t('bookNow')}
                   </Link>
                 </div>
               </div>
@@ -121,8 +123,8 @@ export default async function HomePage() {
       {profiles.length > 0 && (
         <div className="space-y-6">
           <div className="border-b border-base-300 pb-3">
-            <h2 className="text-2xl font-bold tracking-tight">Our Specialists</h2>
-            <p className="text-xs text-base-content/60 pt-0.5">Explore individual profiles and portfolios</p>
+            <h2 className="text-2xl font-bold tracking-tight">{t('specialistsHeading')}</h2>
+            <p className="text-xs text-base-content/60 pt-0.5">{t('specialistsSub')}</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
@@ -152,7 +154,7 @@ export default async function HomePage() {
                   )}
                 </div>
                 <span className="inline-block text-xs text-purple-400 font-medium pt-1">
-                  View Profile & Portfolio →
+                  {t('viewProfile')}
                 </span>
               </Link>
             ))}
@@ -165,7 +167,7 @@ export default async function HomePage() {
 
       {items.length > 0 && (
         <div className="space-y-6 pt-6 border-t border-base-300/80">
-          <h2 className="text-xl font-bold tracking-tight">Store Catalog</h2>
+          <h2 className="text-xl font-bold tracking-tight">{t('storeCatalog')}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {items.map((item) => (
               <ItemCard key={item.id} item={item as CatalogItem} />

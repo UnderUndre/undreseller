@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useTelegram } from '../tma/TelegramProvider';
 
 interface InvoiceResultData {
@@ -37,6 +38,8 @@ export function CheckoutModal({
   orderStatus?: string;
 }) {
   const { isTma, initDataRaw, user, hapticFeedback } = useTelegram();
+  // T040 (FR-411): checkout chrome (FR-414: itemTitle is authored content).
+  const t = useTranslations('web.checkout');
 
   const [customerName, setCustomerName] = useState(user?.first_name || '');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -67,7 +70,7 @@ export function CheckoutModal({
       const trimmedName = customerName.trim();
       const trimmedPhone = customerPhone.trim();
       if (!trimmedName || !trimmedPhone) {
-        setErrorMsg('Укажите имя и номер телефона для оформления заказа');
+        setErrorMsg(t('errorProvideContact'));
         setLoading(false);
         hapticFeedback.notificationOccurred('error');
         return;
@@ -86,7 +89,7 @@ export function CheckoutModal({
 
       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.error || 'Failed to initialize payment');
+        throw new Error(errData.error || t('initFailed'));
       }
 
       const data = await res.json();
@@ -106,11 +109,14 @@ export function CheckoutModal({
         <div className="bg-green-900/50 border border-green-500/50 rounded-2xl p-8 text-center space-y-4">
           <div className="text-4xl">✅</div>
           <h3 className="text-2xl font-bold text-green-400">
-            Бронирование подтверждено (Оплата при визите)
+            {t('payOnSiteConfirmedTitle')}
           </h3>
           <p className="text-base-content/80 text-sm">
-            Заказ <strong>{invoiceResult.order?.orderNumber}</strong> зарегистрирован без предоплаты.
-            Оплата ({priceFormatted}) производится на месте после оказания услуги.
+            {t.rich('payOnSiteConfirmedDesc', {
+              order: (chunks) => <strong>{invoiceResult.order?.orderNumber || chunks}</strong>,
+              orderNumber: invoiceResult.order?.orderNumber ?? '',
+              price: priceFormatted,
+            })}
           </p>
         </div>
       );
@@ -121,11 +127,13 @@ export function CheckoutModal({
         <div className="bg-warning-surface/50 border border-warning/50 rounded-2xl p-8 text-center space-y-4">
           <div className="text-4xl">⏳</div>
           <h3 className="text-2xl font-bold text-warning">
-            Ожидается подтверждение мастера (AFTER_STAFF_APPROVAL)
+            {t('deferredTitle')}
           </h3>
           <p className="text-base-content/80 text-sm">
-            Заявка <strong>{invoiceResult.order?.orderNumber}</strong> отправлена мастеру в Staff-бот.
-            Как только мастер нажмёт «Принять», вам придёт счёт с 15-минутным окном на оплату.
+            {t.rich('deferredDesc', {
+              order: (chunks) => <strong>{invoiceResult.order?.orderNumber || chunks}</strong>,
+              orderNumber: invoiceResult.order?.orderNumber ?? '',
+            })}
           </p>
         </div>
       );
@@ -135,15 +143,18 @@ export function CheckoutModal({
       return (
         <div className="bg-warning-surface/40 border border-warning/50 rounded-2xl p-8 text-center space-y-4">
           <div className="text-4xl">⭐</div>
-          <h3 className="text-2xl font-bold text-warning">Telegram Stars Invoice Issued</h3>
+          <h3 className="text-2xl font-bold text-warning">{t('starsTitle')}</h3>
           <p className="text-base-content/80 text-sm">
-            Invoice for order <strong>{invoiceResult.order?.orderNumber}</strong> has been generated.
+            {t.rich('starsIssued', {
+              order: (chunks) => <strong>{invoiceResult.order?.orderNumber || chunks}</strong>,
+              orderNumber: invoiceResult.order?.orderNumber ?? '',
+            })}
           </p>
           <div className="py-4 font-mono text-xl font-bold text-base-content">
-            Total: {invoiceResult.starsPrice?.toLocaleString()} Stars (XTR)
+            {t('starsTotal', { count: invoiceResult.starsPrice?.toLocaleString() ?? '0' })}
           </div>
           <p className="text-xs text-base-content/60">
-            Please complete the payment prompt inside your Telegram chat or app dialog.
+            {t('starsPrompt')}
           </p>
         </div>
       );
@@ -152,9 +163,9 @@ export function CheckoutModal({
     return (
       <div className="bg-purple-900/40 border border-purple-500/50 rounded-2xl p-8 text-center space-y-4">
         <div className="text-4xl">🌐</div>
-        <h3 className="text-2xl font-bold text-purple-400">NOWPayments Crypto Invoice</h3>
+        <h3 className="text-2xl font-bold text-purple-400">{t('cryptoTitle')}</h3>
         <p className="text-base-content/80 text-sm">
-          Pay securely in BTC, ETH, USDT, TON or 150+ other cryptocurrencies.
+          {t('cryptoDesc')}
         </p>
         <div className="pt-4">
           <a
@@ -163,7 +174,7 @@ export function CheckoutModal({
             rel="noopener noreferrer"
             className="inline-block bg-purple-600 hover:bg-purple-500 text-white font-extrabold py-3.5 px-8 rounded-xl shadow-lg transition"
           >
-            Open Hosted Invoice →
+            {t('openInvoice')}
           </a>
         </div>
       </div>
@@ -173,14 +184,18 @@ export function CheckoutModal({
   return (
     <div className="bg-base-200/80 border border-base-300 rounded-2xl p-8 shadow-2xl space-y-6">
       <div>
-        <h2 className="text-2xl font-extrabold text-base-content mb-1">Способ оплаты</h2>
+        <h2 className="text-2xl font-extrabold text-base-content mb-1">{t('paymentMethod')}</h2>
         <p className="text-sm text-base-content/60">
-          Заказ: <strong className="text-base-content/90">{itemTitle}</strong> · Сумма:{' '}
-          <strong className="text-base-content">{priceFormatted}</strong>
+          {t.rich('orderAndSum', {
+            order: () => <strong className="text-base-content/90">{itemTitle}</strong>,
+            sum: () => <strong className="text-base-content">{priceFormatted}</strong>,
+            title: itemTitle,
+            price: priceFormatted,
+          })}
         </p>
         {prepaymentTiming === 'AFTER_STAFF_APPROVAL' && orderStatus === 'PENDING' && (
           <p className="text-xs text-warning mt-2">
-            ℹ️ Включён режим оплаты после одобрения мастера (AFTER_STAFF_APPROVAL). При выборе онлайн-предоплаты счёт на 15 минут выставляется после подтверждения записи мастером.
+            {t('deferredNotice')}
           </p>
         )}
       </div>
@@ -194,7 +209,7 @@ export function CheckoutModal({
       {!isTma && !orderId && (
         <div className="space-y-3 border-t border-b border-base-300 py-4">
           <div>
-            <label className="block text-xs text-base-content/60 mb-1">Full Name *</label>
+            <label className="block text-xs text-base-content/60 mb-1">{t('fullName')}</label>
             <input
               type="text"
               required
@@ -205,7 +220,7 @@ export function CheckoutModal({
             />
           </div>
           <div>
-            <label className="block text-xs text-base-content/60 mb-1">Phone Number *</label>
+            <label className="block text-xs text-base-content/60 mb-1">{t('phone')}</label>
             <input
               type="tel"
               required
@@ -216,7 +231,7 @@ export function CheckoutModal({
             />
           </div>
           <div>
-            <label className="block text-xs text-base-content/60 mb-1">Email (Optional)</label>
+            <label className="block text-xs text-base-content/60 mb-1">{t('email')}</label>
             <input
               type="email"
               value={customerEmail}
@@ -241,9 +256,9 @@ export function CheckoutModal({
             }`}
           >
             <span className="text-2xl mb-1">💵</span>
-            <span className="text-base text-green-300">Оплата на месте (PAY_ON_SITE)</span>
+            <span className="text-base text-green-300">{t('payOnSiteTitle')}</span>
             <span className="text-xs text-base-content/60 font-normal mt-1">
-              Без онлайн-предоплаты — наличными или картой при визите
+              {t('payOnSiteDesc')}
             </span>
           </button>
         )}
@@ -258,7 +273,7 @@ export function CheckoutModal({
             <span className="text-3xl mb-2 group-hover:scale-110 transition">⭐</span>
             <span className="text-base text-warning">Telegram Stars</span>
             <span className="text-xs text-base-content/60 font-normal mt-1">
-              {starsPrice ? `${starsPrice.toLocaleString()} XTR` : 'Digital in-app tokens'}
+              {starsPrice ? `${starsPrice.toLocaleString()} XTR` : t('digitalTokens')}
             </span>
           </button>
 
@@ -276,7 +291,7 @@ export function CheckoutModal({
       </div>
 
       <p className="text-center text-xs text-base-content/50">
-        Transactions are cryptographically verified and recorded on ledger.
+        {t('ledgerNote')}
       </p>
     </div>
   );

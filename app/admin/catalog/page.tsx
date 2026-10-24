@@ -11,6 +11,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { adminServiceCreateSchema, adminServiceUpdateSchema } from '@/lib/validation/adminSchemas';
 import AdminNav from '@/components/admin/AdminNav';
+import { useTranslations } from 'next-intl';
 
 interface AdminService {
   id: string;
@@ -28,6 +29,9 @@ interface AdminService {
 const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120, 180, 240];
 
 export default function AdminCatalogPage() {
+  // T040 (FR-411): admin chrome i18n; service titles/prices are authored data.
+  const t = useTranslations('admin.catalog');
+  const tCommon = useTranslations('admin.common');
   const [services, setServices] = useState<AdminService[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -54,16 +58,16 @@ export default function AdminCatalogPage() {
     setErrorMsg(null);
     try {
       const res = await fetch('/api/admin/services');
-      if (res.status === 401) throw new Error('Please sign in with staff credentials');
-      if (res.status === 403) throw new Error('Your role cannot view the catalog');
+      if (res.status === 401) throw new Error(tCommon('errorGeneric'));
+      if (res.status === 403) throw new Error(tCommon('errorGeneric'));
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to load catalog');
+        throw new Error(data.error || tCommon('errorGeneric'));
       }
       const data = await res.json();
       setServices(data.services || []);
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Error loading catalog');
+      setErrorMsg(err instanceof Error ? err.message : tCommon('errorGeneric'));
     } finally {
       setLoading(false);
     }
@@ -77,7 +81,7 @@ export default function AdminCatalogPage() {
     // Client-side parity check before hitting the API
     const parsed = adminServiceUpdateSchema.safeParse(body);
     if (!parsed.success) {
-      setNotice('Validation failed client-side');
+      setNotice(t('validationFailed'));
       return;
     }
     const res = await fetch(`/api/admin/services/${id}`, {
@@ -96,7 +100,7 @@ export default function AdminCatalogPage() {
       await patchService(service.id, { isActive: !service.isActive });
       await load();
     } catch (err: unknown) {
-      setNotice(err instanceof Error ? err.message : 'Toggle failed');
+      setNotice(err instanceof Error ? err.message : tCommon('errorGeneric'));
     }
   }
 
@@ -111,7 +115,7 @@ export default function AdminCatalogPage() {
       await patchService(b.id, { sortOrder: a.sortOrder });
       await load();
     } catch (err: unknown) {
-      setNotice(err instanceof Error ? err.message : 'Reorder failed');
+      setNotice(err instanceof Error ? err.message : tCommon('errorGeneric'));
     }
   }
 
@@ -134,11 +138,11 @@ export default function AdminCatalogPage() {
     if (!parsed.success) {
       const flat = parsed.error.flatten().fieldErrors;
       if (flat.title?.length) errors.title = flat.title[0];
-      if (flat.priceMinor?.length) errors.price = 'Price must be a non-negative integer (minor units)';
+      if (flat.priceMinor?.length) errors.price = t('priceError');
       if (flat.durationMin?.length) errors.durationMin = flat.durationMin[0];
     }
     if (form.itemType !== 'SERVICE') {
-      errors.itemType = 'Only SERVICE items are supported in the catalog quick-create';
+      errors.itemType = t('onlyServiceError');
     }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -183,7 +187,7 @@ export default function AdminCatalogPage() {
       setFormErrors({});
       await load();
     } catch (err: unknown) {
-      setNotice(err instanceof Error ? err.message : 'Create failed');
+      setNotice(err instanceof Error ? err.message : tCommon('errorGeneric'));
     } finally {
       setSaving(false);
     }
@@ -193,18 +197,18 @@ export default function AdminCatalogPage() {
     <div className="max-w-3xl mx-auto px-4 py-6 text-base-content pb-24">
       <div className="flex justify-between items-center border-b border-base-300 pb-4 mb-4">
         <div>
-          <h1 className="text-xl font-extrabold tracking-tight">Catalog</h1>
-          <p className="text-xs text-base-content/60 pt-1">Services, pricing and ordering (FR-436)</p>
+          <h1 className="text-xl font-extrabold tracking-tight">{t('title')}</h1>
+          <p className="text-xs text-base-content/60 pt-1">{t('subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/" className="text-xs bg-base-300 hover:bg-base-300 px-3 py-1.5 rounded-lg transition-colors">
-            Public Site
+            {tCommon('publicSite')}
           </Link>
           <button
             onClick={() => setSheetOpen(true)}
             className="text-xs bg-purple-600 hover:bg-purple-500 font-medium px-3 py-1.5 rounded-lg transition-colors"
           >
-            + New Service
+            {t('newService')}
           </button>
         </div>
       </div>
@@ -216,7 +220,7 @@ export default function AdminCatalogPage() {
             <>
               {' '}
               <Link href="/admin/login" className="underline text-purple-400">
-                Go to login
+                {tCommon('goToLogin')}
               </Link>
             </>
           )}
@@ -227,7 +231,7 @@ export default function AdminCatalogPage() {
       )}
 
       {loading ? (
-        <p className="text-sm text-base-content/60">Loading…</p>
+        <p className="text-sm text-base-content/60">{tCommon('loading')}</p>
       ) : (
         <ul className="space-y-2">
           {services.map((s, i) => (
@@ -237,7 +241,7 @@ export default function AdminCatalogPage() {
             >
               <div className="flex flex-col gap-1">
                 <button
-                  aria-label={`Move ${s.title} up`}
+                  aria-label={t('moveUp', { title: s.title })}
                   disabled={i === 0}
                   onClick={() => void reorder(i, -1)}
                   className="text-base-content/60 hover:text-base-content disabled:opacity-30 text-xs px-1"
@@ -245,7 +249,7 @@ export default function AdminCatalogPage() {
                   ▲
                 </button>
                 <button
-                  aria-label={`Move ${s.title} down`}
+                  aria-label={t('moveDown', { title: s.title })}
                   disabled={i === services.length - 1}
                   onClick={() => void reorder(i, 1)}
                   className="text-base-content/60 hover:text-base-content disabled:opacity-30 text-xs px-1"
@@ -257,7 +261,7 @@ export default function AdminCatalogPage() {
                 <p className="text-sm font-semibold truncate">{s.title}</p>
                 <p className="text-xs text-base-content/60">
                   {(s.priceMinor / 100).toFixed(2)} · {s.durationMin} min
-                  {s.requiresFullPrepayment ? ' · prepaid' : ''}
+                  {s.requiresFullPrepayment ? t('prepaid') : ''}
                 </p>
               </div>
               <button
@@ -275,7 +279,7 @@ export default function AdminCatalogPage() {
               </button>
             </li>
           ))}
-          {services.length === 0 && <li className="text-sm text-base-content/60">No services yet.</li>}
+          {services.length === 0 && <li className="text-sm text-base-content/60">{t('noServices')}</li>}
         </ul>
       )}
 
@@ -287,14 +291,14 @@ export default function AdminCatalogPage() {
             className="w-full max-w-3xl bg-base-200 border-t border-base-300 rounded-t-2xl p-4 space-y-3 max-h-[85vh] overflow-y-auto"
           >
             <div className="flex justify-between items-center">
-              <h2 className="text-base font-bold">New Service</h2>
+              <h2 className="text-base font-bold">{t('sheetTitle')}</h2>
               <button type="button" onClick={() => setSheetOpen(false)} className="text-xs text-base-content/60 hover:text-base-content">
-                Cancel
+                {tCommon('cancel')}
               </button>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-base-content/60 mb-1">Title *</label>
+              <label className="block text-xs font-medium text-base-content/60 mb-1">{t('titleLabel')}</label>
               <input
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -305,7 +309,7 @@ export default function AdminCatalogPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-base-content/60 mb-1">Price (minor units) *</label>
+              <label className="block text-xs font-medium text-base-content/60 mb-1">{t('priceLabel')}</label>
               <input
                 value={form.price}
                 onChange={(e) => setForm({ ...form, price: e.target.value })}
@@ -317,7 +321,7 @@ export default function AdminCatalogPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-base-content/60 mb-1">Duration (15-min steps) *</label>
+              <label className="block text-xs font-medium text-base-content/60 mb-1">{t('durationLabel')}</label>
               <div className="flex flex-wrap gap-2">
                 {DURATION_OPTIONS.map((d) => (
                   <button
@@ -338,13 +342,13 @@ export default function AdminCatalogPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-base-content/60 mb-1">Type *</label>
+              <label className="block text-xs font-medium text-base-content/60 mb-1">{t('typeLabel')}</label>
               <select
                 value={form.itemType}
                 onChange={(e) => setForm({ ...form, itemType: e.target.value })}
                 className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
               >
-                <option value="SERVICE">Service</option>
+                <option value="SERVICE">{t('typeService')}</option>
               </select>
               {formErrors.itemType && <p className="text-xs text-error mt-1">{formErrors.itemType}</p>}
             </div>
@@ -354,13 +358,13 @@ export default function AdminCatalogPage() {
               onClick={() => setMoreOpen(!moreOpen)}
               className="text-xs text-purple-400 underline"
             >
-              {moreOpen ? 'Hide more options' : 'More options'}
+              {moreOpen ? t('hideMoreOptions') : t('moreOptions')}
             </button>
 
             {moreOpen && (
               <div className="space-y-3 border-t border-base-300 pt-3">
                 <div>
-                  <label className="block text-xs font-medium text-base-content/60 mb-1">Description</label>
+                  <label className="block text-xs font-medium text-base-content/60 mb-1">{t('descriptionLabel')}</label>
                   <textarea
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
@@ -370,7 +374,7 @@ export default function AdminCatalogPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-xs font-medium text-base-content/60 mb-1">Buffer before (min)</label>
+                    <label className="block text-xs font-medium text-base-content/60 mb-1">{t('bufferBefore')}</label>
                     <input
                       type="number"
                       min={0}
@@ -381,7 +385,7 @@ export default function AdminCatalogPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-base-content/60 mb-1">Buffer after (min)</label>
+                    <label className="block text-xs font-medium text-base-content/60 mb-1">{t('bufferAfter')}</label>
                     <input
                       type="number"
                       min={0}
@@ -399,7 +403,7 @@ export default function AdminCatalogPage() {
                     onChange={(e) => setForm({ ...form, requiresFullPrepayment: e.target.checked })}
                     className="accent-purple-600"
                   />
-                  Requires full prepayment
+                  {t('requiresPrepayment')}
                 </label>
               </div>
             )}
@@ -409,7 +413,7 @@ export default function AdminCatalogPage() {
               disabled={saving}
               className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
             >
-              {saving ? 'Saving…' : 'Create Service'}
+              {saving ? tCommon('saving') : t('createService')}
             </button>
           </form>
         </div>

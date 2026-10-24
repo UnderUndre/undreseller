@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { TgDeepLinkBook } from '@/components/booking/TgDeepLinkBook';
 import { getPublicProfileBySlug } from '@/lib/kernel/professionalProfileService';
 import { shopConfig } from '@/config/shop.config';
+import { getTranslations } from 'next-intl/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,9 @@ export default async function ProfessionalPage({
     notFound();
   }
 
+  // T040 (FR-411): chrome labels only; profile content stays authored (FR-414).
+  const t = await getTranslations('web.professionals');
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-12 pb-24 text-base-content">
       {/* Back button */}
@@ -26,7 +30,7 @@ export default async function ProfessionalPage({
           href="/"
           className="inline-flex items-center text-sm text-base-content/60 hover:text-base-content transition-colors"
         >
-          ← Back to {shopConfig.businessName}
+          {t('backTo', { businessName: shopConfig.businessName })}
         </Link>
       </div>
 
@@ -62,14 +66,14 @@ export default async function ProfessionalPage({
       {/* Services Section */}
       <div className="space-y-6">
         <div className="flex items-center justify-between border-b border-base-300 pb-3">
-          <h2 className="text-xl font-bold">Services & Appointments</h2>
+          <h2 className="text-xl font-bold">{t('servicesHeading')}</h2>
           <span className="text-xs text-base-content/60 font-mono">
-            {profile.services.length} available
+            {t('available', { count: profile.services.length })}
           </span>
         </div>
 
         {profile.services.length === 0 ? (
-          <p className="text-sm text-base-content/60 py-4">No active services currently listed.</p>
+          <p className="text-sm text-base-content/60 py-4">{t('noServices')}</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {profile.services.map((svc) => (
@@ -81,7 +85,7 @@ export default async function ProfessionalPage({
                   <div className="flex justify-between items-start gap-2">
                     <h3 className="font-semibold text-lg">{svc.title}</h3>
                     <span className="text-xs bg-base-300 text-base-content/80 px-2 py-1 rounded">
-                      {svc.durationMin}m
+                      {t('duration', { minutes: svc.durationMin })}
                     </span>
                   </div>
                   {svc.description && (
@@ -92,12 +96,12 @@ export default async function ProfessionalPage({
                   <div className="pt-2 flex flex-wrap gap-2 text-xs">
                     {svc.inCallEnabled && (
                       <span className="bg-green-900/60 text-green-300 border border-green-800/60 px-2 py-1 rounded">
-                        In-Studio {svc.pricing?.inCallTotal ? `• ${svc.pricing.inCallTotal}` : ''}
+                        {t('inStudio', { price: svc.pricing?.inCallTotal ? `• ${svc.pricing.inCallTotal}` : '' })}
                       </span>
                     )}
                     {svc.outCallEnabled && (
                       <span className="bg-purple-900/60 text-purple-300 border border-purple-800/60 px-2 py-1 rounded">
-                        Outcall {svc.pricing?.outCallTotal ? `• ${svc.pricing.outCallTotal}` : ''}
+                        {t('outcall', { price: svc.pricing?.outCallTotal ? `• ${svc.pricing.outCallTotal}` : '' })}
                       </span>
                     )}
                   </div>
@@ -110,7 +114,7 @@ export default async function ProfessionalPage({
                     performerSlug={profile.slug}
                     className="block w-full text-center bg-purple-600 hover:bg-purple-500 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors shadow-sm"
                   >
-                    Book Appointment
+                    {t('bookAppointment')}
                   </TgDeepLinkBook>
                 </div>
               </div>
@@ -123,9 +127,9 @@ export default async function ProfessionalPage({
       {profile.portfolio.length > 0 && (
         <div className="space-y-6">
           <div className="flex items-center justify-between border-b border-base-300 pb-3">
-            <h2 className="text-xl font-bold">Portfolio Gallery</h2>
+            <h2 className="text-xl font-bold">{t('portfolioHeading')}</h2>
             <span className="text-xs text-base-content/60 font-mono">
-              {profile.portfolio.length} items
+              {t('items', { count: profile.portfolio.length })}
             </span>
           </div>
 

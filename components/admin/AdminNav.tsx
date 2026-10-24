@@ -8,21 +8,24 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 const TABS = [
-  { href: '/admin/catalog', label: 'Catalog' },
-  { href: '/admin/fields', label: 'Fields' },
-  { href: '/admin/team', label: 'Team' },
-  { href: '/admin/waitlist', label: 'Waitlist' },
-  { href: '/admin/settings', label: 'Settings' },
+  { href: '/admin/catalog', key: 'catalog' },
+  { href: '/admin/fields', key: 'fields' },
+  { href: '/admin/team', key: 'team' },
+  { href: '/admin/waitlist', key: 'waitlist' },
+  { href: '/admin/settings', key: 'settings' },
 ] as const;
 
 export default function AdminNav() {
   const pathname = usePathname();
+  // T040 (FR-411): admin chrome i18n via messages/admin namespace.
+  const t = useTranslations('admin.nav');
 
   return (
     <nav
-      aria-label="Admin sections"
+      aria-label={t('ariaLabel')}
       className="fixed bottom-0 inset-x-0 z-40 bg-base-100 border-t border-base-300 flex justify-around pb-[env(safe-area-inset-bottom)]"
     >
       {TABS.map((tab) => {
@@ -36,7 +39,7 @@ export default function AdminNav() {
               active ? 'text-purple-400' : 'text-base-content/60 hover:text-base-content'
             }`}
           >
-            {tab.label}
+            {t(tab.key)}
           </Link>
         );
       })}

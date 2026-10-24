@@ -3,10 +3,13 @@
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { CatalogItem } from './ItemCard';
+import { useTranslations } from 'next-intl';
 
 export const MAX_CART_SERVICES = 10;
 
 export function CartDrawer({ items }: { items: CatalogItem[] }) {
+  // T040 (FR-411): cart chrome; service titles/durations stay authored (FR-414).
+  const t = useTranslations('web.cart');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -62,9 +65,9 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
       <div className="bg-base-200/70 border border-base-300 rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h2 className="text-lg font-bold text-base-content">Комплексная запись (Корзина услуг)</h2>
+            <h2 className="text-lg font-bold text-base-content">{t('heading')}</h2>
             <p className="text-xs text-base-content/60">
-              Выберите до {MAX_CART_SERVICES} услуг для бронирования единого непрерывного окна с шагом 30 минут
+              {t('sub', { count: MAX_CART_SERVICES })}
             </p>
           </div>
           {selectedIds.length > 0 && (
@@ -73,7 +76,7 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
               onClick={() => setSelectedIds([])}
               className="text-xs text-error hover:text-error underline"
             >
-              Очистить ({selectedIds.length})
+              {t('clear', { count: selectedIds.length })}
             </button>
           )}
         </div>
@@ -100,7 +103,7 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
                 <div className="pr-2">
                   <div className="font-semibold text-sm">{srv.title}</div>
                   <div className="text-xs text-base-content/60 font-mono mt-0.5">
-                    ⏱ {srv.durationMin} мин · {priceStr}
+                    {t('durationPrice', { minutes: srv.durationMin ?? 0, price: priceStr })}
                   </div>
                 </div>
                 <span
@@ -122,11 +125,11 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
             <div>
               <div className="flex items-center gap-2">
                 <span className="bg-purple-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
-                  {selectedServices.length} усл.
+                  {t('servicesCount', { count: selectedServices.length })}
                 </span>
                 <span className="text-base-content font-bold text-base">{formattedTotal}</span>
                 <span className="text-xs text-purple-300 font-mono">
-                  · ⏱ {totalDurationMin} мин подряд
+                  {t('consecutive', { minutes: totalDurationMin })}
                 </span>
               </div>
               <button
@@ -134,7 +137,7 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
                 onClick={() => setIsOpen((v) => !v)}
                 className="text-xs text-base-content/60 hover:text-base-content/90 mt-1 underline"
               >
-                {isOpen ? 'Скрыть состав корзины ▲' : 'Показать состав корзины ▼'}
+                {isOpen ? t('hideContents') : t('showContents')}
               </button>
             </div>
 
@@ -142,7 +145,7 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
               href={bookHref}
               className="bg-purple-600 hover:bg-purple-500 text-white font-bold py-2.5 px-6 rounded-xl text-center shadow-lg transition text-sm"
             >
-              Выбрать время ({totalDurationMin} мин) →
+              {t('chooseTime', { minutes: totalDurationMin })}
             </Link>
           </div>
 
@@ -158,7 +161,7 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
                     onClick={() => toggleService(srv.id)}
                     className="text-error hover:text-error ml-2"
                   >
-                    Удалить
+                    {t('remove')}
                   </button>
                 </div>
               ))}

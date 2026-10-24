@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 /**
  * Mobile-first staff login page (T018, FR-427).
@@ -11,6 +12,8 @@ import { useRouter } from 'next/navigation';
  */
 export default function AdminLoginPage() {
   const router = useRouter();
+  // T040 (FR-411): admin chrome i18n.
+  const t = useTranslations('admin.login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -31,16 +34,16 @@ export default function AdminLoginPage() {
       const data = await res.json();
       if (res.status === 429) {
         setLockedUntil(Date.now() + (data.retryAfterSeconds ?? 900) * 1000);
-        setErrorMsg(data.error ?? 'Account temporarily locked');
+        setErrorMsg(data.error ?? t('locked'));
         return;
       }
       if (!res.ok) {
-        setErrorMsg(data.error ?? 'Sign-in failed');
+        setErrorMsg(data.error ?? t('failed'));
         return;
       }
       router.push('/admin/catalog');
     } catch {
-      setErrorMsg('Network error. Please try again.');
+      setErrorMsg(t('networkError'));
     } finally {
       setLoading(false);
     }
@@ -52,14 +55,14 @@ export default function AdminLoginPage() {
         onSubmit={handleSubmit}
         className="w-full max-w-sm space-y-4 bg-base-200/80 border border-base-300 rounded-2xl p-6"
       >
-        <h1 className="text-xl font-bold text-base-content text-center">Staff Sign-In</h1>
+        <h1 className="text-xl font-bold text-base-content text-center">{t('title')}</h1>
 
         <input
           type="email"
           required
           autoComplete="email"
           inputMode="email"
-          placeholder="Email"
+          placeholder={t('email')}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="w-full rounded-lg border border-base-300 bg-base-300 px-4 py-3 text-base-content text-base"
@@ -68,7 +71,7 @@ export default function AdminLoginPage() {
           type="password"
           required
           autoComplete="current-password"
-          placeholder="Password"
+          placeholder={t('password')}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="w-full rounded-lg border border-base-300 bg-base-300 px-4 py-3 text-base-content text-base"
@@ -77,7 +80,7 @@ export default function AdminLoginPage() {
         {errorMsg && (
           <p className="text-sm text-red-400" role="alert">
             {lockedUntil
-              ? `${errorMsg} — retry after ${new Date(lockedUntil).toLocaleTimeString()}`
+              ? t('retryAfter', { error: errorMsg ?? '', time: new Date(lockedUntil).toLocaleTimeString() })
               : errorMsg}
           </p>
         )}
@@ -87,7 +90,7 @@ export default function AdminLoginPage() {
           disabled={loading}
           className="w-full rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 px-4 py-3 font-semibold text-white text-base"
         >
-          {loading ? 'Signing in…' : 'Sign in'}
+          {loading ? t('signingIn') : t('signIn')}
         </button>
       </form>
     </main>

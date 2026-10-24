@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db/prisma';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -15,7 +16,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   });
 
   if (!item) {
-    return { title: 'Item Not Found' };
+    return { title: (await getTranslations('web.item'))('itemNotFound') };
   }
 
   return {
@@ -58,6 +59,9 @@ export default async function CatalogItemPage({ params }: Props) {
 
   const safeJsonLdString = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
 
+  // T040 (FR-411): chrome labels only; item.title/description stay authored (FR-414).
+  const t = await getTranslations('web.item');
+
   return (
     <div className="max-w-3xl mx-auto space-y-8">
       {/* Schema.org Structured Data */}
@@ -73,12 +77,12 @@ export default async function CatalogItemPage({ params }: Props) {
           </span>
           {item.itemType === 'SERVICE' && item.durationMin && (
             <span className="text-xs text-base-content/60 font-mono">
-              ⏱ {item.durationMin} min duration
+              {t('minDuration', { minutes: item.durationMin })}
             </span>
           )}
           {item.itemType === 'PRODUCT' && item.stock !== null && (
             <span className="text-xs text-green-400 font-mono">
-              📦 Stock: {item.stock}
+              {t('stock', { stock: item.stock })}
             </span>
           )}
         </div>
@@ -92,7 +96,7 @@ export default async function CatalogItemPage({ params }: Props) {
           <span className="text-3xl font-black text-base-content">{formattedPrice}</span>
           {item.starsPrice && (
             <span className="text-sm font-bold text-warning bg-warning-surface/40 px-3 py-1 rounded-full border border-warning/50">
-              ⭐ {item.starsPrice.toLocaleString()} Stars (XTR)
+              {t('starsPrice', { count: item.starsPrice.toLocaleString() })}
             </span>
           )}
         </div>
@@ -103,14 +107,14 @@ export default async function CatalogItemPage({ params }: Props) {
               href={`/book?itemId=${item.id}`}
               className="w-full text-center bg-purple-600 hover:bg-purple-500 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition"
             >
-              Select Time & Book Slot →
+              {t('selectTimeBook')}
             </Link>
           ) : (
             <Link
               href={`/checkout?itemId=${item.id}`}
               className="w-full text-center bg-green-600 hover:bg-green-500 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition"
             >
-              Buy with Crypto or Stars →
+              {t('buyCryptoOrStars')}
             </Link>
           )}
         </div>

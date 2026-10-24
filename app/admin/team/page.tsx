@@ -10,6 +10,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import ImageUploader, { UploadedImage } from '@/components/admin/ImageUploader';
 import AdminNav from '@/components/admin/AdminNav';
+import { useTranslations } from 'next-intl';
 
 interface PortfolioItem {
   id: string;
@@ -54,6 +55,9 @@ function fmtMin(m: number): string {
 }
 
 export default function AdminTeamPage() {
+  // T040 (FR-411): admin chrome i18n; profile/portfolio content stays authored.
+  const t = useTranslations('admin.team');
+  const tCommon = useTranslations('admin.common');
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [hours, setHours] = useState<HourEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,10 +75,10 @@ export default function AdminTeamPage() {
         fetch('/api/admin/profiles'),
         fetch('/api/admin/hours'),
       ]);
-      if (profilesRes.status === 401) throw new Error('Please sign in with staff credentials');
+      if (profilesRes.status === 401) throw new Error(tCommon('errorGeneric'));
       if (!profilesRes.ok) {
         const data = await profilesRes.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to load profiles');
+        throw new Error(data.error || tCommon('errorGeneric'));
       }
       const profilesData = await profilesRes.json();
       setProfiles(profilesData.profiles || []);
@@ -83,7 +87,7 @@ export default function AdminTeamPage() {
         setHours(hoursData.hours || []);
       }
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Error loading team');
+      setErrorMsg(err instanceof Error ? err.message : tCommon('errorGeneric'));
     } finally {
       setLoading(false);
     }
@@ -122,7 +126,7 @@ export default function AdminTeamPage() {
       setEditingId(null);
       await load();
     } catch (err: unknown) {
-      setNotice(err instanceof Error ? err.message : 'Save failed');
+      setNotice(err instanceof Error ? err.message : tCommon('errorGeneric'));
     }
   }
 
@@ -139,14 +143,14 @@ export default function AdminTeamPage() {
       }
       await load();
     } catch (err: unknown) {
-      setNotice(err instanceof Error ? err.message : 'Publish toggle failed');
+      setNotice(err instanceof Error ? err.message : tCommon('errorGeneric'));
     }
   }
 
   async function addPortfolio(p: Profile) {
     const form = portfolioForm[p.id];
     if (!form?.title || !form?.mediaUrl) {
-      setNotice('Portfolio item needs a title and an uploaded photo');
+      setNotice(t('portfolioNeedsTitle'));
       return;
     }
     try {
@@ -162,7 +166,7 @@ export default function AdminTeamPage() {
       setPortfolioForm({ ...portfolioForm, [p.id]: { title: '', mediaUrl: '' } });
       await load();
     } catch (err: unknown) {
-      setNotice(err instanceof Error ? err.message : 'Add failed');
+      setNotice(err instanceof Error ? err.message : tCommon('errorGeneric'));
     }
   }
 
@@ -179,7 +183,7 @@ export default function AdminTeamPage() {
       }
       await load();
     } catch (err: unknown) {
-      setNotice(err instanceof Error ? err.message : 'Toggle failed');
+      setNotice(err instanceof Error ? err.message : tCommon('errorGeneric'));
     }
   }
 
@@ -190,8 +194,8 @@ export default function AdminTeamPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 text-base-content pb-24">
       <div className="border-b border-base-300 pb-4 mb-4">
-        <h1 className="text-xl font-extrabold tracking-tight">Team</h1>
-        <p className="text-xs text-base-content/60 pt-1">Professional profiles, portfolio and working hours (FR-440)</p>
+        <h1 className="text-xl font-extrabold tracking-tight">{t('title')}</h1>
+        <p className="text-xs text-base-content/60 pt-1">{t('subtitle')}</p>
       </div>
 
       {errorMsg && (
@@ -200,7 +204,7 @@ export default function AdminTeamPage() {
           {errorMsg.includes('sign in') && (
             <a href="/admin/login" className="underline text-purple-400">
               {' '}
-              Go to login
+              {tCommon('goToLogin')}
             </a>
           )}
         </div>
@@ -210,7 +214,7 @@ export default function AdminTeamPage() {
       )}
 
       {loading ? (
-        <p className="text-sm text-base-content/60">Loading…</p>
+        <p className="text-sm text-base-content/60">{tCommon('loading')}</p>
       ) : (
         <div className="space-y-4">
           {profiles.map((p) => (
@@ -234,14 +238,14 @@ export default function AdminTeamPage() {
                       : 'bg-base-300 border-base-300 text-base-content/60'
                   }`}
                 >
-                  {p.isPublished ? 'Published' : 'Unpublished'}
+                  {p.isPublished ? t('published') : t('unpublished')}
                 </button>
               </div>
 
               {editingId === p.id ? (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-base-content/60 mb-1">Headline</label>
+                    <label className="block text-xs font-medium text-base-content/60 mb-1">{t('headline')}</label>
                     <input
                       value={edit.headline}
                       onChange={(e) => setEdit({ ...edit, headline: e.target.value })}
@@ -250,7 +254,7 @@ export default function AdminTeamPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-base-content/60 mb-1">Biography</label>
+                    <label className="block text-xs font-medium text-base-content/60 mb-1">{t('biography')}</label>
                     <textarea
                       value={edit.biography}
                       onChange={(e) => setEdit({ ...edit, biography: e.target.value })}
@@ -259,20 +263,20 @@ export default function AdminTeamPage() {
                       className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
                     />
                   </div>
-                  <ImageUploader folder="profiles" label="Profile photo" onUploaded={onPhotoUploaded} />
-                  {edit.photoUrl && <p className="text-xs text-base-content/50 truncate">Photo: {edit.photoUrl}</p>}
+                  <ImageUploader folder="profiles" label={t('profilePhoto')} onUploaded={onPhotoUploaded} />
+                  {edit.photoUrl && <p className="text-xs text-base-content/50 truncate">{t('photo', { url: edit.photoUrl })}</p>}
                   <div className="flex gap-2">
                     <button
                       onClick={() => void saveProfile(p)}
                       className="text-xs bg-purple-600 hover:bg-purple-500 px-3 py-1.5 rounded-lg font-medium"
                     >
-                      Save
+                      {tCommon('save')}
                     </button>
                     <button
                       onClick={() => setEditingId(null)}
                       className="text-xs bg-base-300 hover:bg-base-300 px-3 py-1.5 rounded-lg"
                     >
-                      Cancel
+                      {tCommon('cancel')}
                     </button>
                   </div>
                 </div>
@@ -281,12 +285,12 @@ export default function AdminTeamPage() {
                   onClick={() => startEdit(p)}
                   className="text-xs bg-base-300 hover:bg-base-300 px-3 py-1.5 rounded-lg"
                 >
-                  Edit profile
+                  {t('editProfile')}
                 </button>
               )}
 
               <div className="border-t border-base-300 pt-3 space-y-2">
-                <p className="text-xs font-semibold text-base-content/80">Portfolio</p>
+                <p className="text-xs font-semibold text-base-content/80">{t('portfolio')}</p>
                 {p.portfolioItems.map((item) => (
                   <div key={item.id} className="flex items-center gap-2">
                     {item.mediaUrl && (
@@ -307,7 +311,7 @@ export default function AdminTeamPage() {
                           : 'bg-base-300 border-base-300 text-base-content/60'
                       }`}
                     >
-                      {item.isPublished ? 'Live' : 'Draft'}
+                      {item.isPublished ? t('live') : t('draft')}
                     </button>
                   </div>
                 ))}
@@ -320,12 +324,12 @@ export default function AdminTeamPage() {
                         [p.id]: { ...(portfolioForm[p.id] || { mediaUrl: '' }), title: e.target.value },
                       })
                     }
-                    placeholder="Portfolio item title"
+                    placeholder={t('portfolioTitlePlaceholder')}
                     className="w-full bg-base-300 border border-base-300 rounded-lg px-3 py-2 text-sm"
                   />
                   <ImageUploader
                     folder="portfolio"
-                    label="Portfolio photo"
+                    label={t('portfolioPhoto')}
                     onUploaded={(image) =>
                       setPortfolioForm({
                         ...portfolioForm,
@@ -337,26 +341,26 @@ export default function AdminTeamPage() {
                     onClick={() => void addPortfolio(p)}
                     className="text-xs bg-base-300 hover:bg-base-300 px-3 py-1.5 rounded-lg"
                   >
-                    Add portfolio item
+                    {t('addPortfolio')}
                   </button>
                 </div>
               </div>
             </section>
           ))}
 
-          {profiles.length === 0 && <p className="text-sm text-base-content/60">No professional profiles yet.</p>}
+          {profiles.length === 0 && <p className="text-sm text-base-content/60">{t('noProfiles')}</p>}
 
           <section className="bg-base-200 border border-base-300 rounded-xl p-4">
-            <p className="text-xs font-semibold text-base-content/80 mb-2">Working hours summary</p>
+            <p className="text-xs font-semibold text-base-content/80 mb-2">{t('workingHours')}</p>
             {hours.length === 0 ? (
-              <p className="text-xs text-base-content/50">No weekly hours configured.</p>
+              <p className="text-xs text-base-content/50">{t('noHours')}</p>
             ) : (
               <ul className="space-y-1">
                 {hours.map((h) => (
                   <li key={h.id} className="text-xs text-base-content/60">
                     <span className="text-base-content/80">{WEEKDAYS[(h.weekday - 1) % 7]}</span>{' '}
                     {fmtMin(h.startMin)}–{fmtMin(h.endMin)}
-                    {h.itemId ? '' : ' (global)'}
+                    {h.itemId ? '' : t('global')}
                   </li>
                 ))}
               </ul>
