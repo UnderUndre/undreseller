@@ -162,7 +162,7 @@
 - [X] T092 [BE] [US7] PII closure: `AuditEvent.reason` redaction pre-persist; `serviceAddressSnapshot` + BookingFieldAnswer + delivery-log + waitlist offers/entries retention in nightlyPurge AND on GDPR user deletion (FR-428); automated log-scan (SC-403)
 - [X] T093 [BE] [US7] Staff bot: confirm barrier on destructive actions (`showAlert`), configurable rejection notification policy (FR-429)
 - [X] T094 [OPS] [US7] DR drill with REAL restore: `scripts/dr-restore-drill.ps1` (pg_restore into scratch DB, verify settings/items/staff/bookings/waitlist, measured RTO/RPO, PASS only on evidence); retire the stub (audit T059)
-- [ ] T095 [SEC] [US7] STRIDE verification pass per plan.md matrix: webhook HMAC regression, presign abuse cases, RBAC split probes, rate-limit bypass attempts; plus thin-controller audit (no business logic in route handlers — FR-435) — findings fixed or documented
+- [X] T095 [SEC] [US7] STRIDE verification pass per plan.md matrix: webhook HMAC regression, presign abuse cases, RBAC split probes, rate-limit bypass attempts; plus thin-controller audit (no business logic in route handlers — FR-435) — findings fixed or documented
 
 ---
 
