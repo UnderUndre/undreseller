@@ -87,7 +87,7 @@
 
 - [X] T030 [BE] [US2] `lib/booking/windows.ts`: compute in `ShopSettings.timeZone` (IANA + DST correct) via `date-fns-tz` (no hand-rolled DST math); plumbing of the currently-inert `timeZone` param; DST-boundary unit tests
 - [X] T031 [BE] [US2] Slots API: `unavailableReason` (booked|break) per blocked candidate (FR-408)
-- [ ] T032 [BE] [US2] Notification dispatcher: lifecycle events → TG primary → email fallback ≤5 min (or FAILED/NO_EMAIL_CHANNEL + staff warning when no email on file) → delivery log rows; unit tests with mocked failures
+- [X] T032 [BE] [US2] Notification dispatcher: lifecycle events → TG primary → email fallback ≤5 min (or FAILED/NO_EMAIL_CHANNEL + staff warning when no email on file) → delivery log rows; unit tests with mocked failures
 - [ ] T033 [FE] [US2] SlotGrid: locale word-month dates (`Intl.DateTimeFormat`), booked/break explanation UI for hidden slots
 - [ ] T034 [E2E] [US2] Reliability suite: DST day wall-clock slots; TG-fail→email fallback timing; delivery history visible to staff
 
