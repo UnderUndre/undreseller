@@ -201,6 +201,14 @@ export async function processNowPaymentsNotification(
 
   // Check payment status
   const status = (payload.payment_status || '').toLowerCase();
+
+  // T023: first `confirming` freezes the hold TTL (holdFrozenAt; 24h hard ceiling).
+  if (status === 'confirming') {
+    const { recordConfirmingFreeze } = await import('./fulfillment');
+    const freeze = await recordConfirmingFreeze(orderId);
+    return { status: freeze.frozen ? 'CONFIRMING_HOLD_FROZEN' : 'CONFIRMING_NO_HOLD' };
+  }
+
   if (status !== 'finished' && status !== 'confirmed') {
     logger.info(`NOWPayments status ${status} for order ${orderId} ignored`);
     return { status: 'IGNORED_STATUS' };

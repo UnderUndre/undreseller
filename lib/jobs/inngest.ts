@@ -6,6 +6,7 @@ import { sendWhatsAppTemplate } from '@/lib/bot/whatsappClient';
 import { enqueueTelegramOutbox, OUTBOX_PRIORITY } from '@/lib/bot/telegramOutbox';
 import { buildClientReminderKeyboard } from '@/lib/bot/clientConfirmation';
 import { processInboxEventRow } from './inboxProcessor';
+import { MAX_CONFIRMING_FREEZE_MS } from '@/lib/kernel/bookingFsm';
 import {
   evaluateReminderWakeUpCas,
   evaluateAutoCancelWakeUpCas,
@@ -168,10 +169,16 @@ export const holdSweep = inngest.createFunction(
     return await step.run('release-expired-holds-and-reconcile-deadlines', async () => {
       const now = new Date();
 
+      // T023: confirming freeze — holdFrozenAt suspends the TTL sweep; past the
+      // hard ceiling (MAX_CONFIRMING_FREEZE = 24h) the hold expires anyway and a
+      // late payment resolves via FR-432 (fulfillment collision path).
+      const freezeCeiling = new Date(now.getTime() - MAX_CONFIRMING_FREEZE_MS);
+
       const expired = await prisma.slotReservation.findMany({
         where: {
           status: 'HELD',
           holdExpiresAt: { lte: now },
+          OR: [{ holdFrozenAt: null }, { holdFrozenAt: { lte: freezeCeiling } }],
         },
         select: {
           id: true,
@@ -208,6 +215,7 @@ export const holdSweep = inngest.createFunction(
                 id: { in: reservationIds },
                 status: 'HELD',
                 holdExpiresAt: { lte: now },
+                OR: [{ holdFrozenAt: null }, { holdFrozenAt: { lte: freezeCeiling } }],
               },
               data: { status: 'RELEASED' },
             });
