@@ -351,6 +351,11 @@ export async function cancelBooking(params: CancelBookingParams): Promise<void> 
     throw new CancellationError('Unauthorized: cancellation token or staff authentication required', 401);
   }
 
+  // Captured for the T072 waitlist fan-out after the transaction commits.
+  // Holder object: assignments happen inside the transaction callback, which
+  // TS control-flow analysis does not track for a plain `let`.
+  const freedSlot: { slotReservationId?: string; serviceId?: string | null } = {};
+
   await prisma.$transaction(async (tx) => {
     const reservation = await tx.slotReservation.findFirst({
       where: {
@@ -413,6 +418,8 @@ export async function cancelBooking(params: CancelBookingParams): Promise<void> 
           cancellationTokenConsumedAt: now,
         },
       });
+      freedSlot.slotReservationId = reservation.id;
+      freedSlot.serviceId = reservation.itemId ?? null;
 
       await tx.order.update({
         where: { id: reservation.orderId },
@@ -439,6 +446,8 @@ export async function cancelBooking(params: CancelBookingParams): Promise<void> 
           cancellationTokenRevokedAt: now,
         },
       });
+      freedSlot.slotReservationId = reservation.id;
+      freedSlot.serviceId = reservation.itemId ?? null;
 
       await tx.order.update({
         where: { id: reservation.orderId },
@@ -471,6 +480,23 @@ export async function cancelBooking(params: CancelBookingParams): Promise<void> 
       });
     } catch (err: unknown) {
       logger.error('[REFUND_POLICY_WIRING_FAILED]', { error: String(err) });
+    }
+  }
+
+  // T072 (FR-420/433): waitlist fan-out dispatch on the freed slot — offers are
+  // Telegram-only, first claim wins through the standard atomic booking path.
+  // Fire-and-forget: dispatch failure must never fail the cancellation.
+  if (freedSlot.slotReservationId) {
+    try {
+      const { dispatchWaitlistOffers } = await import('../waitlist/offerDispatch');
+      void dispatchWaitlistOffers({
+        slotReservationId: freedSlot.slotReservationId,
+        serviceId: freedSlot.serviceId ?? null,
+      }).catch((err: unknown) => {
+        logger.error('[WAITLIST_FANOUT_DISPATCH_FAILED]', { error: String(err) });
+      });
+    } catch (err: unknown) {
+      logger.error('[WAITLIST_FANOUT_WIRING_FAILED]', { error: String(err) });
     }
   }
 }

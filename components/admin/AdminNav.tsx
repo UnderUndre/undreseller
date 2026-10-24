@@ -2,7 +2,7 @@
 
 /**
  * Admin bottom navigation (T061, contract admin-content-uploads.md)
- * Mobile-first 3-tab nav: Catalog | Team | Settings.
+ * Mobile-first 4-tab nav: Catalog | Team | Waitlist | Settings.
  */
 
 import React from 'react';
@@ -11,7 +11,9 @@ import { usePathname } from 'next/navigation';
 
 const TABS = [
   { href: '/admin/catalog', label: 'Catalog' },
+  { href: '/admin/fields', label: 'Fields' },
   { href: '/admin/team', label: 'Team' },
+  { href: '/admin/waitlist', label: 'Waitlist' },
   { href: '/admin/settings', label: 'Settings' },
 ] as const;
 

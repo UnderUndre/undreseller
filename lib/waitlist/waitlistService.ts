@@ -110,14 +110,20 @@ export function isOfferEligible(offeredAtHistory: Date[], now: Date): boolean {
 /**
  * Fan-out on a freed slot (called from the cancellation flow / Inngest job +
  * sweeper fallback). Returns matched, eligible entries in FIFO order, batch ≤10.
- * Offers are marked SENT here; actual message dispatch is the caller's job.
+ * Offers are marked SENT here; the raw claim tokens are returned for the
+ * dispatch layer (T072) which embeds them in the TG claim deep link.
  */
+export interface DispatchableOffer extends FanoutCandidate {
+  /** Raw one-time claim token — only place it leaves this module. */
+  token: string;
+}
+
 export async function fanoutForSlot(params: {
   slotReservationId: string;
   serviceId?: string | null;
   professionalProfileId?: string | null;
   now?: Date;
-}): Promise<{ entries: FanoutCandidate[] }> {
+}): Promise<{ entries: FanoutCandidate[]; offers: DispatchableOffer[] }> {
   const now = params.now ?? new Date();
 
   const candidates = await prisma.waitlistEntry.findMany({
@@ -153,8 +159,10 @@ export async function fanoutForSlot(params: {
     eligible.push({ entryId: candidate.id, customerTgId: candidate.customerTgId ?? '', customerContact: candidate.customerContact });
   }
 
+  const offers: DispatchableOffer[] = [];
   for (const candidate of eligible) {
     const token = randomBytes(32).toString('hex');
+    offers.push({ ...candidate, token });
     await prisma.waitlistOffer.create({
       data: {
         waitlistEntryId: candidate.entryId,
@@ -168,11 +176,10 @@ export async function fanoutForSlot(params: {
       slotReservationId: params.slotReservationId,
       tokenHash: createHash('sha256').update(token).digest('hex').slice(0, 12) + '…',
     });
-    // The raw token is handed to the dispatch layer via an out-of-band channel;
-    // in production the TG message embeds the claim link (T072).
+    // The raw token rides on the returned `offers` array for the TG dispatch (T072).
   }
 
-  return { entries: eligible };
+  return { entries: eligible, offers };
 }
 
 /**

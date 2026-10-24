@@ -3,6 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { useTelegram } from '../tma/TelegramProvider';
 import type { AvailableSlot, UnavailableSlot } from '@/lib/booking/windows';
+import CustomFieldsBlock, {
+  BookingCustomField,
+  CustomAnswers,
+} from './CustomFieldsBlock';
 
 interface BookingSuccessState {
   bookingId: string;
@@ -34,6 +38,7 @@ export function SlotGrid({
   currency,
   performerSlug,
   outCallCoverageDescription,
+  customFields,
 }: {
   service: BookingServiceInfo;
   currency: string;
@@ -41,8 +46,10 @@ export function SlotGrid({
   performerSlug?: string;
   businessServiceAddress?: string | null;
   outCallCoverageDescription?: string | null;
+  /** US6 (FR-423): active custom booking fields bound to this service. */
+  customFields?: BookingCustomField[];
 }) {
-  const { user, hapticFeedback } = useTelegram();
+  const { user, hapticFeedback, initDataRaw } = useTelegram();
 
   // Mode selection: default to IN_CALL if enabled, else OUT_CALL
   const [mode, setMode] = useState<'IN_CALL' | 'OUT_CALL'>(
@@ -66,11 +73,17 @@ export function SlotGrid({
   const [customerContact, setCustomerContact] = useState(user?.username ? `@${user.username}` : '');
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerNote, setCustomerNote] = useState('');
+  // US6 custom field answers (keyed by field.key)
+  const [customAnswers, setCustomAnswers] = useState<CustomAnswers>({});
 
   // Booking success state
   const [bookingSuccess, setBookingSuccess] = useState<BookingSuccessState | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelStatus, setCancelStatus] = useState<string | null>(null);
+
+  // T072: waitlist join from empty grid
+  const [joining, setJoining] = useState(false);
+  const [waitlistStatus, setWaitlistStatus] = useState<{ ok: boolean; msg: string } | null>(null);
 
   // Price calculations
   const isOutCall = mode === 'OUT_CALL';
@@ -156,6 +169,7 @@ export function SlotGrid({
         customerName: customerName.trim(),
         customerContact: customerContact.trim(),
         customerNote: customerNote.trim() || undefined,
+        fieldAnswers: Object.keys(customAnswers).length > 0 ? customAnswers : undefined,
         idempotencyKey: `book_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       };
 
@@ -198,6 +212,47 @@ export function SlotGrid({
       );
     } finally {
       setCancelLoading(false);
+    }
+  };
+
+  const handleJoinWaitlist = async () => {
+    setJoining(true);
+    setWaitlistStatus(null);
+    try {
+      if (hapticFeedback) hapticFeedback.impactOccurred('light');
+      if (!initDataRaw) {
+        throw new Error(
+          'Joining the waitlist is available via Telegram only. Open this page in the bot Mini App — offers arrive in Telegram.'
+        );
+      }
+      const res = await fetch('/api/waitlist/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serviceId: service.id,
+          windowStartAt: new Date(`${selectedDate}T00:00:00`).toISOString(),
+          windowEndAt: new Date(`${selectedDate}T23:59:59`).toISOString(),
+          contact: customerContact.trim() || undefined,
+          initData: initDataRaw,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to join the waitlist');
+      }
+      if (hapticFeedback) hapticFeedback.notificationOccurred('success');
+      setWaitlistStatus({
+        ok: true,
+        msg: "You're on the waitlist — we'll message you in Telegram if a slot opens for this date.",
+      });
+    } catch (err: unknown) {
+      if (hapticFeedback) hapticFeedback.notificationOccurred('error');
+      setWaitlistStatus({
+        ok: false,
+        msg: err instanceof Error ? err.message : 'Failed to join the waitlist',
+      });
+    } finally {
+      setJoining(false);
     }
   };
 
@@ -374,7 +429,7 @@ export function SlotGrid({
           </div>
 
           {slots.length === 0 && !loadingSlots ? (
-            <div className="text-center py-8 border border-dashed border-gray-800 rounded-xl">
+            <div className="text-center py-8 border border-dashed border-gray-800 rounded-xl space-y-3">
               <p className="text-xs text-gray-400">No slots available for this date. Try another date.</p>
               {unavailable.length > 0 && (
                 <p className="text-[11px] text-gray-500 mt-2 px-4">
@@ -384,6 +439,23 @@ export function SlotGrid({
                     'Some times fall in a service break.'}
                 </p>
               )}
+              {/* T072 (FR-419): join waitlist from the grid empty state */}
+              {waitlistStatus && (
+                <p
+                  className={`text-xs px-4 ${waitlistStatus.ok ? 'text-success' : 'text-error'}`}
+                  role="status"
+                >
+                  {waitlistStatus.msg}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={handleJoinWaitlist}
+                disabled={joining}
+                className="inline-block bg-purple-600 hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-semibold py-2 px-4 rounded-lg text-xs transition-all"
+              >
+                {joining ? 'Joining…' : 'Join waitlist for this date'}
+              </button>
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-56 overflow-y-auto pr-1">
@@ -467,6 +539,15 @@ export function SlotGrid({
             />
           </div>
         </div>
+
+        {/* US6: custom booking fields bound to this service */}
+        {customFields && customFields.length > 0 && (
+          <CustomFieldsBlock
+            fields={customFields}
+            answers={customAnswers}
+            onChange={setCustomAnswers}
+          />
+        )}
 
         {errorMsg && (
           <div className="p-3 bg-error-surface/40 border border-error/60 rounded-xl text-xs text-error">
