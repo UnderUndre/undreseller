@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import { computeAvailableSlots } from '@/lib/booking/windows';
+import { computeSlotsWithReasons } from '@/lib/booking/windows';
 import { logger } from '@/lib/telemetry/logger';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -9,6 +9,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const date = searchParams.get('date');
   const modeParam = (searchParams.get('mode') || 'IN_CALL').toUpperCase();
   const professionalId = searchParams.get('professionalId') || searchParams.get('resourceId');
+  const includeUnavailable = searchParams.get('includeUnavailable') === '1';
 
   if (!serviceId || !date) {
     return NextResponse.json(
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const slots = await computeAvailableSlots({
+    const { slots, unavailable } = await computeSlotsWithReasons({
       dateStr: date,
       durationMin: item.durationMin || 60,
       fulfillmentMode,
@@ -76,6 +77,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         date,
         timeZone: settings?.timeZone || 'UTC',
         slots,
+        // T031/FR-408: blocked grid candidates with explanation (booked|break)
+        ...(includeUnavailable ? { unavailable } : {}),
       },
       { status: 200 }
     );
