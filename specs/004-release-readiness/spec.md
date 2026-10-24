@@ -32,6 +32,11 @@
 - Q: Sprint B vs payments confusion in the header? → A: Header rewritten — 004 is explicitly the post-Sprint-B release where payments ship (see above).
 - Q: Future MCP without refactoring? → A: FR-435 — all booking/payment/waitlist operations go through internal application services with typed contracts, so MCP/API surfaces stay thin layers.
 
+### Session 2026-10-24 — Scope Additions (2)
+
+- Q: Where does the content-admin UI ship, and in what order? → A: **In this spec (004)** as User Story 9 (P1) — the flagship instance and every client fork need non-developer content entry (today only `/admin/bookings` exists; content is seed/API-only). Sequencing is **research-first**: an external best-practices research prompt (`ai-research-prompt-3-content-admin.md`, this directory) runs before `/speckit.plan` refines the UX requirements.
+- Q: Landing/domain architecture for the flagship (affects FR-011-style deep links)? → A: Single root domain — `underundre.com` greets visitors with the bureau landing (served by the `undrllanding` repo), the flagship fork instance lives at `shop.underundre.com`. Recorded in `undrllanding/specs/001-init-separate-landings` §6.3.
+
 ## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 — Trustworthy Payments & Booking Integrity (Priority: P1)
@@ -178,6 +183,24 @@ Close the audit's P1 debt class before exposing the product publicly: audit-log 
 5. **Given** a checkout attempt mixing services and physical products in one order, **When** submitted, **Then** the defined release policy (blocked with split guidance — see Assumptions) is applied consistently in UI and API.
 6. **Given** the release DR drill, **When** executed, **Then** it performs an actual restore from a real backup and records measured RTO/RPO, not simulated numbers.
 
+### User Story 9 — Content Administration UI (Priority: P1)
+
+The owner/operator manages storefront content — services, products, professional profiles and portfolio, and business settings — through an admin web UI instead of raw API calls. Today only the bookings screen exists; content entry is seed/API-only, which blocks the flagship instance (and every client fork) from being filled by a non-developer.
+
+**Why this priority**: The flagship launch and each white-label fork start with empty content; without a UI the only content path is developer-assisted. Detailed UX requirements are refined after the external best-practices research lands in this directory (see Clarifications — Scope Additions).
+
+**Independent Test**: Log in as OWNER; create a service (price, duration, location modes, image) and a product (stock); publish a professional profile with portfolio items; edit business settings — each change appears on the storefront without a redeploy. Log in as PERFORMER and verify catalog management is inaccessible.
+
+**Acceptance Scenarios**:
+
+1. **Given** an OWNER/OPERATOR creating or editing a catalog entry, **When** submitting, **Then** validation matches the admin API contracts (prices in minor units, duration for services, stock for products) and the storefront reflects the change immediately via active/inactive gating.
+2. **Given** a professional profile, **When** it is unpublished or deactivated, **Then** its public page returns 404 and disappears from listings; portfolio items follow the same publication state.
+3. **Given** business settings (branding, contact links, default language, IANA timezone, currency), **When** edited, **Then** storefront, emails, and bots reflect them, and the currency-confirmation gate for live prices is respected.
+4. **Given** any content mutation, **When** performed, **Then** it is audit-logged and role-bounded (OWNER/OPERATOR manage content; PERFORMER cannot).
+5. **Given** an image upload for an item or profile, **When** the file type or size is invalid, **Then** it is rejected with a clear field-level error.
+
+---
+
 ### User Story 8 — Brand Design System Adoption (Priority: P2)
 
 The product's visual language derives entirely from the shared `@underundre/undesign` token system — the single source of truth for brand colors, scales, semantic colors, and light/dark surfaces — instead of ad-hoc palette choices. What has already landed as the first slice (commit `1b7bd23`): brand scales (purple/orange/green) and semantic tokens (error/warning) wired into the styles and ~140 generic-palette class usages replaced across all surfaces. What remains for release: migrating neutral grays to the system's surface tokens, enabling both shipped themes (`undrlla` light / `undrlla-dark`), and hooking theme selection to the Telegram client theme (FR-417).
@@ -266,6 +289,9 @@ The product's visual language derives entirely from the shared `@underundre/unde
 - **FR-428**: Audit free-text fields MUST be PII-redacted before persistence, and service address snapshots MUST be included in scheduled retention purges consistent with other customer data.
 - **FR-429**: Destructive staff actions in the staff bot MUST require an explicit confirmation step, and customer notification on rejection MUST follow an owner-configurable policy (auto-message / alternative slot offer / manual follow-up).
 - **FR-435**: All booking, payment, and waitlist business operations MUST be exposed through internal application services with typed contracts — HTTP handlers, bots, and future API/MCP surfaces are thin controllers over these services, so adding an external surface never requires refactoring business logic.
+- **FR-436**: OWNER/OPERATOR MUST be able to manage catalog entries (services and products) through an admin UI — create, edit, deactivate (hard delete prohibited for booking-referenced entries), image, price in minor units, currency, duration and location modes for services, stock for products — with validation parity with the admin API contracts.
+- **FR-437**: The admin UI MUST manage professional profiles and portfolio publication (publish/unpublish, portfolio items) with profile-ownership rules; unpublished profiles return 404 on public pages.
+- **FR-438**: The admin UI MUST expose business settings editing (branding, contact links, default language, IANA timezone, currency confirmation gate for live prices); every content mutation MUST be audit-logged and role-bounded per the three-role RBAC.
 
 ### Non-Functional Requirements (NFR) _(ISO/IEC/IEEE 29148:2018)_
 
