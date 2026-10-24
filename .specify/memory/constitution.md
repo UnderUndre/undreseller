@@ -121,6 +121,8 @@ Feature development uses two distinct branch phases:
 
 This replaces the old `feature/<N>-<slug>` convention. Existing `feature/<N>-<slug>` branches are grandfathered; new features MUST use the two-phase pattern.
 
+**Consumer-tooling carve-out (1.7.2)**: consumer repositories whose shipped `.specify/scripts/` (`create-new-feature.ps1`, `snapshot-stage.ps1`) implement the `NNN-slug` branch convention (e.g., `undreseller` 002–004) continue under that convention — the tooling IS the local branch standard. The principle's substance still applies however branches are named: planning artifacts live on the planning branch with no implementation code, implementation lands on its own branch after planning merge, and the review gates (VI) are unchanged. Consumer copies carry this carve-out locally; promotion upstream to `UnderUndre/ai` happens via a dedicated PR, not sync-drift.
+
 **Hotfix carve-out**: production hotfixes (<50 LOC, prod incident with ticket reference) skip the two-phase flow and may branch directly from `main` using a `hotfix/` prefix.
 
 **Spec patch drift policy**: during implementation, minor spec clarifications that don't change scope may be patched directly into the spec with a dated note (e.g., `<!-- Drift note: 2026-05-25 — clarified error handling → validated with Zod -->`). Scope-changing drift requires a new planning PR.
@@ -194,9 +196,11 @@ This file (the constitution) is loaded at the Constitution Check gate of `/speck
 4. **Complexity must be justified.** Every new agent, transformer, target, or skill adds load to every downstream session. A change that doesn't earn its weight is rejected.
 5. **Anti-sycophancy applies to review of this file too.** If a principle above is wrong for the project, say so and propose an amendment. Don't quietly ignore it.
 
-**Version**: 1.7.1 | **Ratified**: 2026-04-17 | **Last Amended**: 2026-10-11
+**Version**: 1.7.2 | **Ratified**: 2026-04-17 | **Last Amended**: 2026-10-24
 
 ### Changelog
+
+- **1.7.2** (2026-10-24) — Principle IX consumer-tooling carve-out: repos whose `.specify/scripts/` implement `NNN-slug` branches (undreseller 002–004 lineage) continue under tooling convention; two-phase substance (planning/implementation separation + review gates) unchanged. Raised by 004-release-readiness analyze D1 (deviation was documented but unamended).
 
 - **1.7.1** (2026-10-11) — Clarified Principle III: CLI-computed, lock-recorded fields (stack binding of `skills:`) are pipeline output, not project overrides. No behavioral change. Raised by 003-stack-aware-agents analyze D3.
 

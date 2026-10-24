@@ -9,7 +9,7 @@ Request adds nothing new; response includes `reservation.status` ∈ {CONFIRMED,
 Query: `?itemIds&resourceId&anyAvailable=false`. Slots computed in `ShopSettings.timeZone` (IANA, DST-correct, FR-408). Response slot objects gain `unavailableReason?: 'booked' | 'break'` for grid explanation. `anyAvailable=true`: ordering = soonest valid slot across masters minimizing sub-quantum gaps (deterministic greedy, FR-421).
 
 ### POST /api/waitlist — join (FR-419)
-`{ serviceId?, professionalProfileId?, windowStartAt, windowEndAt }` (auth: Telegram identity or contact). Limits: ≤1 ACTIVE per (customer, service, window-day); window ≤ 30d; rate-limited.
+`{ serviceId?, professionalProfileId?, windowStartAt, windowEndAt }` (auth: **Telegram identity required at launch** — contact-only callers receive 422 with guidance; offers are Telegram-only). Limits: ≤1 ACTIVE per (customer, service, window-day); window ≤ 30d; rate-limited.
 
 ### POST /api/waitlist/claim — atomic single-winner (FR-420/433)
 `{ offerToken }` (32-byte token from the TG offer message). Flows through the standard booking transaction: first COMMIT wins → `{ status: 'CLAIMED', booking }`; loser → `{ status: 'TAKEN' }`; expired → `410`. Free service → immediate CONFIRMED; prepaid → HELD (15-min payment TTL).

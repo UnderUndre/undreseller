@@ -37,6 +37,13 @@
 - Q: Where does the content-admin UI ship, and in what order? → A: **In this spec (004)** as User Story 9 (P1) — the flagship instance and every client fork need non-developer content entry (today only `/admin/bookings` exists; content is seed/API-only). Sequencing is **research-first**: an external best-practices research prompt (`ai-research-prompt-3-content-admin.md`, this directory) runs before `/speckit.plan` refines the UX requirements.
 - Q: Landing/domain architecture for the flagship (affects FR-011-style deep links)? → A: Single root domain — `underundre.com` greets visitors with the bureau landing (served by the `undrllanding` repo), the flagship fork instance lives at `shop.underundre.com`. Recorded in `undrllanding/specs/001-init-separate-landings` §6.3.
 
+### Session 2026-10-24 — Analyze Remediation
+
+- Q: Waitlist for contact-only (non-Telegram) customers? → A: **Join restricted to Telegram-identified users at launch** — offers are Telegram-only, so contact-only join would be a silent dead-end; rejection carries guidance (FR-419).
+- Q: Exact upload bounds? → A: pinned — WebP ≤ 200 KB (200,000 bytes) at ≤ 1200 px (FR-441).
+- Q: Where does the owner set the slot grid step? → A: admin settings surface, 15|30 selector (FR-442; task T064).
+- Q: Refund on customer-initiated cancellation of a prepaid booking (FR-430)? → A: tasked explicitly (tasks T028) — policy-window evaluation → RefundOperation workflow → both parties notified.
+
 ### Session 2026-10-24 — Content-Admin Research Integrated
 
 - Research artifact `content-admin-research.md` landed and encoded into US9 / FR-436–443. Decisions taken from it: mobile-first quick-create (≤4 required fields, ≤2 taps depth); one-tap active toggle; client-side image compression + presigned direct-to-object-storage upload (server never touches image bytes — OOM guard; Cloudflare R2 [COST]); soft delete with booking snapshots preserved; 15-minute duration quantum via selector; live edits with explicit save (no draft workflow); local draft persistence across app switches; immutable slugs or 301 redirects; OPERATOR excluded from system-foundation settings (currency/timezone/language/payouts — OWNER-only). Deferred: bulk ops, drag-and-drop, draft staging, cropper, AI descriptions, multilanguage content fields.
@@ -275,7 +282,7 @@ The product's visual language derives entirely from the shared `@underundre/unde
 
 **Waitlist & any-available**
 
-- **FR-419**: A customer MUST be able to join a waitlist specifying service, optional master preference, and a time window, from the slot grid and from cancellation flows.
+- **FR-419**: A customer MUST be able to join a waitlist specifying service, optional master preference, and a time window, from the slot grid and from cancellation flows. At launch, join is restricted to Telegram-identified customers (offers are Telegram-only); contact-only join attempts are rejected with guidance (no silent dead-end).
 - **FR-420**: A cancellation MUST trigger waitlist offers to the best-matching bounded batch of entries via Telegram inline actions; claims MUST be atomic single-winner; losers receive a definitive "taken" outcome. The freed slot returns to public availability immediately — waitlist grants **notification priority, not reservation**: waitlist claims and storefront bookings race through the same atomic booking path with identical semantics (offers are worded "if still available").
 - **FR-433**: A waitlist claim on a free service MUST create the booking immediately; a claim on a prepaid service MUST create a HELD reservation under the standard payment TTL (FR-403); unclaimed offers MUST expire silently after the broadcast window with no slot side effects.
 - **FR-421**: An "any available staff" option MUST propose the soonest valid slots across masters, deterministically minimizing calendar fragmentation; probabilistic/model-based scheduling is prohibited in this release.
@@ -300,8 +307,8 @@ The product's visual language derives entirely from the shared `@underundre/unde
 - **FR-438**: The admin UI MUST expose business settings editing split by role: system-foundation settings (currency, IANA timezone, default language, payout references, instance rename) are OWNER-only; OPERATOR manages operational content (catalog, schedules, professional profiles). Every content mutation MUST be audit-logged.
 - **FR-439**: The admin UI MUST provide a mobile-first quick-create sheet for services with at most 4 required fields (title, price, duration, master/all-masters) and advanced options collapsed behind an explicit "more" control; no admin flow may exceed 2 taps of depth from the admin root for create/toggle operations.
 - **FR-440**: The catalog list MUST expose a one-tap active/inactive toggle per entry that hides the item from the storefront without opening the edit form.
-- **FR-441**: Image uploads MUST be resized and compressed client-side (target ≤ ~200 KB WebP) and uploaded directly to S3-compatible object storage via presigned URLs (Cloudflare R2 recommended — zero egress, S3-compatible [COST]); the application server MUST NOT buffer or transform image bytes; local-disk media storage is prohibited.
-- **FR-442**: Service durations and buffers MUST be quantized to 15-minute steps and entered via selector (no free-form numeric input); the slot grid step (15/30 minutes) MUST remain a divisor-compatible instance setting — arbitrary durations that tear holes in the slot grid are rejected at validation.
+- **FR-441**: Image uploads MUST be resized and compressed client-side (WebP, ≤ 200 KB / 200,000 bytes at ≤ 1200 px) and uploaded directly to S3-compatible object storage via presigned URLs (Cloudflare R2 recommended — zero egress, S3-compatible [COST]); the application server MUST NOT buffer or transform image bytes; local-disk media storage is prohibited.
+- **FR-442**: Service durations and buffers MUST be quantized to 15-minute steps and entered via selector (no free-form numeric input); the slot grid step (15/30 minutes) MUST remain a divisor-compatible instance setting, exposed in the admin settings surface — arbitrary durations that tear holes in the slot grid are rejected at validation.
 - **FR-443**: Content edits apply live (no draft/publish workflow) with an explicit save action for destructive or price-critical fields (no auto-save on blur); unsaved form state MUST persist locally across mobile app switches.
 
 ### Non-Functional Requirements (NFR) _(ISO/IEC/IEEE 29148:2018)_
@@ -363,6 +370,6 @@ The product's visual language derives entirely from the shared `@underundre/unde
 
 - Ukrainian ships post-launch as a data-only addition (dictionaries + native review), per user decision.
 - Email fallback uses an external email provider chosen at planning stage; no self-hosted mail (business-plan blacklist).
-- Waitlist offers are Telegram-only at launch (email fallback applies to confirmations, not offers).
+- Waitlist offers are Telegram-only at launch (email fallback applies to confirmations, not offers); consequently waitlist join is Telegram-identified-only at launch (FR-419).
 - No-show protection is deposit-policy-based; crypto rails have no card-style pre-authorization and none is emulated.
 - Custom-field types are limited to the four launch types; no form-builder UI beyond definitions.

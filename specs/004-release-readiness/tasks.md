@@ -33,7 +33,7 @@
 
 - [ ] T001 [SETUP] Repair 003 test debt to green: rewrite `tests/unit/multi-service-cart.test.ts` and `tests/unit/performance-benchmark.test.ts` against the current `computeAvailableSlots` contract (NFR-401 profile: p95 recording, availability load), fix `admin-auth` and `inngest-cas-and-outbox` failures (root-cause, not skip) — `npx tsc --noEmit` and `npx jest` fully green
 - [ ] T002 [SETUP] Lint debt: resolve `no-explicit-any`/`no-unused-vars` in `lib/kernel/`, `lib/security/`, `lib/bot/` (003 audit list) so `next build` passes lint; no rule suppressions without inline justification
-- [ ] T003 [SETUP] Supply chain: remove unused `better-auth` dep (research D4); add `next-intl`, `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`, `browser-image-compression`; run `scripts/verify-licenses.mjs` + `npm audit` (zero High/Critical unmitigated); registry path entries in `config/oss-reuse-registry.json`
+- [ ] T003 [SETUP] Supply chain: remove unused `better-auth` dep (research D4); add `next-intl`, `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`, `browser-image-compression`; verify the license claims asserted in plan.md §Technical Context against actual package metadata; run `scripts/verify-licenses.mjs` + `npm audit` (zero High/Critical unmitigated); registry path entries in `config/oss-reuse-registry.json`
 - [ ] T004 [SETUP] Spike S1 (timebox 1d): Telegram themeParams ↔ undesign token mapping on all surfaces; quantitative acceptance per research.md D2; **spike branch, dispose after**
 - [ ] T005 [SETUP] Spike S2 (timebox 1d): R2 presign E2E cycle (HEIC→WebP→PUT→URL; p95 presign <50ms; 0 bytes via Node); **spike branch, dispose after**
 - [ ] T006 [SETUP] Spike S3 (timebox 1d): i18n key-coverage AST gate PoC (100% resolve in ru/en); **spike branch, dispose after**
@@ -51,7 +51,7 @@
 - [ ] T013 [BE] `lib/payments/providerContract.ts`: PaymentProvider interface + registry from deployment config; zero-provider mode booking verified (FR-401); unit tests for contract invariants
 - [ ] T014 [BE] `lib/notifications/` delivery log (ACCEPTED/FAILED, salted target hash, 90d retention hook) + logger deny-list extension for new surfaces; zero-PII log-scan unit test
 - [ ] T015 [BE] `lib/email/` adapter interface + provider adapter (Resend-recommended HTTP API behind interface) + mock contract test (FR-409 fallback readiness)
-- [ ] T016 [OPS] Feature flags in `lib/config/integrationProfile.ts` for FSM/payment-provider/waitlist/i18n cutover with killswitch verification test (legacy read paths restorable without DDL)
+- [ ] T016 [BE] Feature flags in `lib/config/integrationProfile.ts` for FSM/payment-provider/waitlist/i18n cutover with killswitch verification test (legacy read paths restorable without DDL); OPS drill of the killswitch covered by T112
 
 **Checkpoint**: Foundation ready — green baseline, schema expanded, contracts scaffolded.
 
@@ -70,6 +70,7 @@
 - [ ] T025 [BE] [US1] Stars adapter implements the contract (existing stars tests green — regression only)
 - [ ] T026 [BE] [US1] Minor-unit amounts: replace `×100` with CurrencyMetadata scale across payment paths (FR-405/FR-303); multi-currency tests (JPY 0, KWD 3)
 - [ ] T027 [E2E] [US1] Stubbed-gateway contract suite: full lifecycle, replay ×100 → one effect, invalid signature 401, late-payment-after-rebook → PAID_REQUIRES_RESOLUTION + refund request + both parties notified (FR-432)
+- [ ] T028 [BE] [US1] Refund-on-cancellation (FR-430): customer-initiated cancellation of a prepaid booking within the refund window → policy-window evaluation → RefundOperation workflow (recorded, SLA-tagged) → customer + staff notified; outside window → deposit forfeiture per policy; unit + E2E assertions wired into T027 suite
 
 **Checkpoint**: Money path trustworthy; 100-way same-slot race test green (SC-401).
 
@@ -124,7 +125,7 @@
 - [ ] T061 [FE] [US9] Admin scaffold: 3-tab bottom nav; `/admin/catalog` — list with one-tap active toggle, arrow reorder, quick-create sheet (4 required fields + collapsed "more", 15-min duration selector), shared zod validation with API (FR-436/439/440)
 - [ ] T062 [FE] [US9] ImageUploader: `browser-image-compression` (WebP ≤1200px ≤200KB) → presign → direct PUT; type/size field-level errors
 - [ ] T063 [FE] [US9] `/admin/team`: profiles, portfolio publication, working hours; profile ownership rules
-- [ ] T064 [FE] [US9] `/admin/settings`: foundation section (currency, timezone, defaultLocale — OWNER-only server-enforced) + operational settings; currency-confirm gate (FR-438)
+- [ ] T064 [FE] [US9] `/admin/settings`: foundation section (currency, timezone, defaultLocale — OWNER-only server-enforced) + operational settings incl. slotGridStepMin (15|30, FR-442); currency-confirm gate (FR-438)
 - [ ] T065 [BE] [US9] SlugRedirect service: immutable slugs, 301 on API rename, `/professionals/[slug]` redirect-before-404 (FR-437)
 - [ ] T066 [E2E] [US9] Content-admin acceptance: RBAC matrix (PERFORMER 403, OPERATOR foundation 403), validation parity, archive-keeps-snapshots, 10-minute setup bar timed run (US9 scenarios)
 
@@ -157,7 +158,7 @@
 - [ ] T092 [BE] [US7] PII closure: `AuditEvent.reason` redaction pre-persist; `serviceAddressSnapshot` + BookingFieldAnswer + delivery-log retention in nightlyPurge (FR-428); automated log-scan (SC-403)
 - [ ] T093 [BE] [US7] Staff bot: confirm barrier on destructive actions (`showAlert`), configurable rejection notification policy (FR-429)
 - [ ] T094 [OPS] [US7] DR drill with REAL restore: `scripts/dr-restore-drill.ps1` (pg_restore into scratch DB, verify settings/items/staff/bookings/waitlist, measured RTO/RPO, PASS only on evidence); retire the stub (audit T059)
-- [ ] T095 [SEC] [US7] STRIDE verification pass per plan.md matrix: webhook HMAC regression, presign abuse cases, RBAC split probes, rate-limit bypass attempts — findings fixed or documented
+- [ ] T095 [SEC] [US7] STRIDE verification pass per plan.md matrix: webhook HMAC regression, presign abuse cases, RBAC split probes, rate-limit bypass attempts; plus thin-controller audit (no business logic in route handlers — FR-435) — findings fixed or documented
 
 ---
 
@@ -204,10 +205,11 @@ T014 → T032, T024
 T015 → T032
 T016 → T021
 T020 → T021
-T021 → T022, T023, T027
+T021 → T022, T023, T027, T028
 T022 → T027
 T023 → T027
 T026 → T027
+T028 → T115
 T030 → T031, T071
 T032 → T034, T072
 T040 → T045
@@ -226,6 +228,7 @@ T071 → T073
 T080 → T081
 T081 → T082
 T090 → T095
+T060 → T095
 T092 → T113
 T094 → T111
 T100 → T101
@@ -276,14 +279,14 @@ graph LR
 | ---- | ---------- | ----- | ---------- |
 | 1 | [SETUP] baseline+spikes | T001, T002, T003 → T004, T005, T006, T007 | — |
 | 2 | [DB] schema | T010 → T011 | T001 |
-| 3 | [BE] payments/FSM | T013 → T020 → T021 → T022/T023 → T027 | T010, T016 |
+| 3 | [BE] payments/FSM | T013 → T020 → T021 → T022/T023/T028 → T027 | T010, T016 |
 | 4 | [BE] reliability | T014 + T015 → T032 → T034; T030 → T031 | T010, T003 |
 | 5 | [FE/BE] i18n | T012 → T040/T041/T042 → T043 → T044, T045 | T003 |
 | 6 | [BE/FE] hybrid TG | T050 → T051; T004 → T052; T053 → T054 | T004 |
 | 7 | [BE/FE] content admin | T005 → T060 → T062; T061 → T063, T064; T065 → T066 | T005, T012 |
 | 8 | [BE/FE] waitlist | T070 → T072, T073; T071 → T073 | T010, T021, T032 |
 | 9 | [BE/FE] custom fields | T080 → T081 → T082 | T010 |
-| 10 | [BE/OPS/SEC] hardening | T090–T095 | T070, T080 |
+| 10 | [BE/OPS/SEC] hardening | T090–T095 | T070, T080, T060 |
 | 11 | [FE] design completion | T100 → T101 → T102 | — |
 | 12 | [E2E/OPS] polish | T110–T116 | all stories |
 
@@ -295,15 +298,15 @@ graph LR
 | ----- | ---------- | --------------- |
 | [SETUP] | 11 (T001–T007, T044, T102, T116) | immediately |
 | [DB] | 2 (T010, T011) | T001 |
-| [BE] | 22 (T012–T015, T020–T026, T030–T032, T041–T043, T050, T051, T060, T065, T070, T071, T080, T090–T093) | T010/T013 per lane |
+| [BE] | 24 (T012–T016, T020–T026, T028, T030–T032, T041–T043, T050, T051, T060, T065, T070, T071, T080, T090–T093) | T010/T013 per lane |
 | [FE] | 13 (T033, T040, T052–T054, T061–T064, T072, T081, T100, T101) | lane deps |
-| [OPS] | 4 (T016, T094, T110, T112) | T002 / story deps |
+| [OPS] | 3 (T094, T110, T112) | story deps |
 | [E2E] | 10 (T027, T034, T045, T054, T066, T073, T082, T111, T115) | story impl |
 | [SEC] | 2 (T095, T113) | hardening + near-close |
 
 **Critical Path**: T001 → T010 → T020 → T021 → T027 → T115 → T116 (payments/FSM spine).
 
-**Total**: 60 tasks.
+**Total**: 61 tasks.
 
 ---
 

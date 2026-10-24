@@ -6,7 +6,7 @@
 |---|---|---|
 | `/admin/catalog` | OWNER, OPERATOR | quick-create sheet (≤4 required fields), edit, active toggle (one tap), arrow reorder, archive (soft) |
 | `/admin/team` | OWNER, OPERATOR (profiles per ownership) | professional profiles, portfolio, publish/unpublish, working hours |
-| `/admin/settings` | OWNER (foundation) / OPERATOR (operational view) | branding, contacts, defaultLocale, timeZone, currency+confirm gate; foundation section OWNER-only server-enforced |
+| `/admin/settings` | OWNER (foundation) / OPERATOR (operational view) | branding, contacts, defaultLocale, timeZone, currency+confirm gate, slotGridStepMin (15\|30, FR-442); foundation section OWNER-only server-enforced |
 
 Validation parity: UI forms validate with the SAME zod schemas as `/api/admin/items|services|profiles` (shared modules — no drift). Duration selector 15-min quantum; price in minor units; explicit Save (no auto-save on blur); unsaved state persisted to sessionStorage.
 

@@ -142,7 +142,7 @@ undreseller/
 
 - **Metrics & SLIs**: p95/p99 latency for availability/booking endpoints (existing logger counters extended); waitlist dispatch latency (cancel→offer) p95 ≤ 60 s; payment webhook processing success/idempotency-duplicate counters; RSS ceiling probe (docker bench, existing).
 - **Structured Logging**: existing deny-list logger; NEW log surfaces (delivery log, waitlist offers, presign issuance) go through the same redaction; zero PII/tokens verified by automated log-scan test (US7).
-- **Distributed Tracing**: correlation IDs in inbox/outbox events (existing); full OpenTelemetry deferred post-release (recorded in backlog-carried-over, T068 lineage).
+- **Distributed Tracing**: correlation IDs in inbox/outbox events (existing); full OpenTelemetry deferred post-release (recorded in backlog-carried-over, T068 lineage). **Launch decision (analyze remediation M1, 2026-10-24)**: 004 ships structured counters + correlation IDs + the notification delivery log as its observability baseline; OTel adoption is a deliberate post-release deferral, not an oversight.
 - **Health Checks & Probes**: `/api/health` extended with a cheap locale-config check (no secrets, no PII).
 
 ### Disaster Recovery & Rollback Strategy
