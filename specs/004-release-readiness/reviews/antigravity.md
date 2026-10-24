@@ -1,55 +1,49 @@
-# SpecKit Review: 004-release-readiness (re-review post-remediation)
+# SpecKit Review: 004-release-readiness (final re-check post-remediation)
 
 **Reviewer**: antigravity
-**Reviewed at**: 2026-10-24T20:08:41Z
-**Commit**: cd8f1b74dea0a5f540a02911c809f0fd672746ec
+**Reviewed at**: 2026-10-24T20:25:44Z
+**Commit**: 4e83b0128e5ecd700a215dd906d95c9eb8023c1e
 **Artifacts reviewed**: spec.md (v7), plan.md (v2), tasks.md (v2), data-model.md, contracts/* (4 files), quickstart.md, research.md, undreplans/docs/projects/undreseller/undreseller-business-plan.md (v18.5), docs/business-plan.md, .specify/memory/constitution.md (v1.7.2)
-**Previous run**: a2670ef — verdict CRITICAL (2 CRITICAL / 2 HIGH / 3 MEDIUM / 2 LOW)
+**Previous runs**: a2670ef (CRITICAL) → cd8f1b7 (PASS) → 4e83b01 (final PASS confirmation)
 
 ## Summary
 
-Повторный независимый аудит после внесения исправлений коммитами `3ef1e4d` и `cd8f1b7` подтверждает, что все ранее выявленные критические засоры и архитектурные протечки полностью устранены. Имя enum в DDL исправлено на `"ReservationStatus"` с явным добавлением всех необходимых статусов и сопоставлением `CONFIRMED ≡ BOOKED`; задача на веб-аутентификацию персонала (T017/T018) заложена в фундамент с блокировкой задач UI админки; введен 24-часовой потолок заморозки слотов от зависших криптотранзакций; регламентировано атомарное подтверждение позднего платежа на свободный слот (FR-444); выравнивание по бизнес-плану v18.5 и лимиту памяти 500 МБ соблюдено. Пакет готов к реализации.
+Финальный речек после коммита `4e83b01` подтверждает безупречное состояние артефактов фичи 004. Все ранее выявленные критические блокеры и архитектурные течи надежно заварены. В коммите `4e83b01` дополнительно закрыты последние краевые риски: внедрен предохранительный клапан против зацикливания вейтлиста (лимит $\le 3$ волн или 24 ч в FR-433), добавлен логаут и локаут от брутфорса (5 ошибок $\to$ 15 мин блокировки в FR-427/T017), регламентирован жизненный цикл одноразовых magic-link для входа персонала, встроен приемочный тест ранжирования мастеров по истории клиента в T071, а канонический чейнджлог бизнес-плана v18.5 продублирован прямо в `docs/business-plan.md`, обеспечив полную автономность репозитория.
 
 ## Findings
 
 | ID  | Severity | Area | Finding | Recommendation |
 | --- | -------- | ---- | ------- | -------------- |
-| L1  | LOW      | Tasks Summary | В `tasks.md` количество фактических задач в списке составляет 71 (чекбоксы T001–T116), в то время как в итоговой таблице `Agent Summary` и строке 313 указано 63 задачи (арифметический остаток от промежуточного обновления). На исполнение и зависимости в графе это не влияет. | Обновить суммарную строку и счетчик в `tasks.md` при следующем редактировании (31 [BE], 14 [FE], 10 [SETUP], 10 [E2E], 4 [OPS], 2 [DB], 2 [SEC]). |
-| L2  | LOW      | Informational / UX | По FR-409 и T032 при отсутствии email у клиента корректно пишется статус `NO_EMAIL_CHANNEL` с алертом персоналу. Клиенты из Telegram Mini App по умолчанию email не вводят, поэтому фоллбек по почте сработает только для тех, кто указал её добровольно. | Зафиксировать в подсказках чекаута Mini App рекомендацию указать email для получения подтверждения визита. |
-| L3  | LOW      | Governance | Карв-аут ветвления `NNN-slug` в Принципе IX Конституции зафиксирован как локальная поправка репозитория (v1.7.2); апстрим-продвижение в `UnderUndre/ai` запланировано отдельным PR. | Отслеживать в следующем DevX спринте; не блокирует запуск фичи 004. |
+| L1  | LOW      | Tasks Summary | В `tasks.md` количество фактических чекбоксов составляет 71 (T001–T116), в строке 313 и таблице Agent Summary сохраняется значение 63 (косметический остаток промежуточного подсчета). Граф зависимостей и критический путь полностью валидны. | Синхронизировать отображаемое число задач при следующем проходе DevX. |
+| L2  | LOW      | Governance | Карв-аут ветвления `NNN-slug` в Принципе IX Конституции зафиксирован локально для ветки 004; апстрим-продвижение в `UnderUndre/ai` запланировано отдельным PR. | Отслеживать в следующем DevX спринте; не блокирует запуск фичи 004. |
 
-### Verification of Prior Findings (All 9 Resolved)
+### Verification of Remediation Status
 
-- **F1 (CRITICAL) → RESOLVED**: Имя типа enum в миграции T010 и `data-model.md` исправлено на `"ReservationStatus"`; в DDL добавляются все недостающие статусы (`PENDING_APPROVAL`, `PAYMENT_PENDING`, `UNDERPAID`, `CANCELLED`, `STAFF_REJECTED`); в `data-model.md` §1.1 и `plan.md` зафиксирован чистый маппинг `CONFIRMED ≡ BOOKED` на границе сервисов без дублирования значений enum.
-- **F2 (CRITICAL) → RESOLVED**: В Phase 2 добавлены базовые задачи: T017 (бэкенд `POST /api/auth/sign-in` со сверкой пароля scrypt по `Account`, созданием сессии в `prisma.session`, установкой HttpOnly куки и ротацией) и T018 (мобильная страница входа `/admin/login` с поддержкой magic-link из бота персонала). Задачи админки T061/T063/T064 заблокированы на T018.
-- **F3 (HIGH) → RESOLVED**: В FR-404, `data-model.md` и `contracts/payment-provider.md` установлен жесткий потолок `MAX_CONFIRMING_FREEZE = 24 h`. По истечении 24 часов холд освобождается, заказ переводится в `EXPIRED_DURING_CONFIRMATION` с алертом персоналу.
-- **F4 (HIGH) → RESOLVED**: В спецификацию добавлено требование FR-444, а в контракт шлюза — ветка: если поздний платёж поступает по просроченному холду, но слот свободен, бронь атомарно переходит в `CONFIRMED` без принудительного рефанда.
-- **F5 (MEDIUM) → RESOLVED**: В FR-433 и `data-model.md` §2.2 зафиксировано, что `WaitlistEntry` переходит в `FULFILLED` только после `CONFIRMED` оплаты. При сгорании неоплаченного холда запускается повторный fan-out офферов с исключением бросившего клиента.
-- **F6 (MEDIUM) → RESOLVED**: В T060 и контракте пресайна зафиксировано криптографическое подписание заголовков `Content-Length` и `Content-Type`, а также 48-часовая lifecycle-политика бакета R2 для очистки непривязанных медиафайлов.
-- **F7 (MEDIUM) → RESOLVED**: Библиотека `date-fns-tz` (MIT) официально добавлена в `plan.md` §Technical Context, задачи T003 и T030, исключая ошибки ручного расчета переходов DST.
-- **F8 (LOW) → RESOLVED**: Формулировка FR-442 уточнена: валидация требует кратности 15 минутам (`durationMin % 15 === 0`), а шаг сетки 15/30 минут задает начальные интервалы (услуга 45 мин на сетке 30 мин валидна).
-- **F9 (LOW) → RESOLVED**: В FR-430 внесено явное правило вычета сетевой комиссии блокчейна (gas) из фиатного эквивалента при возвратах в криптовалюте.
+- **Database Architecture (F1 / CRITICAL) → RESOLVED**: Имя типа enum `"ReservationStatus"` выверено; статусы `PENDING_APPROVAL`, `PAYMENT_PENDING`, `UNDERPAID`, `CANCELLED`, `STAFF_REJECTED` добавлены в DDL; маппинг `CONFIRMED ≡ BOOKED` зафиксирован на границе сервисов.
+- **Staff Web Authentication (F2 / CRITICAL) → RESOLVED**: Задачи T017 (бэкенд scrypt-проверки пароля, сессии в `prisma.session`, HttpOnly cookie, ротация сессий, локаут 5/15 мин) и T018 (мобильная страница `/admin/login` с поддержкой 5-минутного single-use magic link) внедрены в Phase 2; задачи морды админки T061–T064 честно заблокированы на T018.
+- **Crypto Hold-Freeze Ceiling (F3 / HIGH) → RESOLVED**: В FR-404, `data-model.md` и контракте шлюза установлен потолок `MAX_CONFIRMING_FREEZE = 24 h`, исключающий вечный захват слотов зависшими в мемпуле транзакциями.
+- **Late Payment on Open Slot (F4 / HIGH) → RESOLVED**: В FR-444 зафиксировано атомарное подтверждение (`CONFIRMED`) позднего платежа на свободный слот без лишних принудительных рефандов.
+- **Waitlist Anti-Carousel & Expiry (F5 / MEDIUM + H2) → RESOLVED**: В FR-433 регламентирован перевод `WaitlistEntry` в `FULFILLED` только по факту подтвержденной оплаты; повторный fan-out ограничен $\le 3$ волнами или 24 часами от отмены (анти-карусель), после чего слот возвращается в свободную продажу.
+- **R2 Presigned Uploads & Lifecycle (F6 / MEDIUM) → RESOLVED**: Пресайн подписывает `Content-Length` и `Content-Type`; задана 48-часовая lifecycle-политика бакета R2 для удаления брошенных картинок.
+- **Timezone Math (F7 / MEDIUM) → RESOLVED**: Зависимость `date-fns-tz` (MIT) подключена в `plan.md` и задачи T003/T030 для исключения ручных ошибок DST.
+- **Duration Quantum & Gas Policy (F8 / F9 / LOW) → RESOLVED**: Квант 15 минут согласован с 30-минутной сеткой в FR-442; вычет сетевой комиссии блокчейна (gas) при крипто-рефандах зафиксирован в FR-430.
+- **Business Plan Alignment (H1) → RESOLVED**: Чейнджлог v18.5 вынесен verbatim в `docs/business-plan.md` (коммит `fe41d57` в `undreplans`), подтверждая правомерность онлайн-платежей в 004 в рамках бюджета Sprint B ($4,900) и сохранение потолка RAM $\le 500\text{ MB}$.
 
 ## Commercial / business plan notes
 
-- Plans loaded: `docs/business-plan.md` и канонический `undreplans/docs/projects/undreseller/undreseller-business-plan.md` (v18.5, 2026-10-24).
-- Focus laws / SKU floors checked: В версии 18.5 бизнес-плана релиз 004 официально зафиксирован как расширение шаблона Sprint B онлайн-платежами и готовностью к запуску без открытия новых SKU или изменения цены ($4,900); лимит памяти приложения $\le 500\text{ MB RAM}$ соблюден; запрет на self-hosted почту выдержан.
-- Drift: Коммерческий дрейф отсутствует.
-
-## Alternative approaches considered
-
-- **Staff Telegram Magic Link Login**: В задаче T018 успешно зафиксирована как опциональное мобильное улучшение (вход через команду `/login` в боте персонала в один тап без ввода пароля).
-- **Waitlist Inngest vs DB Outbox**: Принято решение остаться на проверенной связке Inngest + `deadlineSweeper` fallback (D6) во избежание усложнения монолита.
+- Plans loaded: `docs/business-plan.md` (с инлайн-выпиской v18.5) и канонический `undreplans/docs/projects/undreseller/undreseller-business-plan.md` (v18.5).
+- Focus laws / SKU floors: Замороженные SKU не открываются; границы шаблона бронирования Sprint B соблюдены; лимит памяти приложения $\le 500\text{ MB RAM}$ соблюден; запрет на self-hosted почту выдержан.
+- Drift: Коммерческий дрейф отсутствует (004 = post-Sprint-B readiness capability).
 
 ## VERDICT
 
 ```yaml
 verdict: PASS
 reviewer: antigravity
-reviewed_at: 2026-10-24T20:08:41Z
-commit: cd8f1b74dea0a5f540a02911c809f0fd672746ec
+reviewed_at: 2026-10-24T20:25:44Z
+commit: 4e83b0128e5ecd700a215dd906d95c9eb8023c1e
 critical_count: 0
 high_count: 0
 medium_count: 0
-low_count: 3
+low_count: 2
 ```
