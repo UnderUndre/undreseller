@@ -126,10 +126,10 @@
 **Independent Test**: OWNER on 390px viewport creates service+product+profile+settings in ≤10 min (US9 bar).
 
 - [X] T060 [BE] [US9] `lib/uploads/presign.ts` + `POST /api/admin/uploads/presign` (R2, TTL ≤5 min, **ContentLength+ContentType cryptographically signed into the PUT**, type/size conditions, OWNER/OPERATOR, rate-limited — FR-441; bucket lifecycle rule purges unlinked objects >48 h)
-- [ ] T061 [FE] [US9] Admin scaffold: 3-tab bottom nav; `/admin/catalog` — list with one-tap active toggle, arrow reorder, quick-create sheet (4 required fields + collapsed "more", 15-min duration selector), shared zod validation with API (FR-436/439/440); gated on T018 login
-- [ ] T062 [FE] [US9] ImageUploader: `browser-image-compression` (WebP ≤1200px ≤200KB) → presign → direct PUT; type/size field-level errors
-- [ ] T063 [FE] [US9] `/admin/team`: profiles, portfolio publication, working hours; profile ownership rules
-- [ ] T064 [FE] [US9] `/admin/settings`: foundation section (currency, timezone, defaultLocale — OWNER-only server-enforced) + operational settings incl. slotGridStepMin (15|30, FR-442); currency-confirm gate (FR-438)
+- [X] T061 [FE] [US9] Admin scaffold: 3-tab bottom nav; `/admin/catalog` — list with one-tap active toggle, arrow reorder, quick-create sheet (4 required fields + collapsed "more", 15-min duration selector), shared zod validation with API (FR-436/439/440); gated on T018 login
+- [X] T062 [FE] [US9] ImageUploader: `browser-image-compression` (WebP ≤1200px ≤200KB) → presign → direct PUT; type/size field-level errors
+- [X] T063 [FE] [US9] `/admin/team`: profiles, portfolio publication, working hours; profile ownership rules
+- [X] T064 [FE] [US9] `/admin/settings`: foundation section (currency, timezone, defaultLocale — OWNER-only server-enforced) + operational settings incl. slotGridStepMin (15|30, FR-442); currency-confirm gate (FR-438)
 - [X] T065 [BE] [US9] SlugRedirect service: immutable slugs, 301 on API rename, `/professionals/[slug]` redirect-before-404 (FR-437)
 - [ ] T066 [E2E] [US9] Content-admin acceptance: RBAC matrix (PERFORMER 403, OPERATOR foundation 403), validation parity, archive-keeps-snapshots, 10-minute setup bar timed run (US9 scenarios)
 
