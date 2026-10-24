@@ -8,8 +8,8 @@ import {
   type CallbackStatus,
 } from './providerContract';
 import { getCurrencyMetadata } from '../../config/currency-registry';
+import { handleUnderpaidPayment } from './underpaid';
 import { logger } from '@/lib/telemetry/logger';
-import { bot, sendWithRetry } from '@/lib/bot/telegramBot';
 
 export interface NowPaymentsIPNPayload {
   payment_id: number | string;
@@ -221,16 +221,16 @@ export async function processNowPaymentsNotification(
   if (quoted > 0 && paid / quoted < 0.99) {
     logger.warn(`[UNDERPAID_CRYPTO] orderId=${orderId} paid=${paid}/${quoted}`);
 
-    // Alert admin of underpayment, keep order in PENDING
-    const adminChatId = process.env.ADMIN_CHAT_ID;
-    if (adminChatId) {
-      await sendWithRetry(() =>
-        bot.api.sendMessage(
-          adminChatId,
-          `⚠️ [UNDERPAYMENT_ALERT] Order #${orderId.slice(0, 8)} underpaid!\nExpected: ${quoted} ${payload.pay_currency}\nActual: ${paid} ${payload.pay_currency}\nRatio: ${((paid / quoted) * 100).toFixed(1)}%`
-        )
-      );
-    }
+    // T024: FSM → UNDERPAID + staff alert + customer top-up/cancel message.
+    // NO auto-confirm — staff resolution only.
+    const currency = payload.price_currency?.toUpperCase() || 'USD';
+    await handleUnderpaidPayment({
+      orderId,
+      providerPaymentId: String(payload.payment_id),
+      quotedMinor: nowPaymentsWireAmountToMinor(quoted, currency),
+      paidMinor: nowPaymentsWireAmountToMinor(paid, currency),
+      currency,
+    });
 
     return { status: 'UNDERPAID' };
   }

@@ -70,7 +70,7 @@
 - [X] T021 [BE] [US1] Integrate FSM into `lib/kernel/bookingService.ts`: per-service `requiresFullPrepayment` gating, free-track semantics via existing `requireStaffApprovalForInCall`, snapshots untouched (003 lineage)
 - [X] T022 [BE] [US1] NowPayments adapter behind contract: server-side invoice via provider API; **remove hand-built payment URL** in `app/api/checkout/route.ts` (audit finding); providerPaymentId linkage
 - [X] T023 [BE] [US1] Confirming-freeze: `holdFrozenAt` on first `confirming`; deadlineSweeper/invoiceExpiry respect freeze; unit tests for TTL-vs-freeze race
-- [ ] T024 [BE] [US1] UNDERPAID flow: staff alert + customer top-up/cancel message via notification dispatcher; no auto-confirm (tests)
+- [X] T024 [BE] [US1] UNDERPAID flow: staff alert + customer top-up/cancel message via notification dispatcher; no auto-confirm (tests)
 - [ ] T025 [BE] [US1] Stars adapter implements the contract (existing stars tests green — regression only)
 - [ ] T026 [BE] [US1] Minor-unit amounts: replace `×100` with CurrencyMetadata scale across payment paths (FR-405/FR-303); multi-currency tests (JPY 0, KWD 3)
 - [ ] T027 [E2E] [US1] Stubbed-gateway contract suite: full lifecycle, replay ×100 → one effect, invalid signature 401, freeze-ceiling >24h → FR-432 path; late payment with slot FREE → atomic re-confirm (FR-444); late payment after re-book → PAID_REQUIRES_RESOLUTION + refund request + both parties notified (FR-432)
