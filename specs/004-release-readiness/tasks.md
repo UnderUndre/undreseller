@@ -74,7 +74,7 @@
 - [ ] T025 [BE] [US1] Stars adapter implements the contract (existing stars tests green — regression only)
 - [X] T026 [BE] [US1] Minor-unit amounts: replace `×100` with CurrencyMetadata scale across payment paths (FR-405/FR-303); multi-currency tests (JPY 0, KWD 3)
 - [X] T027 [E2E] [US1] Stubbed-gateway contract suite: full lifecycle, replay ×100 → one effect, invalid signature 401, freeze-ceiling >24h → FR-432 path; late payment with slot FREE → atomic re-confirm (FR-444); late payment after re-book → PAID_REQUIRES_RESOLUTION + refund request + both parties notified (FR-432)
-- [ ] T028 [BE] [US1] Refund-on-cancellation (FR-430): customer-initiated cancellation of a prepaid booking within the refund window → policy-window evaluation → RefundOperation workflow (recorded, SLA-tagged) → customer + staff notified; outside window → deposit forfeiture per policy; unit + E2E assertions wired into T027 suite
+- [X] T028 [BE] [US1] Refund-on-cancellation (FR-430): customer-initiated cancellation of a prepaid booking within the refund window → policy-window evaluation → RefundOperation workflow (recorded, SLA-tagged) → customer + staff notified; outside window → deposit forfeiture per policy; unit + E2E assertions wired into T027 suite
 
 **Checkpoint**: Money path trustworthy; 100-way same-slot race test green (SC-401).
 

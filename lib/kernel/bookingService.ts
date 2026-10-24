@@ -15,6 +15,7 @@ import { HTML_TAG_REGEX } from '../../config/shop.config';
 import { StaffActorContext } from '../security/staffRbac';
 import { emitAuditEvent } from '../security/staffAuth';
 import { getReleaseReadinessFlags } from '../config/integrationProfile';
+import { logger } from '../telemetry/logger';
 import {
   SPEC_TO_DB_RESERVATION_STATUS,
   transitionBookingFsm,
@@ -458,4 +459,18 @@ export async function cancelBooking(params: CancelBookingParams): Promise<void> 
       });
     }
   });
+
+  // T028 (FR-430): prepaid cancellation refund policy — flag-gated, legacy path untouched.
+  // The cancellation itself must never fail because of refund wiring, hence the catch.
+  if (getReleaseReadinessFlags().fsmCutover) {
+    try {
+      const { applyRefundPolicyOnCancellation } = await import('../payments/refundPolicy');
+      await applyRefundPolicyOnCancellation({
+        bookingId,
+        actor: token ? 'CUSTOMER_CANCELLATION_LINK' : staffActor?.actorId || 'STAFF',
+      });
+    } catch (err: unknown) {
+      logger.error('[REFUND_POLICY_WIRING_FAILED]', { error: String(err) });
+    }
+  }
 }
