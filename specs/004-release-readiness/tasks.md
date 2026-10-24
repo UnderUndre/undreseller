@@ -151,7 +151,7 @@
 
 - [X] T080 [BE] [US6] Field service: CRUD (archive-only, ≤10 active, 4 types, per-service binding), booking-form inclusion, answer validation (≤1000 chars, numeric bounds), snapshot persistence (FR-423/434)
 - [X] T081 [FE] [US6] Admin field editor + dynamic booking-form render + staff answer view (sanitized)
-- [ ] T082 [E2E] [US6] Field acceptance: required block, injection payload sanitized, archive preserves historical answers (US6 scenarios)
+- [X] T082 [E2E] [US6] Field acceptance: required block, injection payload sanitized, archive preserves historical answers (US6 scenarios)
 
 ---
 
