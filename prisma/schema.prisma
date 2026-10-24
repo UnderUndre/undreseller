@@ -27,6 +27,12 @@ enum ReservationStatus {
   HELD
   BOOKED
   RELEASED
+  // 004 US1 FSM two-track values (spec-level CONFIRMED maps to BOOKED at the service boundary)
+  PAYMENT_PENDING
+  UNDERPAID
+  PENDING_APPROVAL
+  CANCELLED
+  STAFF_REJECTED
 }
 
 enum PaymentMethod {
@@ -204,12 +210,12 @@ model StaffMember {
 
 model AuditEvent {
   id            String     @id @default(uuid())
-  action        String     // e.g. "STAFF_MEMBER_PROVISIONED", "STAFF_SESSIONS_REVOKED", "BOOKING_STATUS_UPDATED"
-  actorId       String     // StaffMember.id, "BREAK_GLASS_ADMIN_TOKEN", or "CUSTOMER_CANCELLATION_LINK"
+  action        String // e.g. "STAFF_MEMBER_PROVISIONED", "STAFF_SESSIONS_REVOKED", "BOOKING_STATUS_UPDATED"
+  actorId       String // StaffMember.id, "BREAK_GLASS_ADMIN_TOKEN", or "CUSTOMER_CANCELLATION_LINK"
   actorRole     StaffRole?
-  aggregateType String     // "STAFF_MEMBER" | "SHOP_SETTINGS" | "PROFESSIONAL_PROFILE" | "SERVICE" | "BOOKING"
+  aggregateType String // "STAFF_MEMBER" | "SHOP_SETTINGS" | "PROFESSIONAL_PROFILE" | "SERVICE" | "BOOKING"
   aggregateId   String
-  reason        String?    // PII-redacted before persistence (INV-010)
+  reason        String? // PII-redacted before persistence (INV-010)
   metadataJson  Json       @default("{}") // PII-redacted
   createdAt     DateTime   @default(now())
 
@@ -219,7 +225,7 @@ model AuditEvent {
 
 model CurrencyMetadata {
   code      String   @id // ISO 4217 code or explicitly configured non-ISO code, e.g., XTR
-  minorUnit Int      // ISO 4217 exponent (e.g., JPY=0, USD=2, AMD=2, KWD=3)
+  minorUnit Int // ISO 4217 exponent (e.g., JPY=0, USD=2, AMD=2, KWD=3)
   symbol    String
   active    Boolean  @default(true)
   updatedAt DateTime @updatedAt
@@ -239,7 +245,7 @@ model AvailabilityException {
   id         String   @id @default(uuid())
   resourceId String
   resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
-  date       String   // YYYY-MM-DD in ShopSettings.timeZone
+  date       String // YYYY-MM-DD in ShopSettings.timeZone
   isClosed   Boolean  @default(false)
   startMin   Int?
   endMin     Int?
@@ -297,7 +303,7 @@ model PortfolioItem {
 
 model ShopSettings {
   id                         Int                 @id @default(1)
-  currency                   String              // ISO 4217
+  currency                   String // ISO 4217
   greeting                   String
   whatsappTemplateName       String
   slotGridStepMin            Int                 @default(30)
@@ -315,14 +321,15 @@ model ShopSettings {
   businessName                  String?
   businessDescription           String?
   logoUrl                       String?
-  publicContactLinksJson        Json                @default("[]")
-  defaultLocale                 String              @default("en")
-  timeZone                      String              @default("UTC")
-  currencyConfirmed             Boolean             @default(false)
+  publicContactLinksJson        Json     @default("[]")
+  defaultLocale                 String   @default("en")
+  enabledLocales                String[] @default(["en"])
+  timeZone                      String   @default("UTC")
+  currencyConfirmed             Boolean  @default(false)
   businessServiceAddress        String?
-  businessServiceAddressPublic  Boolean             @default(false)
+  businessServiceAddressPublic  Boolean  @default(false)
   outCallCoverageDescription    String?
-  requireStaffApprovalForInCall Boolean             @default(false)
+  requireStaffApprovalForInCall Boolean  @default(false)
 }
 
 model Item {
@@ -335,7 +342,7 @@ model Item {
   currency     String
   imageUrl     String?
   itemType     ItemType
-  stock        Int?              // null only for SERVICE
+  stock        Int? // null only for SERVICE
   durationMin  Int?
   isActive     Boolean           @default(true)
   createdAt    DateTime          @default(now())
@@ -345,16 +352,24 @@ model Item {
   hours        WeeklyHours[]
 
   // 003.1 Additive service fields (FR-338, FR-339)
-  bufferBeforeMin        Int                   @default(0)
-  bufferAfterMin         Int                   @default(0)
-  cancellationCutoffHours Int                  @default(3)
-  inCallEnabled          Boolean               @default(true)
-  outCallEnabled         Boolean               @default(false)
-  outCallPriceMinor      Int?
-  outCallTravelFeeMinor  Int                   @default(0)
-  outCallTravelBeforeMin Int                   @default(0)
-  outCallTravelAfterMin  Int                   @default(0)
-  professionalServices   ProfessionalService[]
+  // 004 US9/US1 additions (data-model 1.8)
+  requiresFullPrepayment  Boolean               @default(false)
+  archivedAt              DateTime?             @db.Timestamptz(3)
+  sortOrder               Int                   @default(0)
+  bufferBeforeMin         Int                   @default(0)
+  bufferAfterMin          Int                   @default(0)
+  cancellationCutoffHours Int                   @default(3)
+  inCallEnabled           Boolean               @default(true)
+  outCallEnabled          Boolean               @default(false)
+  outCallPriceMinor       Int?
+  outCallTravelFeeMinor   Int                   @default(0)
+  outCallTravelBeforeMin  Int                   @default(0)
+  outCallTravelAfterMin   Int                   @default(0)
+  professionalServices    ProfessionalService[]
+
+  // 004 relations (data-model 1.3, 1.5)
+  waitlistEntries     WaitlistEntry[]
+  customBookingFields CustomBookingField[]
 }
 
 model WeeklyHours {
@@ -362,7 +377,7 @@ model WeeklyHours {
   itemId        String?
   item          Item?   @relation(fields: [itemId], references: [id])
   resourceId    String  @default("default_master")
-  weekday       Int     // ISO 1–7
+  weekday       Int // ISO 1–7
   startMin      Int
   endMin        Int
   breakStartMin Int?
@@ -383,31 +398,39 @@ model SlotReservation {
   totalDurationMin       Int
   status                 ReservationStatus
   holdExpiresAt          DateTime?         @db.Timestamptz(3)
+  // 004 US1: set on first gateway `confirming`; suspends TTL sweep (hard ceiling 24h -> FR-432)
+  holdFrozenAt           DateTime?         @db.Timestamptz(3)
   requiresOperatorAction Boolean           @default(false)
   operatorActionReason   String?
   createdAt              DateTime          @default(now())
 
   // 003.1 Additive cancellation credential & location snapshot fields (T005, T070)
-  cancellationTokenHash       String?                 @unique
-  cancellationTokenExpiresAt  DateTime?               @db.Timestamptz(3)
-  cancellationTokenConsumedAt DateTime?               @db.Timestamptz(3)
-  cancellationTokenRevokedAt  DateTime?               @db.Timestamptz(3)
-  fulfillmentMode             ServiceFulfillmentMode?
-  servicePriceMinor           Int?
-  travelFeeMinor              Int?
-  serviceAddressSnapshot      String?
-  appointmentStartTime        DateTime?               @db.Timestamptz(3)
-  appointmentEndTime          DateTime?               @db.Timestamptz(3)
-  bufferBeforeMin             Int                     @default(0)
-  bufferAfterMin              Int                     @default(0)
+  cancellationTokenHash       String?   @unique
+  cancellationTokenExpiresAt  DateTime? @db.Timestamptz(3)
+  cancellationTokenConsumedAt DateTime? @db.Timestamptz(3)
+  cancellationTokenRevokedAt  DateTime? @db.Timestamptz(3)
+
+  // 004 relations (data-model 1.4, 1.5)
+  waitlistOffers      WaitlistOffer[]
+  bookingFieldAnswers BookingFieldAnswer[]
+
+  fulfillmentMode        ServiceFulfillmentMode?
+  servicePriceMinor      Int?
+  travelFeeMinor         Int?
+  serviceAddressSnapshot String?
+  appointmentStartTime   DateTime?               @db.Timestamptz(3)
+  appointmentEndTime     DateTime?               @db.Timestamptz(3)
+  bufferBeforeMin        Int                     @default(0)
+  bufferAfterMin         Int                     @default(0)
+  PaymentAllocationLink  PaymentAllocationLink[]
 
   @@index([resourceId, startTime, endTime])
 }
 
 model Order {
-  id                         String              @id @default(uuid())
-  orderNumber                String              @unique
-  status                     OrderStatus         @default(PENDING)
+  id                         String                  @id @default(uuid())
+  orderNumber                String                  @unique
+  status                     OrderStatus             @default(PENDING)
   totalMinor                 Int
   currency                   String
   customerName               String?
@@ -415,33 +438,34 @@ model Order {
   customerEmail              String?
   customerTgId               String?
   customerTgUsername         String?
-  hasWhatsApp                Boolean             @default(false)
-  hasTelegram                Boolean             @default(false)
+  hasWhatsApp                Boolean                 @default(false)
+  hasTelegram                Boolean                 @default(false)
   customerNotes              String?
-  paymentType                PaymentType         @default(PAY_ON_SITE)
-  confirmationStatus         ConfirmationStatus  @default(PENDING_STAFF_REVIEW)
+  paymentType                PaymentType             @default(PAY_ON_SITE)
+  confirmationStatus         ConfirmationStatus      @default(PENDING_STAFF_REVIEW)
   cancellationReason         CancellationReason?
-  refundStatus               RefundStatus        @default(NONE)
-  autoCancelOnNoConfirmation Boolean             @default(false)
-  scheduleVersion            Int                 @default(1)
+  refundStatus               RefundStatus            @default(NONE)
+  autoCancelOnNoConfirmation Boolean                 @default(false)
+  scheduleVersion            Int                     @default(1)
   rescheduleTokenHash        String?
-  rescheduleTokenConsumedAt  DateTime?           @db.Timestamptz(3)
-  invoiceExpiresAt           DateTime?           @db.Timestamptz(3)
-  reminderSentAt             DateTime?           @db.Timestamptz(3)
+  rescheduleTokenConsumedAt  DateTime?               @db.Timestamptz(3)
+  invoiceExpiresAt           DateTime?               @db.Timestamptz(3)
+  reminderSentAt             DateTime?               @db.Timestamptz(3)
   staffMessageId             Int?
   staffChatId                String?
-  requiresOperatorAction     Boolean             @default(false)
+  requiresOperatorAction     Boolean                 @default(false)
   operatorActionReason       String?
   items                      OrderItem[]
   reservation                SlotReservation?
   refundOperations           RefundOperation[]
   orderLines                 OrderLine[]
+  paymentAllocationLinks     PaymentAllocationLink[]
   paymentPlan                PaymentPlan?
   fulfillmentPlan            FulfillmentPlan?
   paymentMethod              PaymentMethod?
   paymentRef                 String?
-  createdAt                  DateTime            @default(now())
-  updatedAt                  DateTime            @updatedAt
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
 }
 
 model OrderItem {
@@ -576,7 +600,6 @@ model TelegramRateState {
 
   @@index([botProfile, chatId])
 }
-
 
 // -------------------------------------------------------------
 // Tier 2: Goods, Inventory & Commerce Models (003.2+ - T063)
@@ -899,4 +922,154 @@ model OperatorAction {
 
   @@index([status, severity, dueAt])
   @@index([affectedAggregateType, affectedAggregateId])
+}
+
+// ============================================================
+// 004 Release Readiness — new tables (Phase 1 Expand, data-model §1.3–1.9)
+// ============================================================
+
+/// Waitlist auto-fill entry (US5, FR-419/420). PII: customerTgId/customerContact.
+model WaitlistEntry {
+  id                    String              @id @default(uuid())
+  customerTgId          String
+  customerContact       String?
+  serviceId             String?
+  service               Item?               @relation(fields: [serviceId], references: [id])
+  professionalProfileId String?
+  windowStartAt         DateTime            @db.Timestamptz(3)
+  windowEndAt           DateTime            @db.Timestamptz(3)
+  status                WaitlistEntryStatus @default(ACTIVE)
+  createdAt             DateTime            @default(now())
+  offers                WaitlistOffer[]
+
+  @@unique([customerTgId, serviceId, windowStartAt])
+  @@index([status, windowStartAt])
+}
+
+enum WaitlistEntryStatus {
+  ACTIVE
+  NOTIFIED
+  FULFILLED
+  EXPIRED
+  CANCELLED
+}
+
+/// Waitlist offer (US5). Token stored as SHA-256 hash; atomic claim via standard booking path.
+model WaitlistOffer {
+  id                String              @id @default(uuid())
+  waitlistEntryId   String
+  waitlistEntry     WaitlistEntry       @relation(fields: [waitlistEntryId], references: [id])
+  slotReservationId String?
+  slotReservation   SlotReservation?    @relation(fields: [slotReservationId], references: [id])
+  offerTokenHash    String              @unique
+  status            WaitlistOfferStatus @default(SENT)
+  sentAt            DateTime            @default(now())
+  claimedAt         DateTime?           @db.Timestamptz(3)
+
+  @@index([status, sentAt])
+}
+
+enum WaitlistOfferStatus {
+  SENT
+  CLAIMED
+  TAKEN
+  EXPIRED
+}
+
+/// Custom booking field definition (US6, FR-423/434). Archive-only lifecycle.
+model CustomBookingField {
+  id           String               @id @default(uuid())
+  key          String               @unique
+  label        String
+  type         CustomFieldType
+  required     Boolean              @default(false)
+  optionsJson  Json?
+  boundItemIds String[]
+  sortOrder    Int                  @default(0)
+  archivedAt   DateTime?            @db.Timestamptz(3)
+  createdAt    DateTime             @default(now())
+  answers      BookingFieldAnswer[]
+  Item         Item?                @relation(fields: [itemId], references: [id])
+  itemId       String?
+
+  @@index([archivedAt])
+}
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  SINGLE_SELECT
+  CHECKBOX
+}
+
+/// Customer answer to a custom field, with immutable definition snapshot (PII).
+model BookingFieldAnswer {
+  id                   String              @id @default(uuid())
+  slotReservationId    String
+  slotReservation      SlotReservation     @relation(fields: [slotReservationId], references: [id])
+  fieldId              String
+  labelSnapshot        String
+  typeSnapshot         CustomFieldType
+  valueText            String?             @db.Text
+  valueNumber          Int?
+  valueBool            Boolean?
+  CustomBookingField   CustomBookingField? @relation(fields: [customBookingFieldId], references: [id])
+  customBookingFieldId String?
+
+  @@unique([slotReservationId, fieldId])
+}
+
+/// Notification delivery log (US2, FR-409). Target stored as salted hash, never raw PII.
+model NotificationDeliveryLog {
+  id           String                     @id @default(uuid())
+  bookingRefId String?
+  orderId      String?
+  channel      NotificationChannel
+  targetHash   String
+  status       NotificationDeliveryStatus
+  providerRef  String?
+  errorCode    String?
+  attemptAt    DateTime                   @default(now())
+  latencyMs    Int?
+
+  @@index([attemptAt])
+}
+
+enum NotificationChannel {
+  TELEGRAM
+  EMAIL
+}
+
+enum NotificationDeliveryStatus {
+  ACCEPTED
+  FAILED
+}
+
+/// 301 slug redirect for renamed professional profiles (US9, FR-437).
+model SlugRedirect {
+  oldSlug   String   @id
+  profileId String
+  createdAt DateTime @default(now())
+}
+
+/// Explicit payment-provider ledger link (data-model 1.2; pre-structure for 003.2 PaymentAllocation).
+model PaymentAllocationLink {
+  id                String           @id @default(uuid())
+  orderId           String
+  order             Order?           @relation(fields: [orderId], references: [id])
+  provider          String
+  providerPaymentId String
+  allocationKind    String
+  createdAt         DateTime         @default(now())
+  SlotReservation   SlotReservation? @relation(fields: [slotReservationId], references: [id])
+  slotReservationId String?
+
+  @@unique([provider, providerPaymentId])
+}
+
+/// Customer language preference (US3, FR-412). Resolution: override > language_code > instance default.
+model UserPreference {
+  tgId             String   @id
+  languageOverride String?
+  updatedAt        DateTime @updatedAt
 }
