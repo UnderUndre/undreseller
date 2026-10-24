@@ -4,7 +4,7 @@
 > living business plan in the external `undreplans` knowledge repo; this file records the canonical
 > location and the hard constraints every spec must honor.
 
-**Canonical**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` (v18.4, 2026-10-22)
+**Canonical**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` (v18.5, 2026-10-24)
 
 ## Hard constraints extracted (read as binding for specs 003/004+)
 

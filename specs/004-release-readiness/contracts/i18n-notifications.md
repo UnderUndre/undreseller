@@ -21,7 +21,7 @@ Trigger events: `booking.created | confirmed | cancelled | rejected | reschedule
 NotificationDeliveryLog { channel: TELEGRAM|EMAIL, status: ACCEPTED|FAILED, providerRef, attemptAt, latencyMs }
 ```
 
-`ACCEPTED` = provider acknowledged (Telegram API 200 / email provider accepted). `delivered` is NEVER claimed — bots cannot confirm it. Staff UI: delivery history per booking. Email adapter: provider-isolated (Resend-recommended HTTP API behind an interface; swappable without core changes).
+`ACCEPTED` = provider acknowledged (Telegram API 200 / email provider accepted). `delivered` is NEVER claimed — bots cannot confirm it. **No-email case:** email is optional (captured when provided at booking); if the customer has no email on file, the fallback is skipped, the attempt logs `FAILED` with reason `NO_EMAIL_CHANNEL`, and staff sees an undeliverable warning. Staff UI: delivery history per booking. Email adapter: provider-isolated (Resend-recommended HTTP API behind an interface; swappable without core changes).
 
 ## Theme (FR-417)
 

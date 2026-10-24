@@ -10,8 +10,8 @@ Existing table (003). Changes:
 
 | Change | Type | Classification | Notes |
 |---|---|---|---|
-| `status` enum ADD VALUE | `PAYMENT_PENDING`, `UNDERPAID`, `PENDING_APPROVAL` | Internal | `ALTER TYPE ... ADD VALUE` (expand-safe, irreversible — deployed before code writes it); existing values HELD/BOOKED/RELEASED/CANCELLED/STAFF_REJECTED untouched |
-| `holdFrozenAt` | `timestamptz NULL` | Internal | Set on first gateway `confirming`; freezes TTL sweep (FR-404) |
+| `status` enum ADD VALUE | `PAYMENT_PENDING`, `UNDERPAID`, `PENDING_APPROVAL`, `CANCELLED`, `STAFF_REJECTED` | Internal | `ALTER TYPE "ReservationStatus" ADD VALUE ...` (expand-safe, irreversible — deployed before code writes it); existing values HELD/BOOKED/RELEASED |
+| `holdFrozenAt` | `timestamptz NULL` | Internal | Set on first gateway `confirming`; freezes TTL sweep; **hard ceiling MAX_CONFIRMING_FREEZE = 24 h — past it the hold expires, slot releases, order → FR-432 resolution** |
 | (unchanged) price/buffer/address snapshots | — | Financial/PII | Already exist from 003 — booking snapshotting is DONE (audit-verified) |
 
 Validation: FSM transitions only through `lib/kernel/bookingFsm.ts` (pure function + service guard). Classification: PII (address snapshot), Financial (price snapshots).
@@ -34,7 +34,7 @@ Validation: FSM transitions only through `lib/kernel/bookingFsm.ts` (pure functi
 | status | `ACTIVE`, `NOTIFIED`, `FULFILLED`, `EXPIRED`, `CANCELLED` | Internal |
 | createdAt | timestamptz | Internal |
 
-Uniqueness: one ACTIVE entry per (customer, service, day-window). Validation: window ≤ 30 days ahead. Volume bound: ≤ 200 ACTIVE per instance (rate-limited join).
+Uniqueness: one ACTIVE entry per (customer, service, day-window). Validation: window ≤ 30 days ahead. Volume bound: ≤ 200 ACTIVE per instance (rate-limited join). **Anti-spam (FR-419): ≤ 10 ACTIVE entries per user; offer caps ≤1/user/24h, ≤3/user/day enforced at fan-out. Retention: FULFILLED/EXPIRED/TAKEN offers and closed entries purged on the 90-day retention cycle and on GDPR user deletion (FR-428).**
 
 ### 1.4 WaitlistOffer (NEW)
 
@@ -93,7 +93,7 @@ Transactional boundary: transitions execute inside `acquireResourceSlotLock` + G
 
 | Phase | Artifact | Content |
 |---|---|---|
-| 1 Expand | `20261025000000_004_release_readiness_expand/migration.sql` (+down.sql) | CREATE TABLE WaitlistEntry, WaitlistOffer, CustomBookingField, BookingFieldAnswer, NotificationDeliveryLog, SlugRedirect, PaymentAllocationLink, UserPreference; ALTER TYPE SlotReservationStatus ADD VALUE (separate statement, not in a transaction that uses it); ALTER TABLE Item ADD requiresFullPrepayment/archivedAt/sortOrder; ShopSettings ADD defaultLocale/enabledLocales/slotGridStepMin; CREATE INDEX on WaitlistEntry(status, windowStartAt), NotificationDeliveryLog(attemptAt), SlugRedirect(PK). All additive, nullable/defaulted — old code runs unchanged. |
+| 1 Expand | `20261025000000_004_release_readiness_expand/migration.sql` (+down.sql) | CREATE TABLE WaitlistEntry, WaitlistOffer, CustomBookingField, BookingFieldAnswer, NotificationDeliveryLog, SlugRedirect, PaymentAllocationLink, UserPreference; ALTER TYPE "ReservationStatus" ADD VALUE (separate statement, not in a transaction that uses it); ALTER TABLE Item ADD requiresFullPrepayment/archivedAt/sortOrder; ShopSettings ADD defaultLocale/enabledLocales/slotGridStepMin; CREATE INDEX on WaitlistEntry(status, windowStartAt), NotificationDeliveryLog(attemptAt), SlugRedirect(PK). All additive, nullable/defaulted — old code runs unchanged. |
 | 2 Dual-Write & Backfill | `scripts/backfill-004-language-defaults.ts` | Idempotent: set defaultLocale from existing config heuristic; copy Item.isActive → (no-op, archivedAt stays null); rate-limited batches. No legacy-column shadowing otherwise. |
 | 3 Cutover | feature flags in `lib/config/integrationProfile.ts` | Reads switch to FSM/payment-provider/waitlist paths; watch p95/p99 + error budget (zero regression per NFR-401). |
 | 4 Contract | 005-scheduled | Remove legacy hand-built payment URL branch, ×100 arithmetic, `/api/booking/lock` vs `/api/booking` consolidation review. No destructive DDL this release (enum ADD VALUE irreversible-by-design, harmless unused on rollback). |

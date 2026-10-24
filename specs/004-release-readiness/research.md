@@ -994,6 +994,7 @@ Critical Failure Mode: отсутствие явной Booking State Machine (AV
 ## D3. Медиа: Cloudflare R2 presigned + клиентское сжатие
 - **Decision**: `browser-image-compression` (Canvas → WebP ≤200 КБ) → `POST /api/admin/uploads/presign` → прямой PUT в R2; сервер не видит байты (FR-441).
 - **Rationale**: OOM-гарантия (HEIC 48Мп ≈ 192 МБ RAM серверной распаковки); R2 zero-egress, S3-совместим [COST: $0 до 10 ГБ].
+- **Abstraction note (copilot review)**: presign-слой — за интерфейсом `ObjectStorageProvider`; S3-совместимые цели (R2/MinIO/AWS) взаимозаменяемы окружением, без правок кода. Degradation: отказ хранилища не блокирует сохранение карточек — image optional, retry позже (FR-441).
 - **Alternatives**: серверный sharp (запрещён расчётом); локальный диск (риск Postgres); AWS S3 (egress-счета).
 - **Spike Governance (S2)**: Timebox 1 день. Метрики: p95 выдачи presign < 50 мс; полный цикл HEIC→WebP→PUT→URL < 10 с; 0 байт через Node. Disposal: тестовый бакет/скрипт удаляются, код не в проде.
 

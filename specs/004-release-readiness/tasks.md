@@ -45,7 +45,7 @@
 
 **⚠️ CRITICAL**: No user story work begins until this phase completes (sync barrier).
 
-- [ ] T010 [DB] Expand migration `prisma/migrations/20261025000000_004_release_readiness_expand/` (+`down.sql`): 8 new tables (WaitlistEntry, WaitlistOffer, CustomBookingField, BookingFieldAnswer, NotificationDeliveryLog, SlugRedirect, PaymentAllocationLink, UserPreference), `ALTER TYPE SlotReservationStatus ADD VALUE` (separate statement), nullable columns on Item (`requiresFullPrepayment` default false, `archivedAt`, `sortOrder`) and ShopSettings (`defaultLocale`, `enabledLocales`, `slotGridStepMin` default 30), indexes per data-model.md §3; schema updated in `prisma/schema.prisma`
+- [ ] T010 [DB] Expand migration `prisma/migrations/20261025000000_004_release_readiness_expand/` (+`down.sql`): 8 new tables (WaitlistEntry, WaitlistOffer, CustomBookingField, BookingFieldAnswer, NotificationDeliveryLog, SlugRedirect, PaymentAllocationLink, UserPreference), `ALTER TYPE "ReservationStatus" ADD VALUE` for `PAYMENT_PENDING`, `UNDERPAID`, `PENDING_APPROVAL`, `CANCELLED`, `STAFF_REJECTED` (separate statement), nullable columns on Item (`requiresFullPrepayment` default false, `archivedAt`, `sortOrder`) and ShopSettings (`defaultLocale`, `enabledLocales`, `slotGridStepMin` default 30), indexes per data-model.md §3; schema updated in `prisma/schema.prisma`
 - [ ] T011 [DB] Idempotent backfill `scripts/backfill-004-language-defaults.ts` (defaultLocale heuristic, rate-limited batches) + migration guard test in `tests/unit/db-gist-and-migration.test.ts` lineage (timeout guards, down.sql drops only new objects)
 - [ ] T012 [BE] i18n scaffold: `lib/i18n/` — next-intl request config, message namespaces (web/client-bot/staff-bot/admin/email × ru/en), locale resolution chain (user override > `language_code` > session cookie > instance default, FR-412) + unit tests
 - [ ] T013 [BE] `lib/payments/providerContract.ts`: PaymentProvider interface + registry from deployment config; zero-provider mode booking verified (FR-401); unit tests for contract invariants
@@ -69,7 +69,7 @@
 - [ ] T024 [BE] [US1] UNDERPAID flow: staff alert + customer top-up/cancel message via notification dispatcher; no auto-confirm (tests)
 - [ ] T025 [BE] [US1] Stars adapter implements the contract (existing stars tests green — regression only)
 - [ ] T026 [BE] [US1] Minor-unit amounts: replace `×100` with CurrencyMetadata scale across payment paths (FR-405/FR-303); multi-currency tests (JPY 0, KWD 3)
-- [ ] T027 [E2E] [US1] Stubbed-gateway contract suite: full lifecycle, replay ×100 → one effect, invalid signature 401, late-payment-after-rebook → PAID_REQUIRES_RESOLUTION + refund request + both parties notified (FR-432)
+- [ ] T027 [E2E] [US1] Stubbed-gateway contract suite: full lifecycle, replay ×100 → one effect, invalid signature 401, freeze-ceiling >24h → FR-432 path; late payment with slot FREE → atomic re-confirm (FR-444); late payment after re-book → PAID_REQUIRES_RESOLUTION + refund request + both parties notified (FR-432)
 - [ ] T028 [BE] [US1] Refund-on-cancellation (FR-430): customer-initiated cancellation of a prepaid booking within the refund window → policy-window evaluation → RefundOperation workflow (recorded, SLA-tagged) → customer + staff notified; outside window → deposit forfeiture per policy; unit + E2E assertions wired into T027 suite
 
 **Checkpoint**: Money path trustworthy; 100-way same-slot race test green (SC-401).
@@ -83,7 +83,7 @@
 
 - [ ] T030 [BE] [US2] `lib/booking/windows.ts`: compute in `ShopSettings.timeZone` (IANA + DST correct); plumbing of the currently-inert `timeZone` param; DST-boundary unit tests
 - [ ] T031 [BE] [US2] Slots API: `unavailableReason` (booked|break) per blocked candidate (FR-408)
-- [ ] T032 [BE] [US2] Notification dispatcher: lifecycle events → TG primary → email fallback ≤5 min → delivery log rows; unit tests with mocked failures
+- [ ] T032 [BE] [US2] Notification dispatcher: lifecycle events → TG primary → email fallback ≤5 min (or FAILED/NO_EMAIL_CHANNEL + staff warning when no email on file) → delivery log rows; unit tests with mocked failures
 - [ ] T033 [FE] [US2] SlotGrid: locale word-month dates (`Intl.DateTimeFormat`), booked/break explanation UI for hidden slots
 - [ ] T034 [E2E] [US2] Reliability suite: DST day wall-clock slots; TG-fail→email fallback timing; delivery history visible to staff
 
@@ -98,7 +98,7 @@
 - [ ] T041 [BE] [US3] Bot strings i18n: client + staff bots via `from.language_code` (grammY middleware over shared dictionaries)
 - [ ] T042 [BE] [US3] Admin UI + email template dictionaries (ru/en)
 - [ ] T043 [BE] [US3] UserPreference language override API + anonymous-web session cookie fallback (FR-412)
-- [ ] T044 [SETUP] [US3] i18n AST coverage gate (S3 findings → production script): 100% of chrome keys resolve in both locales; wired into test suite (NFR-406)
+- [ ] T044 [SETUP] [US3] i18n AST coverage gate (S3 findings → production script): 100% of chrome keys resolve in both locales; adding a locale proven data-only by gate re-run (FR-411); wired into test suite (NFR-406)
 - [ ] T045 [E2E] [US3] i18n acceptance: ru/en journeys, CLDR plurals, unsupported-code fallback, content-stays-authored check (FR-414)
 
 ---
@@ -121,7 +121,7 @@
 **Goal**: Mobile-first admin (3 tabs, quick-create ≤4 fields, one-tap toggles, presigned R2 uploads); OWNER/OPERATOR split; slug immutability.
 **Independent Test**: OWNER on 390px viewport creates service+product+profile+settings in ≤10 min (US9 bar).
 
-- [ ] T060 [BE] [US9] `lib/uploads/presign.ts` + `POST /api/admin/uploads/presign` (R2, TTL ≤5 min, type/size conditions, OWNER/OPERATOR, rate-limited — FR-441)
+- [ ] T059 [BE] [US9] Staff authentication & session provisioning: implement `/admin/login` page, `POST /api/auth/sign-in` (or `/api/admin/login`) verifying scrypt password hash from `Account` table, setting HttpOnly `session_token` cookie, and provisioning staff session records (fixes F2 blocker).
 - [ ] T061 [FE] [US9] Admin scaffold: 3-tab bottom nav; `/admin/catalog` — list with one-tap active toggle, arrow reorder, quick-create sheet (4 required fields + collapsed "more", 15-min duration selector), shared zod validation with API (FR-436/439/440)
 - [ ] T062 [FE] [US9] ImageUploader: `browser-image-compression` (WebP ≤1200px ≤200KB) → presign → direct PUT; type/size field-level errors
 - [ ] T063 [FE] [US9] `/admin/team`: profiles, portfolio publication, working hours; profile ownership rules
@@ -136,7 +136,7 @@
 **Goal**: Deterministic cancellation recovery and cross-master slot packing.
 **Independent Test**: Cancel → offer ≤60s → single winner under concurrent claims.
 
-- [ ] T070 [BE] [US5] `lib/waitlist/waitlistService.ts`: join limits, fan-out job (Inngest + sweeper fallback, batch ≤10), offer tokens (SHA-256), claim through the standard booking path (atomic single-winner) — FR-419/420/433
+- [ ] T070 [BE] [US5] `lib/waitlist/waitlistService.ts`: join limits + anti-spam caps (≤10 ACTIVE/user, ≤1 offer/user/24h, ≤3/user/day), fan-out job (Inngest + sweeper fallback, batch ≤10), offer tokens (SHA-256), claim through the standard booking path (atomic single-winner) — FR-419/420/433
 - [ ] T071 [BE] [US5] `lib/waitlist/slotPacker.ts`: any-available greedy (gap penalty < shortest service), slots API `anyAvailable` ordering (FR-421); fragmentation unit tests
 - [ ] T072 [FE] [US5] Waitlist UX: join from grid/cancellation, TG offer with inline claim, admin outcome counters (FR-422)
 - [ ] T073 [E2E] [US5] Race suite: two claims → CLAIMED/TAKEN; dispatch p95 ≤60s; offer expiry silent
@@ -155,7 +155,7 @@
 
 - [ ] T090 [BE] [US7] Zod-refine OUT_CALL address at booking boundary (FR-425) + mixed-cart block with split guidance in checkout UI/API (FR-426)
 - [ ] T091 [BE] [US7] Rate limits: booking create/cancel, waitlist join/claim, presign, bot commands (FR-427); bounded payload caps
-- [ ] T092 [BE] [US7] PII closure: `AuditEvent.reason` redaction pre-persist; `serviceAddressSnapshot` + BookingFieldAnswer + delivery-log retention in nightlyPurge (FR-428); automated log-scan (SC-403)
+- [ ] T092 [BE] [US7] PII closure: `AuditEvent.reason` redaction pre-persist; `serviceAddressSnapshot` + BookingFieldAnswer + delivery-log + waitlist offers/entries retention in nightlyPurge AND on GDPR user deletion (FR-428); automated log-scan (SC-403)
 - [ ] T093 [BE] [US7] Staff bot: confirm barrier on destructive actions (`showAlert`), configurable rejection notification policy (FR-429)
 - [ ] T094 [OPS] [US7] DR drill with REAL restore: `scripts/dr-restore-drill.ps1` (pg_restore into scratch DB, verify settings/items/staff/bookings/waitlist, measured RTO/RPO, PASS only on evidence); retire the stub (audit T059)
 - [ ] T095 [SEC] [US7] STRIDE verification pass per plan.md matrix: webhook HMAC regression, presign abuse cases, RBAC split probes, rate-limit bypass attempts; plus thin-controller audit (no business logic in route handlers — FR-435) — findings fixed or documented

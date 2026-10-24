@@ -35,9 +35,11 @@ Enabled providers resolved from deployment configuration at startup; zero provid
 | Scenario | Expected |
 |---|---|
 | waiting → confirming | holdFrozenAt set; slot NOT released at TTL sweep |
-| confirming → finished | reservation CONFIRMED; PaymentAllocationLink written; idempotent on replay (×100 replays → one effect) |
-| finished, paid < 99% of quoted | UNDERPAID; staff notified; customer top-up message; no auto-confirm |
-| finished after slot re-booked | order PAID_REQUIRES_RESOLUTION; RefundOperation(SLA 24h); second booking untouched |
+| confirming → finished within MAX_CONFIRMING_FREEZE (24 h) | reservation CONFIRMED; PaymentAllocationLink written; idempotent on replay (×100 replays → one effect) |
+| confirming stuck > 24 h (MAX_CONFIRMING_FREEZE) | hold expires, slot released, order → FR-432 resolution path, staff notified |
+| finished, paid < 99% of quoted | UNDERPAID; staff notified (SLA ≤ 12 h); customer top-up message; no auto-confirm |
+| finished after slot released, slot FREE (FR-444) | booking atomically re-confirmed (BOOKED/PAID), no refund path |
+| finished after slot released and RE-BOOKED | order PAID_REQUIRES_RESOLUTION; RefundOperation(SLA 24 h); second booking untouched |
 | invalid signature | 401, zero processing, security log |
 | JPY (0) / KWD (3) amounts | stored/displayed at registry scale; adapter translates wire scale only |
 
