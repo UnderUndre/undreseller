@@ -10,7 +10,7 @@ Existing table (003). Changes:
 
 | Change | Type | Classification | Notes |
 |---|---|---|---|
-| `status` enum ADD VALUE | `PAYMENT_PENDING`, `UNDERPAID`, `PENDING_APPROVAL`, `CANCELLED`, `STAFF_REJECTED` | Internal | `ALTER TYPE "ReservationStatus" ADD VALUE ...` (expand-safe, irreversible — deployed before code writes it); existing values HELD/BOOKED/RELEASED |
+| `status` enum ADD VALUE | `PAYMENT_PENDING`, `UNDERPAID`, `PENDING_APPROVAL`, `CANCELLED`, `STAFF_REJECTED` | Internal | `ALTER TYPE "ReservationStatus" ADD VALUE ...` (expand-safe, irreversible — deployed before code writes it); existing values HELD/BOOKED/RELEASED. **Name-mapping (antigravity F1): the DB type is `"ReservationStatus"` (NOT `SlotReservationStatus`); spec-level `CONFIRMED` maps to the existing DB value `BOOKED` — no new CONFIRMED value is added; FSM code translates at the service boundary.** |
 | `holdFrozenAt` | `timestamptz NULL` | Internal | Set on first gateway `confirming`; freezes TTL sweep; **hard ceiling MAX_CONFIRMING_FREEZE = 24 h — past it the hold expires, slot releases, order → FR-432 resolution** |
 | (unchanged) price/buffer/address snapshots | — | Financial/PII | Already exist from 003 — booking snapshotting is DONE (audit-verified) |
 

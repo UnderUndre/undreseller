@@ -33,7 +33,7 @@
 
 - [ ] T001 [SETUP] Repair 003 test debt to green: rewrite `tests/unit/multi-service-cart.test.ts` and `tests/unit/performance-benchmark.test.ts` against the current `computeAvailableSlots` contract (NFR-401 profile: p95 recording, availability load), fix `admin-auth` and `inngest-cas-and-outbox` failures (root-cause, not skip) — `npx tsc --noEmit` and `npx jest` fully green
 - [ ] T002 [SETUP] Lint debt: resolve `no-explicit-any`/`no-unused-vars` in `lib/kernel/`, `lib/security/`, `lib/bot/` (003 audit list) so `next build` passes lint; no rule suppressions without inline justification
-- [ ] T003 [SETUP] Supply chain: remove unused `better-auth` dep (research D4); add `next-intl`, `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`, `browser-image-compression`; verify the license claims asserted in plan.md §Technical Context against actual package metadata; run `scripts/verify-licenses.mjs` + `npm audit` (zero High/Critical unmitigated); registry path entries in `config/oss-reuse-registry.json`
+- [ ] T003 [SETUP] Supply chain: remove unused `better-auth` dep (research D4); add `next-intl`, `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`, `browser-image-compression`, `date-fns-tz`; verify the license claims asserted in plan.md §Technical Context against actual package metadata; run `scripts/verify-licenses.mjs` + `npm audit` (zero High/Critical unmitigated); registry path entries in `config/oss-reuse-registry.json`
 - [ ] T004 [SETUP] Spike S1 (timebox 1d): Telegram themeParams ↔ undesign token mapping on all surfaces; quantitative acceptance per research.md D2; **spike branch, dispose after**
 - [ ] T005 [SETUP] Spike S2 (timebox 1d): R2 presign E2E cycle (HEIC→WebP→PUT→URL; p95 presign <50ms; 0 bytes via Node); **spike branch, dispose after**
 - [ ] T006 [SETUP] Spike S3 (timebox 1d): i18n key-coverage AST gate PoC (100% resolve in ru/en); **spike branch, dispose after**
@@ -52,6 +52,8 @@
 - [ ] T014 [BE] `lib/notifications/` delivery log (ACCEPTED/FAILED, salted target hash, 90d retention hook) + logger deny-list extension for new surfaces; zero-PII log-scan unit test
 - [ ] T015 [BE] `lib/email/` adapter interface + provider adapter (Resend-recommended HTTP API behind interface) + mock contract test (FR-409 fallback readiness)
 - [ ] T016 [BE] Feature flags in `lib/config/integrationProfile.ts` for FSM/payment-provider/waitlist/i18n cutover with killswitch verification test (legacy read paths restorable without DDL); OPS drill of the killswitch covered by T112
+- [ ] T017 [BE] Staff web sign-in (antigravity F2): `POST /api/auth/sign-in` — scrypt password verify against the existing `Account` hash (bootstrap-owner lineage), session create in `prisma.session`, HttpOnly/Secure/SameSite cookie, rotation on login; break-glass ADMIN_TOKEN unchanged; unit + auth tests
+- [ ] T018 [FE] Mobile login page `/admin/login` (OWNER/OPERATOR/PERFORMER) wired to T017, redirect to `/admin/catalog`; optional enhancement: staff-bot `/login` command issuing a one-time 5-minute magic link (mobile-first, no password typing)
 
 **Checkpoint**: Foundation ready — green baseline, schema expanded, contracts scaffolded.
 
@@ -81,7 +83,7 @@
 **Goal**: IANA/DST-correct slots with availability reasons; TG→email redundant notifications with delivery log.
 **Independent Test**: Non-UTC instance across a DST boundary; forced TG failure → email fallback ≤5 min logged.
 
-- [ ] T030 [BE] [US2] `lib/booking/windows.ts`: compute in `ShopSettings.timeZone` (IANA + DST correct); plumbing of the currently-inert `timeZone` param; DST-boundary unit tests
+- [ ] T030 [BE] [US2] `lib/booking/windows.ts`: compute in `ShopSettings.timeZone` (IANA + DST correct) via `date-fns-tz` (no hand-rolled DST math); plumbing of the currently-inert `timeZone` param; DST-boundary unit tests
 - [ ] T031 [BE] [US2] Slots API: `unavailableReason` (booked|break) per blocked candidate (FR-408)
 - [ ] T032 [BE] [US2] Notification dispatcher: lifecycle events → TG primary → email fallback ≤5 min (or FAILED/NO_EMAIL_CHANNEL + staff warning when no email on file) → delivery log rows; unit tests with mocked failures
 - [ ] T033 [FE] [US2] SlotGrid: locale word-month dates (`Intl.DateTimeFormat`), booked/break explanation UI for hidden slots
@@ -121,8 +123,8 @@
 **Goal**: Mobile-first admin (3 tabs, quick-create ≤4 fields, one-tap toggles, presigned R2 uploads); OWNER/OPERATOR split; slug immutability.
 **Independent Test**: OWNER on 390px viewport creates service+product+profile+settings in ≤10 min (US9 bar).
 
-- [ ] T059 [BE] [US9] Staff authentication & session provisioning: implement `/admin/login` page, `POST /api/auth/sign-in` (or `/api/admin/login`) verifying scrypt password hash from `Account` table, setting HttpOnly `session_token` cookie, and provisioning staff session records (fixes F2 blocker).
-- [ ] T061 [FE] [US9] Admin scaffold: 3-tab bottom nav; `/admin/catalog` — list with one-tap active toggle, arrow reorder, quick-create sheet (4 required fields + collapsed "more", 15-min duration selector), shared zod validation with API (FR-436/439/440)
+- [ ] T060 [BE] [US9] `lib/uploads/presign.ts` + `POST /api/admin/uploads/presign` (R2, TTL ≤5 min, **ContentLength+ContentType cryptographically signed into the PUT**, type/size conditions, OWNER/OPERATOR, rate-limited — FR-441; bucket lifecycle rule purges unlinked objects >48 h)
+- [ ] T061 [FE] [US9] Admin scaffold: 3-tab bottom nav; `/admin/catalog` — list with one-tap active toggle, arrow reorder, quick-create sheet (4 required fields + collapsed "more", 15-min duration selector), shared zod validation with API (FR-436/439/440); gated on T018 login
 - [ ] T062 [FE] [US9] ImageUploader: `browser-image-compression` (WebP ≤1200px ≤200KB) → presign → direct PUT; type/size field-level errors
 - [ ] T063 [FE] [US9] `/admin/team`: profiles, portfolio publication, working hours; profile ownership rules
 - [ ] T064 [FE] [US9] `/admin/settings`: foundation section (currency, timezone, defaultLocale — OWNER-only server-enforced) + operational settings incl. slotGridStepMin (15|30, FR-442); currency-confirm gate (FR-438)
@@ -196,6 +198,8 @@ T002 → T016
 T003 → T012, T015
 T004 → T052
 T005 → T060
+T017 → T018
+T018 → T061, T063, T064
 T006 → T044
 T010 → T011, T020, T070, T080, T090
 T011 → T111
@@ -283,7 +287,7 @@ graph LR
 | 4 | [BE] reliability | T014 + T015 → T032 → T034; T030 → T031 | T010, T003 |
 | 5 | [FE/BE] i18n | T012 → T040/T041/T042 → T043 → T044, T045 | T003 |
 | 6 | [BE/FE] hybrid TG | T050 → T051; T004 → T052; T053 → T054 | T004 |
-| 7 | [BE/FE] content admin | T005 → T060 → T062; T061 → T063, T064; T065 → T066 | T005, T012 |
+| 7 | [BE/FE] content admin | T017 → T018; T005 → T060 → T062; T018 + T012 → T061 → T063, T064; T065 → T066 | T005, T012, T017 |
 | 8 | [BE/FE] waitlist | T070 → T072, T073; T071 → T073 | T010, T021, T032 |
 | 9 | [BE/FE] custom fields | T080 → T081 → T082 | T010 |
 | 10 | [BE/OPS/SEC] hardening | T090–T095 | T070, T080, T060 |
@@ -298,15 +302,15 @@ graph LR
 | ----- | ---------- | --------------- |
 | [SETUP] | 11 (T001–T007, T044, T102, T116) | immediately |
 | [DB] | 2 (T010, T011) | T001 |
-| [BE] | 24 (T012–T016, T020–T026, T028, T030–T032, T041–T043, T050, T051, T060, T065, T070, T071, T080, T090–T093) | T010/T013 per lane |
-| [FE] | 13 (T033, T040, T052–T054, T061–T064, T072, T081, T100, T101) | lane deps |
+| [BE] | 25 (T012–T017, T020–T026, T028, T030–T032, T041–T043, T050, T051, T060, T065, T070, T071, T080, T090–T093) | T010/T013 per lane |
+| [FE] | 14 (T018, T033, T040, T052–T054, T061–T064, T072, T081, T100, T101) | lane deps |
 | [OPS] | 3 (T094, T110, T112) | story deps |
 | [E2E] | 10 (T027, T034, T045, T054, T066, T073, T082, T111, T115) | story impl |
 | [SEC] | 2 (T095, T113) | hardening + near-close |
 
 **Critical Path**: T001 → T010 → T020 → T021 → T027 → T115 → T116 (payments/FSM spine).
 
-**Total**: 61 tasks.
+**Total**: 63 tasks.
 
 ---
 
