@@ -112,7 +112,7 @@
 **Goal**: Persistent menu button; bot quick actions; Mini App theme follows Telegram; deep links back into bot.
 **Independent Test**: Cold start → confirmed booking ≤3 taps; theme flip light/dark.
 
-- [ ] T050 [BE] [US4] `setChatMenuButton` (web_app) on bot init — persistent storefront entry (FR-415)
+- [X] T050 [BE] [US4] `setChatMenuButton` (web_app) on bot init — persistent storefront entry (FR-415)
 - [ ] T051 [BE] [US4] Bot quick actions: my bookings, cancel via token flow, support contact, language switch (FR-416); ≤3-tap journey test
 - [ ] T052 [FE] [US4] Mini App themeParams → undesign theme toggle (light/dark) per S1 findings; both themes shipped (FR-417)
 - [ ] T053 [FE] [US4] Professionals pages: `tg://` deep links with startapp context (FR-418)
@@ -130,7 +130,7 @@
 - [ ] T062 [FE] [US9] ImageUploader: `browser-image-compression` (WebP ≤1200px ≤200KB) → presign → direct PUT; type/size field-level errors
 - [ ] T063 [FE] [US9] `/admin/team`: profiles, portfolio publication, working hours; profile ownership rules
 - [ ] T064 [FE] [US9] `/admin/settings`: foundation section (currency, timezone, defaultLocale — OWNER-only server-enforced) + operational settings incl. slotGridStepMin (15|30, FR-442); currency-confirm gate (FR-438)
-- [ ] T065 [BE] [US9] SlugRedirect service: immutable slugs, 301 on API rename, `/professionals/[slug]` redirect-before-404 (FR-437)
+- [X] T065 [BE] [US9] SlugRedirect service: immutable slugs, 301 on API rename, `/professionals/[slug]` redirect-before-404 (FR-437)
 - [ ] T066 [E2E] [US9] Content-admin acceptance: RBAC matrix (PERFORMER 403, OPERATOR foundation 403), validation parity, archive-keeps-snapshots, 10-minute setup bar timed run (US9 scenarios)
 
 ---

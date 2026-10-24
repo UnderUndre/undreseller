@@ -70,6 +70,18 @@ export async function initializeBots(): Promise<void> {
         username: staffBotInfo.username,
       });
 
+      // T050/FR-415: persistent storefront entry — menu button opens the Mini App
+      try {
+        const webAppUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://undreseller.com';
+        await bot.api.setChatMenuButton({
+          menu_button: { type: 'web_app', text: 'Open', web_app: { url: webAppUrl } },
+        });
+        logger.info('[BOT_MENU_BUTTON_SET]', { webAppUrl });
+      } catch (menuErr: unknown) {
+        // Non-fatal: booking flow works without the menu button
+        logger.warn('[BOT_MENU_BUTTON_SET_FAILED]', { error: String(menuErr) });
+      }
+
       globalThis.__botsInitialized = true;
       logger.info('[BOT_INIT_COMPLETE]', { timestamp: new Date().toISOString() });
     })();
