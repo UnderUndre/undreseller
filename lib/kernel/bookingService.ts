@@ -14,6 +14,12 @@ import { resolveServicePrice } from '../../config/currency-registry';
 import { HTML_TAG_REGEX } from '../../config/shop.config';
 import { StaffActorContext } from '../security/staffRbac';
 import { emitAuditEvent } from '../security/staffAuth';
+import { getReleaseReadinessFlags } from '../config/integrationProfile';
+import {
+  SPEC_TO_DB_RESERVATION_STATUS,
+  transitionBookingFsm,
+  type BookingFsmState,
+} from './bookingFsm';
 
 export class SlotConflictError extends Error {
   constructor(message = 'Selected slot has just been taken by another customer') {
@@ -165,7 +171,8 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
 
     const now = new Date();
 
-    // Check overlap with active BOOKED or active HELD
+    // Check overlap with active bookings (FREE: BOOKED; PREPAID: HELD/PAYMENT_PENDING; approval: PENDING_APPROVAL)
+    const fsmActive = getReleaseReadinessFlags().fsmCutover;
     const conflict = await tx.slotReservation.findFirst({
       where: {
         resourceId,
@@ -179,6 +186,19 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
                 status: 'HELD',
                 OR: [{ holdExpiresAt: null }, { holdExpiresAt: { gt: now } }],
               },
+              // FSM cutover (T021): new active states also occupy the slot.
+              // PAYMENT_PENDING keeps the TTL guard; PENDING_APPROVAL has no TTL
+              // (legacy flag-off path never writes these statuses).
+              ...(fsmActive
+                ? [
+                    {
+                      status: 'PAYMENT_PENDING' as const,
+                      OR: [{ holdExpiresAt: null }, { holdExpiresAt: { gt: now } }],
+                    },
+                    { status: 'UNDERPAID' as const },
+                    { status: 'PENDING_APPROVAL' as const },
+                  ]
+                : []),
             ],
           },
         ],
@@ -189,18 +209,41 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
       throw new SlotConflictError('Selected slot has just been taken by another customer');
     }
 
-    // Determine status & hold semantics (FR-337, FR-338)
+    // Determine status & hold semantics (FR-337, FR-338, FR-407).
+    // Two-track FSM cutover (T021): when the fsmCutover flag is ON the initial
+    // state and hold TTL come from the pure FSM in bookingFsm.ts; when OFF the
+    // legacy 003 mapping below is preserved verbatim (killswitch, no DDL).
     const isOutCall = fulfillmentMode === 'OUT_CALL';
     const requireApproval = isOutCall || settings.requireStaffApprovalForInCall;
+    const fsmCutover = getReleaseReadinessFlags().fsmCutover;
 
-    const initialReservationStatus: ReservationStatus = requireApproval
-      ? 'HELD'
-      : 'BOOKED';
-    const initialConfirmationStatus: ConfirmationStatus = requireApproval
-      ? 'PENDING_STAFF_REVIEW'
-      : 'STAFF_APPROVED';
-    // OUT_CALL pending approval gets holdExpiresAt = null so it does not auto-cancel (FR-338)
-    const holdExpiresAt = null;
+    let initialReservationStatus: ReservationStatus;
+    let initialConfirmationStatus: ConfirmationStatus;
+    let holdExpiresAt: Date | null = null;
+
+    if (fsmCutover) {
+      const prepaid = item.requiresFullPrepayment === true;
+      const fsm = transitionBookingFsm('AVAILABLE', 'CREATE_BOOKING', {
+        now,
+        track: prepaid ? 'PREPAID' : 'FREE',
+        requiresApproval: requireApproval,
+      });
+      if (!fsm.ok) {
+        throw new Error(`Booking FSM rejected initial transition: ${fsm.reason}`);
+      }
+      initialReservationStatus = SPEC_TO_DB_RESERVATION_STATUS[
+        fsm.state as BookingFsmState
+      ] as ReservationStatus;
+      // Spec CONFIRMED maps to DB BOOKED; prepaid HELD carries the 15m payment TTL (FR-433).
+      holdExpiresAt = fsm.effects.holdExpiresAt ?? null;
+      initialConfirmationStatus =
+        fsm.state === 'PENDING_APPROVAL' ? 'PENDING_STAFF_REVIEW' : 'STAFF_APPROVED';
+    } else {
+      initialReservationStatus = requireApproval ? 'HELD' : 'BOOKED';
+      initialConfirmationStatus = requireApproval ? 'PENDING_STAFF_REVIEW' : 'STAFF_APPROVED';
+      // OUT_CALL pending approval gets holdExpiresAt = null so it does not auto-cancel (FR-338)
+      holdExpiresAt = null;
+    }
 
     const addressSnapshot = isOutCall ? serviceAddress!.trim() : settings.businessServiceAddress;
 
