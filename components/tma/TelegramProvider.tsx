@@ -12,6 +12,9 @@ interface TelegramUser {
 interface TelegramWebApp {
   initData?: string;
   initDataUnsafe?: { user?: TelegramUser };
+  colorScheme?: 'light' | 'dark';
+  onEvent?: (event: string, handler: () => void) => void;
+  offEvent?: (event: string, handler: () => void) => void;
   ready: () => void;
   expand: () => void;
   disableVerticalSwipes?: () => void;
@@ -31,6 +34,21 @@ interface TelegramContextValue {
     impactOccurred: (style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft') => void;
     notificationOccurred: (type: 'error' | 'success' | 'warning') => void;
   };
+}
+
+const THEME_EVENT = 'themeChanged';
+
+/**
+ * T101/FR-417: the Mini App follows the Telegram client theme.
+ * Applies the matching undesign theme token set on <html>:
+ * data-theme="undrlla-dark" for dark clients, removed (light `undrlla`) otherwise.
+ */
+function applyTelegramTheme(tg: TelegramWebApp): void {
+  if (tg.colorScheme === 'dark') {
+    document.documentElement.dataset.theme = 'undrlla-dark';
+  } else {
+    delete document.documentElement.dataset.theme;
+  }
 }
 
 const TelegramContext = createContext<TelegramContextValue>({
@@ -61,6 +79,8 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
+        applyTelegramTheme(tg);
+        tg.onEvent?.(THEME_EVENT, () => applyTelegramTheme(tg));
         tg.ready();
         tg.expand();
         if (typeof tg.disableVerticalSwipes === 'function') {

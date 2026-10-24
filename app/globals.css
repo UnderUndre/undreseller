@@ -69,8 +69,12 @@
   --color-base-content: var(--color-base-content);
 }
 
-/* Dark mode is class-driven (html.dark), not OS-preference driven:
-   Telegram themeParams integration lands with spec 004 FR-417. */
+/* Theme resolution (T101/FR-417): no forced scheme. Light `undrlla` is the
+   default (:root); the Telegram Mini App sets data-theme="undrlla-dark" on
+   <html> when the client theme is dark (components/tma/TelegramProvider.tsx).
+   Both themes in @underundre/undesign define the full semantic contrast pair
+   set: base-100/200/300 surfaces + base-content text + info/success/warning/
+   error semantics. */
 
 body {
   background: var(--background);

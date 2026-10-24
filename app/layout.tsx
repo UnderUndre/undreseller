@@ -14,8 +14,11 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // T101 (US8-SC3): light theme is first-class — no forced dark class here.
+  // The active theme resolves at runtime: TMA follows the Telegram client
+  // theme (TelegramProvider, FR-417); plain browsers default to light.
   return (
-    <html lang="en" className="dark">
+    <html lang="en">
       <body className="bg-base-100 text-base-content min-h-screen flex flex-col font-sans antialiased">
         <TelegramProvider>
           <header className="border-b border-base-300 bg-base-200/60 backdrop-blur sticky top-0 z-50">
