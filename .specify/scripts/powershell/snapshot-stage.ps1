@@ -1,4 +1,4 @@
-# snapshot-stage.ps1 — tag current commit as <stage>/<slug>/v<N>.
+﻿# snapshot-stage.ps1 — tag current commit as <stage>/<slug>/v<N>.
 # Implements Principle VII (Artifact Versioning) of the constitution.
 #
 # Usage:
@@ -12,7 +12,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('spec', 'clarify', 'plan', 'tasks', 'review', 'bizplan')]
+    [ValidateSet('spec', 'clarify', 'plan', 'tasks', 'review', 'bizplan', 'requirements-audit', 'test-design', 'qa-signoff')]
     [string]$Stage,
 
     [Parameter(Mandatory = $true)]
