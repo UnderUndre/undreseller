@@ -3,7 +3,7 @@
 **Slug:** `005-stripe-adapter-and-sovereign-auth`
 **Ветка:** `005-stripe-adapter-and-sovereign-auth`
 **Путь к спеке:** `undreseller/specs/005/spec.md`
-**Статус:** **DRAFT — REVISION 2.1 (post-004 alignment + external review round 1, 2026-10-25)**. Ревизия 1 признана частично устаревшей (писалась до релиза 004). Rev 2.1 закрывает ревью-раунд 1: sessionEpoch Model A, Argon2id бенчмарк-гейт, dashboard-driven payment methods, retention-контракт дедупа InboxEvent, grep-гейт FR-550, график 308→410, auth-обсервабилити, форма replay-теста.
+**Статус:** **DRAFT — REVISION 2.2 (requirements-audit clarify round, 2026-10-25)**. Rev 2.1 закрывала внешнее ревью. Rev 2.2 закрывает блокеры requirements-audit v1: TTL 30→15 мин (= hold-TTL), enum default NOTIFY_CLIENT→NOTIFY_CUSTOMER, FR-511a (отказ Stripe до холда, 503, STRIPE_INVOICE_FAILED), имена событий по канону 004, сериализация всех Argon2-операций, Stripe-ретраи как FLP-механика.
 **Архитектурный фундамент:** `SPEC-ARCH-INVARIANTS-2026`; контракты и FSM релиза 004 (`specs/004-release-readiness/`)
 **Рантайм:** Node.js 22 LTS (`node:22-alpine`), PostgreSQL 16, Prisma ORM (единственная ORM)
 **Source of truth по бизнесу:** `undreplans/docs/projects/undreseller/undreseller-business-plan.md` v18.6 (fiat-эквайринг — capability уже поставляемого шаблона, не новый SKU)
@@ -55,7 +55,7 @@
 // enum StaffRejectNotifyMode { NOTIFY_CUSTOMER  SILENT  STAFF_ONLY }
 model ShopSettings {
   // ...существующие поля 004...
-  staffRejectNotifyMode StaffRejectNotifyMode @default(NOTIFY_CLIENT) // замена env-варианта
+  staffRejectNotifyMode StaffRejectNotifyMode @default(NOTIFY_CUSTOMER) // замена env-варианта
 }
 
 // Account (MODIFIED) — маркер хеш-алгоритма для Story 1 (пере-хеш при следующем логине)
@@ -77,7 +77,7 @@ model Session {
 }
 ```
 
-**Миграция:** одна expand-фаза `20261101000000_005_stripe_and_hardening/` (+`down.sql`), аддитивно, по канону Constitution X (как 004). Enum `StaffRejectNotifyMode` — новый тип; бизнес-значение по умолчанию `NOTIFY_CLIENT` сохраняет поведение 004.
+**Миграция:** одна expand-фаза `20261101000000_005_stripe_and_hardening/` (+`down.sql`), аддитивно, по канону Constitution X (как 004). Enum `StaffRejectNotifyMode` — новый тип; бизнес-значение по умолчанию `NOTIFY_CUSTOMER` (1:1 значению env `notify_customer` из 004) сохраняет текущее поведение.
 
 **Stripe в БД не требует НИЧЕГО нового:** `PaymentAllocationLink(provider="STRIPE", providerPaymentId=<cs_...|pi_...>, allocationKind)` — связка; статусы живут в FSM-полях `Order`/`SlotReservation`; аудит возвратов — `RefundOperation`.
 
@@ -94,7 +94,7 @@ model Session {
 | `payment_intent.payment_failed` | — | статусы не меняем | Ожидание ретрая клиента до истечения TTL сессии (30 мин); TG-напоминание |
 | `charge.refunded` | найден `PaymentAllocationLink` по `pi_...` | order → `PAID_REQUIRES_RESOLUTION` → `CANCELLED`; `RefundOperation` (kind STRIPE, actor `stripe_dashboard`) | Слот освобождается, audit, уведомления обеим сторонам |
 
-Гонки закрывает существующий паттерн: транзакция в `acquireResourceSlotLock` + GiST; дедуп — `InboxEvent.dedupeKey = stripe_<event.id>` до любых записей (как NOWPayments в 004).
+Гонки закрывает существующий паттерн: транзакция в `acquireResourceSlotLock` + GiST; дедуп — `InboxEvent.dedupeKey = stripe_<event.id>` до любых записей (как NOWPayments в 004). Доставка при нашем падении — за счёт автоповторов Stripe (до 3 суток с бэкоффом); повторная доставка дедупится тем же ключом.
 
 **Долговечность дедупа (retention-контракт).** `InboxEvent` никогда не удаляется: nightlyPurge только скрабит `payloadJson` терминальных (SENT/FAILED) строк старше 7 дней — `deleteMany` по inboxEvent в кодовой базе отсутствует (verified: `lib/jobs/inngest.ts` + grep). Уникальный `dedupeKey` живёт вечно, поэтому переотправка Stripe хоть через год дедупится. Второй барьер — корректность не зависит от дедупа: FSM-переходы условные (`updateMany({ where: { status: 'PAYMENT_PENDING' } })`), реплей `completed` по уже `BOOKED`-брони = no-op даже при гипотетической утере дедуп-строки. Правило на будущее (инвариант в guard-тест миграций): любое изменение ретеншена InboxEvent, вводящее удаление строк, обязано исключать webhook-дедуп-строки (`dedupeKey LIKE 'stripe_%' / 'nowpayments_%' / 'stars_%'`) — либо дедуп переезжает в отдельную вечную таблицу.
 
@@ -107,13 +107,14 @@ model Session {
 * **FR-502 Мгновенный массовый отзыв (Модель А — int-epoch, единственная):** `revokeAllStaffAccess(userId)`: `sessionEpoch += 1` + `session.deleteMany({ userId })`. При каждом логине в создаваемую сессию пишется снимок `epochCreated = user.sessionEpoch`; валидация в `resolveStaffSession` — строгое равенство `session.epochCreated === user.sessionEpoch`. Никаких timestamp-сравнений: `deleteMany` — основная защита, `epochCreated` — страховка от гонок (сессия, созданная между инкрементом и deleteMany, всё равно отвергается). Вызовы: деактивация сотрудника, понижение роли, компрометация.
 * **FR-503 Anti-bruteforce per-IP (дополнение к per-account lockout 004):** `/api/auth/sign-in` — sliding window через существующий `lib/security/rateLimit.ts`: 5 неудач / IP / 15 мин → 429 на 30 мин. Per-account lockout 004 (5 → 15 мин) остаётся; ограничения независимы.
 * **FR-504 Break-glass ADMIN_TOKEN** не меняется (grace-ротация 003 сохраняется).
-* **FR-504a Argon2id на слабых VPS (обязательный бенчмарк):** параметры по умолчанию 64 MB / 3 iter / 4 lanes конфигурируются через env (`ARGON2_M_KIB`, `ARGON2_T`, `ARGON2_P`) с захардкоженным полом OWASP (>=19 MiB, >=2 iter). Верификации Argon2 сериализуются (мьютекс, <=1 параллельно на процесс) — пик памяти = 1x cost, а не N логинов x 64 MB. Acceptance: микро-бенчмарк на целевом CPX-классе (<=500 MB RSS при 5 последовательных логинах + живой TG-поллер; замер process.memoryUsage().rss до/после) фиксируется в evidence-файле ДО merged.
-* **FR-505 Auth-обсервабилити (audit-events, PII-redacted через `emitAuditEvent` 004):** обязательные события — `STAFF_LOGIN_SUCCESS`, `STAFF_LOGIN_FAILED` (уже эмитятся в 004 — расширить), `STAFF_ACCOUNT_LOCKED` (per-account), `STAFF_IP_RATE_LIMITED` (per-IP), `STAFF_SESSIONS_REVOKED` (epoch-отзыв, cause: deactivated | role_change | compromise). Через deny-list logger: ноль паролей/токенов; IP — только маскированный /24.
+* **FR-504a Argon2id на слабых VPS (обязательный бенчмарк):** параметры по умолчанию 64 MB / 3 iter / 4 lanes конфигурируются через env (`ARGON2_M_KIB`, `ARGON2_T`, `ARGON2_P`) с захардкоженным полом OWASP (>=19 MiB, >=2 iter). Все Argon2-операции (verify и hash — пере-хеш FR-501 включительно) сериализуются (мьютекс, <=1 параллельно на процесс) — пик памяти = 1x cost, а не N логинов x 64 MB. Acceptance: микро-бенчмарк на целевом CPX-классе (<=500 MB RSS при 5 последовательных логинах + живой TG-поллер; замер process.memoryUsage().rss до/после) фиксируется в evidence-файле ДО merged.
+* **FR-505 Auth-обсервабилити (audit-events, PII-redacted через `emitAuditEvent` 004):** обязательные события — `STAFF_SIGN_IN` / `STAFF_SIGN_IN_FAILED` (каноничные имена 004, не переименовываем), `STAFF_ACCOUNT_LOCKED` (per-account), `STAFF_IP_RATE_LIMITED` (per-IP), `STAFF_SESSIONS_REVOKED` (epoch-отзыв, cause: deactivated | role_change | compromise). Через deny-list logger: ноль паролей/токенов; IP — только маскированный /24.
 * **Тесты:** пере-хеш scrypt→argon2id на живом логине; epoch-отзыв режет живую сессию; per-IP лимит не блокирует другого IP; lockout'ы не конфликтуют; каждое событие FR-505 эмитится ровно один раз с корректной cause.
 
 ### Story 2: Stripe-адаптер за контрактом 004 (FR-510..516)
 * **FR-510 Адаптер `lib/payments/stripe.ts implements PaymentProvider`:** `id: "STRIPE"`, capabilities `{ fiat: true, crypto: false, refunds: "manual" }`; саморегистрация `registerPaymentProviderFactory("STRIPE", ...)`.
-* **FR-511 `createInvoice`** → Stripe Checkout Session (`mode: "payment"`, TTL 30 мин, `line_items` из registry minor units — никакого ×100; `metadata: { orderId }`; success/cancel URL на инстанс). `payment_method_types` **не передаётся** — Hosted Checkout сам показывает методы, включённые в Stripe-аккаунте (dashboard-driven). Это осознанное решение, а не «только физические карты»: кошельки (Apple Pay / Google Pay) появляются автоматически после регистрации домена инстанса в Dashboard (payment domains); прочие методы (Link, iDEAL и т.п.) — исключительно конфигом аккаунта, без правок кода. Требование к деплою: домен инстанса зарегистрирован в Stripe. Возвращает `paymentUrl` = session.url (провайдерский, не рукодельный — канон 004).
+* **FR-511 `createInvoice`** → Stripe Checkout Session (`mode: "payment"`, **TTL = 15 мин** — строго равен `PREPAID_HOLD_TTL_MS` FSM 004: сессия не может пережить холд слота; выбор в пользу укорачивания сессии, а не продления холда — FSM 004 не трогаем), `line_items` из registry minor units — никакого ×100; `metadata: { orderId }`; success/cancel URL на инстанс). `payment_method_types` **не передаётся** — Hosted Checkout сам показывает методы, включённые в Stripe-аккаунте (dashboard-driven). Это осознанное решение, а не «только физические карты»: кошельки (Apple Pay / Google Pay) появляются автоматически после регистрации домена инстанса в Dashboard (payment domains); прочие методы (Link, iDEAL и т.п.) — исключительно конфигом аккаунта, без правок кода. Требование к деплою: домен инстанса зарегистрирован в Stripe. Возвращает `paymentUrl` = session.url (провайдерский, не рукодельный — канон 004).
+* **FR-511a Порядок операций и отказ Stripe:** Checkout Session создаётся **до** фиксации холда слота. При 5xx/timeout/network-error от Stripe API: холд НЕ ставится, бронирование не создаётся, клиенту — HTTP 503 с человекочитаемым retry-сообщением, аудит-событие `STRIPE_INVOICE_FAILED` (errorCode, orderId-заготовка; без PII). Идемпотентность повторной попытки — по `Idempotency-Key` Stripe API.
 * **FR-512 `verifyCallback`** — `stripe-signature` (HMAC-SHA256, timing-safe, `STRIPE_WEBHOOK_SECRET`); тело строго из `req.text()`.
 * **FR-513 `parseCallback`** → нейтральный `CallbackStatus`: `completed→finished`, `expired→expired`, `payment_failed→failed`, `charge.refunded→finished` (с признаком refund в payload-обёртке). Суммы — в registry minor units.
 * **FR-514 Вебхук `POST /api/payments/stripe/webhook`:** дедуп первым шагом (`InboxEvent` insert ON CONFLICT — ноль эффектов при реплее ×100), затем FSM-таблица §3. Invalid signature → 401 + security-лог, zero processing.
@@ -133,7 +134,7 @@ model Session {
 * **Тесты:** контрактные тесты старого пути (redirect + preserved behavior) и нового.
 
 ### Story 5: Долги D3–D5 — polish-пакет (FR-540..542)
-* **FR-540 (D3):** `ShopSettings.staffRejectNotifyMode` (enum, default `NOTIFY_CLIENT`) замещает env `STAFF_REJECT_NOTIFY_MODE`: чтение в staff-actions, UI-переключатель в `/admin/settings` (OPERATIONAL-секция, OPERATOR+), OWNER-гейт не нужен (не foundation). Миграция значений: env → колонка один раз при деплое (backfill-скрипт, idempotent).
+* **FR-540 (D3):** `ShopSettings.staffRejectNotifyMode` (enum, default `NOTIFY_CUSTOMER`) замещает env `STAFF_REJECT_NOTIFY_MODE`: чтение в staff-actions, UI-переключатель в `/admin/settings` (OPERATIONAL-секция, OPERATOR+), OWNER-гейт не нужен (не foundation). Миграция значений: env → колонка один раз при деплое (backfill-скрипт, idempotent).
 * **FR-541 (D4):** uk-локаль как данные: `messages/uk.json` (ICU few/many), гейт `--locales ru,en,uk` зелёный, переключатель локали тройной там, где включена; контент-строки остаются авторскими (FR-414 lineage).
 * **FR-542 (D5):** FE-форматирование сумм по registry-скейлу: утилита `formatMinor(amountMinor, currency)` на CurrencyMetadata.minorUnit (JPY 0, KWD 3, USD 2) в каталоге/чекауте/admin/бот-карточках — вместо assumptions о 2 decimals.
 * **Тесты:** политика уведомлений (3 режима) на server-уровне; uk-гейт; formatMinor BVA (0/1/max minor units).
