@@ -103,7 +103,7 @@
 **Independent Test** (spec §7.5): политика переключается в админке без рестарта; uk-гейт PASS; KWD на витрине — 3 decimals.
 
 - [ ] T060 [BE] [US5] FR-540: чтение reject-политики из `ShopSettings.staffRejectNotifyMode` (замена env) в staff-actions + PATCH в settings API (OPERATIONAL, OPERATOR+) + переключатель в `/admin/settings`; тесты 3 режимов на серверном уровне
-- [ ] T061 [FE] [US5] FR-541: `messages/uk.json` (ICU few/many, паритет ключей), `node scripts/i18n-coverage-gate.mjs --locales ru,en,uk` PASS, тройной переключатель локали (где включено); юнит-тесты паритета
+- [ ] T061 [FE] [US5] FR-541: `messages/uk.json` (ICU few/many, паритет ключей), `node scripts/i18n-coverage-gate.mjs --locales ru,en,uk` PASS; LocaleSwitcher и отдача uk ⇔ `ShopSettings.enabledLocales` содержит `uk` (управление — OWNER через `/admin/settings`, foundation-раздел локалей); юнит-тесты паритета + тест «uk в enabledLocales → доступна; убрали → недоступна»
 - [ ] T062 [BE] [US5] FR-542: `formatMinor(amountMinor, currency)` в `config/currency-registry.ts` (CurrencyMetadata.minorUnit); замена форматирований в каталоге/чекауте/админке/бот-карточках (вместо assumptions 2 decimals); BVA-тесты (JPY 0/KWD 3/USD 2, 0/1/max)
 
 ---
@@ -127,7 +127,7 @@
 
 ```
 T001 → T002, T010, T030
-T002 → T070
+T002 + T010 → T070
 T010 → T011, T013
 T012 → T020
 T013 → T023
@@ -156,7 +156,7 @@ T082 + T070 → T083
 - [x] Fan-in `+` only, fan-out `,` only
 - [x] No chained arrows on a single line
 
-Примечания к порядку: `T041 → T060` (settings-API трогает zod-схемы — после миграции); `T034 → T040` (Stripe-UI завершает zod-поверхность до characterization); `T010 → T070` не нужен — оба пишут `schema.prisma`, но в разных фазах последовательно (DB-агент один).
+Примечания к порядку: `T041 → T060` (settings-API трогает zod-схемы — после миграции); `T034 → T040` (Stripe-UI завершает zod-поверхность до characterization); `T010 → T070` формализовано ребром — оба пишут `schema.prisma` (shared file), DB-агент один, но барьер явный.
 
 ---
 
@@ -181,8 +181,8 @@ T082 + T070 → T083
 | Agent | Tasks | Can Start After |
 | ----- | ----- | --------------- |
 | [SETUP] | 4 (T001, T002, T040, T083) | immediately |
-| [DB] | 4 (T010, T011, T070) | T001 / T002 |
-| [BE] | 12 (T012, T013, T020–T023, T030, T031, T033, T041, T050, T051, T060, T062) | lane deps |
+| [DB] | 3 (T010, T011, T070) | T001 / T002 |
+| [BE] | 15 (T012, T013, T020–T023, T030, T031, T033, T041, T050, T051, T060, T062) | lane deps |
 | [FE] | 2 (T034, T061) | T030 / — |
 | [PERF] | 1 (T024) | T020 |
 | [E2E] | 2 (T032, T082) | T031 / all |
@@ -191,7 +191,7 @@ T082 + T070 → T083
 
 **Critical Path**: T001 → T030 → T031 → T032 → T080 → T083 (Stripe money-path; параллельная ветка auth: T001 → T010 → T012 → T020 → T024 → T082 → T083 — та же длина).
 
-**Total**: 27 задач.
+**Total**: 29 задач.
 
 ---
 

@@ -135,7 +135,7 @@ model Session {
 
 ### Story 5: Долги D3–D5 — polish-пакет (FR-540..542)
 * **FR-540 (D3):** `ShopSettings.staffRejectNotifyMode` (enum, default `NOTIFY_CUSTOMER`) замещает env `STAFF_REJECT_NOTIFY_MODE`: чтение в staff-actions, UI-переключатель в `/admin/settings` (OPERATIONAL-секция, OPERATOR+), OWNER-гейт не нужен (не foundation). Миграция значений: env → колонка один раз при деплое (backfill-скрипт, idempotent).
-* **FR-541 (D4):** uk-локаль как данные: `messages/uk.json` (ICU few/many), гейт `--locales ru,en,uk` зелёный, переключатель локали тройной там, где включена; контент-строки остаются авторскими (FR-414 lineage).
+* **FR-541 (D4):** uk-локаль как данные: `messages/uk.json` (ICU few/many), гейт `--locales ru,en,uk` зелёный. uk доступна в LocaleSwitcher и отдаётся сервером ⇔ `ShopSettings.enabledLocales` содержит `uk` (управление — OWNER через `/admin/settings`, foundation-раздел локалей, server-enforced); контент-строки остаются авторскими (FR-414 lineage).
 * **FR-542 (D5):** FE-форматирование сумм по registry-скейлу: утилита `formatMinor(amountMinor, currency)` на CurrencyMetadata.minorUnit (JPY 0, KWD 3, USD 2) в каталоге/чекауте/admin/бот-карточках — вместо assumptions о 2 decimals.
 * **Тесты:** политика уведомлений (3 режима) на server-уровне; uk-гейт; formatMinor BVA (0/1/max minor units).
 

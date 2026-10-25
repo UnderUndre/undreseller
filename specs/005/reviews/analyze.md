@@ -1,17 +1,17 @@
 # SpecKit Analyze: 005 (005-stripe-adapter-and-sovereign-auth)
 
 **Reviewer**: analyze (Claude self-consistency)
-**Reviewed at**: 2026-10-26T00:00:00Z
-**Commit**: 2d0b8e1
+**Reviewed at**: 2026-10-26T00:00:00Z (re-run после remediation)
+**Commit**: HEAD (remediation-коммит; первый прогон — 2d0b8e1)
 **Artifacts**: spec.md (rev 2.2), plan.md, tasks.md, research.md, data-model.md, contracts/stripe-adapter.md, quickstart.md, qa/ (rtm-matrix, test-cases, uat-scenarios, regression-suite, preliminary-rtm), requirements-audit.md
 
 ## Findings
 
 | ID | Category | Severity | Location(s) | Summary | Recommendation |
 | --- | -------- | -------- | ----------- | ------- | -------------- |
-| F1 | Inconsistency | MEDIUM | tasks.md §Agent Summary, §Total | Счётчики не сходятся с фактом: заявлено «Total: 27», фактически **29** задач; Agent Summary: `[DB]`=4 (факт 3), `[BE]`=12 (факт 15). Сами задачи/граф валидны — ошибка только в цифрах | Править числа в tasks.md (Total 29; DB 3; BE 15) — 1-строчный патч |
-| C1 | Underspecification | MEDIUM | spec.md FR-541, tasks.md T061 | uk-локаль не привязана к `ShopSettings.enabledLocales` (механизм 004): как uk «включается» на инстансе (значение enabledLocales? отдельный флаг?) не описано — риск расхождения переключателя и реально отдающихся локалей | В FR-541/T061 зафиксировать: uk доступна в переключателе ⇔ `enabledLocales` содержит 'uk'; настройка — существующий OWNER-экран настроек |
-| G1 | Agent Routing | MEDIUM | tasks.md §Dependency Graph, T010/T070 | `schema.prisma` — shared file двух задач одного агента (T010, T070); последовательность оговорена текстом и фазовыми барьерами, но **ребра T010 → T070 в графе нет** — при смене исполнителя/параллельном диспетче возможна гонка | Добавить ребро `T010 → T070` (или перенести оговорку в граф) — формализует барьер |
+| F1 | Inconsistency | ~~MEDIUM~~ RESOLVED | tasks.md §Agent Summary, §Total | Счётчики не сходились с фактом (Total 27→**29**; DB 4→3; BE 12→15) | **Закрыто remediation-раундом**: числа исправлены, автопроверка сходится |
+| C1 | Underspecification | ~~MEDIUM~~ RESOLVED | spec.md FR-541, tasks.md T061 | uk не была привязана к `ShopSettings.enabledLocales` | **Закрыто**: FR-541 + T061 теперь фиксируют uk ⇔ `enabledLocales` содержит 'uk', управление OWNER через `/admin/settings` (foundation, server-enforced) + тест «вкл/выкл» |
+| G1 | Agent Routing | ~~MEDIUM~~ RESOLVED | tasks.md §Dependency Graph | Ребро T010→T070 отсутствовало (schema.prisma shared file) | **Закрыто**: ребро `T002 + T010 → T070` в графе, граф перевалидирован (0 циклов, 0 орфанов) |
 | E1 | Coverage | LOW | spec.md NFR-1, tasks.md | NFR-1 (общий RSS ≤500 MB инстанса) не имеет выделенной задачи: покрывается частично T024 (Argon2-пик) и T082 (трейсер) | Добавить в T082 шаг «зафиксировать RSS инстанса после трейсера» — замер без новой задачи |
 | E2 | Coverage | LOW | spec.md FR-504, tasks.md | FR-504 (break-glass ADMIN_TOKEN без изменений) не имеет задачи — намеренно (no-change-requirement, покрыт регрессией TC-MAIN) | Принять как есть; пометка в Coverage Summary |
 | D1 | Constitution | LOW | plan.md §Constitution Check IX, branch | Branch `005` вместо `specs/<slug>`-фазы — тот же grandfathered-девиант, что 004 (задокументирован, retro обещана) | Закрыть в `/speckit.retrospective` 004/005 совместно |
@@ -71,14 +71,14 @@
 ## Metrics
 
 - Total Requirements: 28 (23 FR + 5 NFR)
-- Total Tasks: **29** (факт; в tasks.md заявлено 27 — F1)
+- Total Tasks: **29** (счётчики tasks.md исправлены — F1 закрыта)
 - Coverage % (requirements with ≥1 task): 27/28 = 96% (FR-504 by design; NFR-1 частично)
 - Ambiguity count: 0
 - Duplication count: 0
 - CRITICAL count: 0
 - HIGH count: 0
-- MEDIUM count: 3
-- LOW count: 4
+- MEDIUM count: 0 (3 закрыты remediation-раундом: F1, C1, G1)
+- LOW count: 4 (E1, E2, D1, D2 — приняты/retro)
 
 ## VERDICT
 
@@ -94,4 +94,4 @@ medium_count: 3
 low_count: 4
 ```
 
-MEDIUM-находки (F1 счётчики, C1 uk↔enabledLocales, G1 ребро T010→T070) — точечные правки текста/графа, не меняют скоуп и архитектуру; рекомендуются до `/speckit.review`, чтобы внешние ревьюеры не тратили раунд на них.
+Re-run после remediation: F1/C1/G1 закрыты (см. таблицу), граф перевалидирован, счётчики задач сходятся с фактом. Спека/план/таски готовы к внешнему ревью без известных придирок.
