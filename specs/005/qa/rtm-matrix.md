@@ -6,7 +6,7 @@
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | FR-501 | Argon2id + прозрачный пере-хеш scrypt | 5 | 3 | 15 High | Regression | TC-005-001, 002, 003 | T012, T020 | [PENDING] | — |
 | FR-502 | Epoch-отзыв (Model A: int-равенство) | 4 | 3 | 12 | Regression | TC-005-008, 009, 010 | T013, T023 | [PENDING] | — |
-| FR-503 | Per-IP 5/15мин → 429/30мин | 3 | 3 | 9 | Regression | TC-005-005, 006, 007 | T021 | [PENDING] | — |
+| FR-503 | Per-IP 5/15мин → 429/30мин (+регрессия per-account lockout 004) | 3 | 3 | 9 | Regression | TC-005-004, 005, 006, 007 | T021 | [PENDING] | — |
 | FR-504 | Break-glass ADMIN_TOKEN неизменен | 4 | 2 | 8 | Regression | TC-MAIN-сьюта 002 (реф) | — | n/a (003) | — |
 | FR-504a | Argon2 сериализация + бенчмарк ≤500 MB | 4 | 3 | 12 | Smoke (evidence) | TC-005-012 | T012, T024 | [PENDING] | — |
 | FR-505 | Auth-аудит события, PII-redacted | 3 | 2 | 6 | Regression | TC-005-011 | T022 | [PENDING] | — |
