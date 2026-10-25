@@ -12,7 +12,7 @@ import { logger } from '@/lib/telemetry/logger';
 
 export async function POST(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> | { id: string } }
+  context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const auth = await authenticateStaff(req, 'PERFORMER');
   if (!auth.authenticated || !auth.actor) {

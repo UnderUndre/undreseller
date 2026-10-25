@@ -11,7 +11,7 @@ const revokeSchema = z.object({
 
 export async function POST(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> | { id: string } }
+  context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const auth = await authenticateStaff(req, 'OWNER');
   if (!auth.authenticated) return auth.errorResponse!;

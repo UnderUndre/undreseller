@@ -15,7 +15,7 @@ const idSchema = z.string().uuid();
 
 export async function PATCH(
   req: NextRequest,
-  context: { params: Promise<{ id: string; itemId: string }> | { id: string; itemId: string } }
+  context: { params: Promise<{ id: string; itemId: string }> }
 ): Promise<NextResponse> {
   const auth = await authenticateStaff(req, 'PERFORMER');
   if (!auth.authenticated || !auth.actor) {

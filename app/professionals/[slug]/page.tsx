@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export default async function ProfessionalPage({
   params,
 }: {
-  params: Promise<{ slug: string }> | { slug: string };
+  params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
   const profile = await getPublicProfileBySlug(slug);

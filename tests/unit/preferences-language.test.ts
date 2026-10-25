@@ -10,7 +10,8 @@ jest.mock('@/lib/db/prisma', () => ({
 }));
 
 import { NextRequest } from 'next/server';
-import { GET, POST, PUT, localeCookieResponse } from '@/app/api/preferences/language/route';
+import { GET, POST, PUT } from '@/app/api/preferences/language/route';
+import { localeCookieResponse } from '@/lib/i18n/localeCookie';
 import { NEXT_LOCALE_COOKIE } from '@/lib/i18n/config';
 
 function jsonReq(url: string, body: unknown, method: 'PUT' | 'POST'): NextRequest {

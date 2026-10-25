@@ -8,7 +8,7 @@ const updateServiceSchema = adminServiceUpdateSchema;
 
 export async function GET(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> | { id: string } }
+  context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const auth = await authenticateStaff(req, 'PERFORMER');
   if (!auth.authenticated) return auth.errorResponse!;
@@ -28,7 +28,7 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> | { id: string } }
+  context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const auth = await authenticateStaff(req, 'OPERATOR');
   if (!auth.authenticated) return auth.errorResponse!;

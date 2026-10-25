@@ -36,7 +36,8 @@ jest.mock('@/lib/telemetry/logger', () => ({
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { verifyTelegramInitData } from '@/lib/security/initData';
-import { POST, joinFailurePayload } from '@/app/api/waitlist/join/route';
+import { POST } from '@/app/api/waitlist/join/route';
+import { joinFailurePayload } from '@/lib/waitlist/joinPayload';
 import { GET as statsGET } from '@/app/api/waitlist/stats/route';
 
 const VALID_WINDOW = {
