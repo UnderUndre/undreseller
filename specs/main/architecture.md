@@ -317,6 +317,19 @@ undreseller/
 ---
 
 ## 5. Feature Reference: `004-release-readiness` (2026-10-24)
+## 5a. Feature Reference: `005` (2026-10-26)
+
+Продолжение платёжного слоя 004 без новой топологии:
+
+- **Stripe Hosted Checkout** — третий адаптер `PaymentProvider` (`lib/payments/stripe.ts`): dashboard-driven методы, TTL сессии = hold-TTL (15 мин), сессия создаётся до постановки холда (отказ Stripe = 503 без холда), дедуп вебхука через `InboxEvent` (retention-контракт: webhook-дедуп-строки вечные), возвраты вручную через Dashboard → `RefundOperation`.
+- **Auth-харднинг**: Argon2id (`@node-rs/argon2`, пере-хеш при следующем логине, `Account.passwordAlgo`), `sessionEpoch`/`epochCreated` мгновенный отзыв (Model A), per-IP rate limit поверх per-account lockout.
+- **Tech-debt**: zod 4, консолидация booking-API, `staffRejectNotifyMode` в ShopSettings, uk-локаль, `formatMinor`, вычистка 14 schema-only моделей 003 (без SQL — таблиц не существовало).
+
+| Спека | Статус |
+|---|---|
+| `specs/005/` | spec rev 2.2 (requirements-audit PASS) + plan + research + data-model + contracts/stripe-adapter + quickstart |
+
+
 
 > Living-spec append per `/speckit.plan` (Principle VIII). Source: `specs/004-release-readiness/{spec,plan,data-model}.md`.
 
