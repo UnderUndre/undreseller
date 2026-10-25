@@ -3,13 +3,17 @@
  * Used to initialize bots and perform other startup tasks
  */
 
-import { initializeBots } from '@/lib/bot/botManager';
-import { startInboxPoller } from '@/lib/jobs/inboxPoller';
-import { logger } from '@/lib/telemetry/logger';
+// Lazy dynamic imports: instrumentation is bundled for BOTH runtimes (nodejs +
+// edge) even though register() only runs on nodejs. Static imports of modules
+// that touch node:* (bots -> prisma/crypto chain) break the edge bundle with
+// UnhandledSchemeError. Everything heavy is loaded inside register().
 
 export async function register() {
   // Only run on server
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    const { initializeBots } = await import('@/lib/bot/botManager');
+    const { startInboxPoller } = await import('@/lib/jobs/inboxPoller');
+    const { logger } = await import('@/lib/telemetry/logger');
     try {
       logger.info('[INSTRUMENTATION_REGISTER]', { timestamp: new Date().toISOString() });
       

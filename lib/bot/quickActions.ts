@@ -9,7 +9,6 @@ import { prisma } from '@/lib/db/prisma';
 import { sendWithRetry, bot } from './telegramBot';
 import { InlineKeyboard } from 'grammy';
 import { logger } from '@/lib/telemetry/logger';
-import { cancelBooking, CancellationError } from '@/lib/kernel/bookingService';
 import { resolveLocale, type I18nLocale } from '@/lib/i18n/config';
 import { getPublicBotStrings } from '@/lib/i18n/botStrings';
 
@@ -107,6 +106,9 @@ export async function cancelViaToken(
   if (!bookingId || !token) {
     return { ok: false, message: 'Usage: /cancel <bookingId> <token>' };
   }
+  // Lazy import: bookingService pulls node:crypto — a static import here would
+  // put it into the instrumentation edge-runtime bundle (UnhandledSchemeError).
+  const { cancelBooking, CancellationError } = await import('@/lib/kernel/bookingService');
   try {
     await cancelBooking({ bookingId, token, reason: 'CUSTOMER_BOT_CANCEL' });
     return { ok: true, message: '✅ Your booking is cancelled.' };
