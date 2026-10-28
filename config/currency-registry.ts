@@ -80,6 +80,17 @@ export function formatMinorUnits(amountMinor: number, currencyCode: string): str
   return `${symbol}${formattedNumber}`;
 }
 
+/**
+ * Converts a provider/user-facing major-unit amount into registry minor units
+ * using CurrencyMetadata scale (T026, FR-405) — NEVER hard-coded ×100.
+ * JPY (minorUnit 0), KWD/BHD/OMR (minorUnit 3) are handled by the registry.
+ */
+export function majorToMinorUnits(amountMajor: number, currencyCode: string): number {
+  const meta = getCurrencyMetadata(currencyCode);
+  const minorUnit = meta ? meta.minorUnit : 2;
+  return Math.round(amountMajor * Math.pow(10, minorUnit));
+}
+
 export interface ServicePriceBreakdown {
   currency: string;
   servicePriceMinor: number;

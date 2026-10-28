@@ -83,6 +83,15 @@ export function validateAndBuildServiceCart(
   for (const id of normalizedIds) {
     const item = itemMap.get(id);
     if (!item || !item.isActive || item.itemType !== 'SERVICE') {
+      // FR-426 (T090): a requested, active PRODUCT item is a mixed cart —
+      // blocked at checkout with guidance to place two separate orders
+      // (until the 003.2 fulfillment pack ships).
+      if (item && item.isActive && item.itemType === 'PRODUCT') {
+        throw new CartValidationError(
+          'MIXED_CART_TYPE',
+          'Carts mixing services and physical products are not allowed. Please place two separate orders: one for the service booking and one for the product.'
+        );
+      }
       throw new CartValidationError(
         'UNAVAILABLE_CART_ITEM',
         `Service item ${id} is not found, inactive, or not a bookable service`

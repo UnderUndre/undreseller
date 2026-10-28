@@ -1,21 +1,26 @@
 import { bot } from './telegramBot';
 import { staffBot } from './staffBot';
 import { logger } from '@/lib/telemetry/logger';
+import type { UserFromGetMe } from '@grammyjs/types';
 
 /**
  * Global bot initialization state (survives module hot-reloads in Next.js dev mode)
  */
 declare global {
+  // eslint-disable-next-line no-var -- ambient global augmentation requires `var` (TS syntax constraint)
   var __botsInitPromise: Promise<void> | null;
+  // eslint-disable-next-line no-var -- ambient global augmentation requires `var` (TS syntax constraint)
   var __botsInitialized: boolean;
-  var __clientBotInfo: any;
-  var __staffBotInfo: any;
+  // eslint-disable-next-line no-var -- ambient global augmentation requires `var` (TS syntax constraint)
+  var __clientBotInfo: UserFromGetMe | undefined;
+  // eslint-disable-next-line no-var -- ambient global augmentation requires `var` (TS syntax constraint)
+  var __staffBotInfo: UserFromGetMe | undefined;
 }
 
 globalThis.__botsInitialized ??= false;
 globalThis.__botsInitPromise ??= null;
-globalThis.__clientBotInfo ??= null;
-globalThis.__staffBotInfo ??= null;
+globalThis.__clientBotInfo ??= undefined;
+globalThis.__staffBotInfo ??= undefined;
 
 /**
  * Initialize bot info one time at server startup.
@@ -64,6 +69,18 @@ export async function initializeBots(): Promise<void> {
         botId: staffBotInfo.id,
         username: staffBotInfo.username,
       });
+
+      // T050/FR-415: persistent storefront entry — menu button opens the Mini App
+      try {
+        const webAppUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://undreseller.com';
+        await bot.api.setChatMenuButton({
+          menu_button: { type: 'web_app', text: 'Open', web_app: { url: webAppUrl } },
+        });
+        logger.info('[BOT_MENU_BUTTON_SET]', { webAppUrl });
+      } catch (menuErr: unknown) {
+        // Non-fatal: booking flow works without the menu button
+        logger.warn('[BOT_MENU_BUTTON_SET_FAILED]', { error: String(menuErr) });
+      }
 
       globalThis.__botsInitialized = true;
       logger.info('[BOT_INIT_COMPLETE]', { timestamp: new Date().toISOString() });

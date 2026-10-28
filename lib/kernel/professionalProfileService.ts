@@ -4,11 +4,23 @@
  * Standards: NIST SP 800-218 SSDF & ISO/IEC/IEEE 12207:2017
  */
 
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma';
 import { StaffActorContext } from '../security/staffRbac';
 import { emitAuditEvent } from '../security/staffAuth';
 import { resolveServicePrice } from '../../config/currency-registry';
 import { HTML_TAG_REGEX, SAFE_URL_REGEX } from '../../config/shop.config';
+
+/** Error carrying an HTTP status code consumed by API route handlers. */
+type StatusCodeError = Error & { statusCode: number };
+
+function httpError(statusCode: number, message: string): StatusCodeError {
+  return Object.assign(new Error(message), { statusCode });
+}
+
+type ProfileWithStaffAndPortfolio = Prisma.ProfessionalProfileGetPayload<{
+  include: { staffMember: true; portfolioItems: true; services: { include: { item: true } } };
+}>;
 
 export interface PublicPortfolioItemView {
   id: string;
@@ -120,26 +132,22 @@ export async function getPublicProfileBySlug(
 export async function assertProfileOwnership(
   profileId: string,
   actor: StaffActorContext
-): Promise<any> {
+): Promise<ProfileWithStaffAndPortfolio> {
   const profile = await prisma.professionalProfile.findUnique({
     where: { id: profileId },
     include: { staffMember: true },
   });
 
   if (!profile) {
-    const error = new Error(`Profile not found: ${profileId}`);
-    (error as any).statusCode = 404;
-    throw error;
+    throw httpError(404, `Profile not found: ${profileId}`);
   }
 
   // PERFORMER can only access and edit their own profile
   if (actor.actorRole === 'PERFORMER' && profile.staffMemberId !== actor.actorId) {
-    const error = new Error('Forbidden: Performer cannot manage another staff member profile');
-    (error as any).statusCode = 403;
-    throw error;
+    throw httpError(403, 'Forbidden: Performer cannot manage another staff member profile');
   }
 
-  return profile;
+  return profile as ProfileWithStaffAndPortfolio;
 }
 
 export interface UpdateProfileInput {
@@ -154,7 +162,7 @@ export async function updateProfile(
   id: string,
   input: UpdateProfileInput,
   actor: StaffActorContext
-): Promise<any> {
+): Promise<ProfileWithStaffAndPortfolio> {
   const profile = await assertProfileOwnership(id, actor);
 
   if (input.headline && HTML_TAG_REGEX.test(input.headline)) {
@@ -200,7 +208,7 @@ export async function addPortfolioItem(
   profileId: string,
   item: { title: string; description?: string | null; mediaUrl: string; sortOrder?: number; isPublished?: boolean },
   actor: StaffActorContext
-): Promise<any> {
+): Promise<Prisma.PortfolioItemGetPayload<Record<string, never>>> {
   await assertProfileOwnership(profileId, actor);
 
   if (HTML_TAG_REGEX.test(item.title) || (item.description && HTML_TAG_REGEX.test(item.description))) {

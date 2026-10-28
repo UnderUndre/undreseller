@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/db/prisma';
 import { authenticateAdmin } from '@/lib/security/adminAuth';
+import { authenticateStaff } from '@/lib/security/staffAuth';
 import { logger } from '@/lib/telemetry/logger';
 
 const hourEntrySchema = z
@@ -60,6 +61,34 @@ const putHoursSchema = z
       message: 'Overlapping intervals detected for the same itemId and weekday',
     }
   );
+
+/**
+ * GET (T063, US9) — weekly working-hours summary for the admin team page.
+ * OPERATOR and above see all; PERFORMER sees only their own resourceId hours.
+ */
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const auth = await authenticateStaff(req, 'PERFORMER');
+  if (!auth.authenticated || !auth.actor) {
+    return auth.errorResponse ?? NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const where =
+      auth.actor.actorRole === 'PERFORMER' && auth.actor.resourceId
+        ? { itemId: auth.actor.resourceId }
+        : {};
+
+    const hours = await prisma.weeklyHours.findMany({
+      where,
+      orderBy: [{ itemId: 'asc' }, { weekday: 'asc' }, { startMin: 'asc' }],
+    });
+
+    return NextResponse.json({ hours }, { status: 200 });
+  } catch (err: unknown) {
+    logger.error('Failed to list weekly hours', { error: String(err) });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
 
 export async function PUT(req: NextRequest): Promise<NextResponse> {
   const auth = authenticateAdmin(req);

@@ -11,6 +11,47 @@ export interface FulfillPaymentParams {
   currency: string;
 }
 
+/**
+ * T023: set holdFrozenAt on the first gateway `confirming` callback (data-model §1.1).
+ * Idempotent: the FIRST confirming wins — the original freeze timestamp is never
+ * overwritten. The freeze suspends the TTL sweep; the hard ceiling
+ * MAX_CONFIRMING_FREEZE (24h) is enforced by the hold sweep (inngest) and the
+ * FSM (bookingFsm.expireHold): past it the hold expires, slot releases, and the
+ * order goes to FR-432 resolution when a late payment lands.
+ */
+export async function recordConfirmingFreeze(
+  orderId: string,
+  now: Date = new Date()
+): Promise<{ frozen: boolean; alreadyFrozen: boolean }> {
+  return prisma.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      include: { reservation: true },
+    });
+
+    const reservation = order?.reservation;
+    if (
+      !reservation ||
+      (reservation.status !== 'HELD' && reservation.status !== 'PAYMENT_PENDING')
+    ) {
+      return { frozen: false, alreadyFrozen: false };
+    }
+
+    if (reservation.holdFrozenAt) {
+      // First-confirming-wins: never move the freeze forward.
+      return { frozen: true, alreadyFrozen: true };
+    }
+
+    await tx.slotReservation.update({
+      where: { id: reservation.id },
+      data: { holdFrozenAt: now },
+    });
+
+    logger.info('[HOLD_FROZEN_CONFIRMING]', { orderId, slotId: reservation.id });
+    return { frozen: true, alreadyFrozen: false };
+  });
+}
+
 export async function fulfillPayment(
   params: FulfillPaymentParams
 ): Promise<{ status: string; requiresOperatorAction: boolean }> {
@@ -61,7 +102,7 @@ export async function fulfillPayment(
       await acquireItemSlotLock(tx, itemId);
     }
 
-    // 4. Record immutable PaymentEvent
+    // 4. Record immutable PaymentEvent + explicit provider ledger link (T022, data-model 1.2)
     await tx.paymentEvent.create({
       data: {
         orderId: order.id,
@@ -72,6 +113,24 @@ export async function fulfillPayment(
         accepted: true,
       },
     });
+
+    if (providerRef) {
+      await tx.paymentAllocationLink.upsert({
+        where: {
+          provider_providerPaymentId: {
+            provider,
+            providerPaymentId: providerRef,
+          },
+        },
+        create: {
+          orderId: order.id,
+          provider,
+          providerPaymentId: providerRef,
+          allocationKind: 'FULL_PAYMENT',
+        },
+        update: {},
+      });
+    }
 
     let requiresOperatorAction = false;
     let operatorActionReason: string | null = null;

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useTelegram } from '../tma/TelegramProvider';
 
 interface InvoiceResultData {
@@ -37,6 +38,8 @@ export function CheckoutModal({
   orderStatus?: string;
 }) {
   const { isTma, initDataRaw, user, hapticFeedback } = useTelegram();
+  // T040 (FR-411): checkout chrome (FR-414: itemTitle is authored content).
+  const t = useTranslations('web.checkout');
 
   const [customerName, setCustomerName] = useState(user?.first_name || '');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -67,7 +70,7 @@ export function CheckoutModal({
       const trimmedName = customerName.trim();
       const trimmedPhone = customerPhone.trim();
       if (!trimmedName || !trimmedPhone) {
-        setErrorMsg('Укажите имя и номер телефона для оформления заказа');
+        setErrorMsg(t('errorProvideContact'));
         setLoading(false);
         hapticFeedback.notificationOccurred('error');
         return;
@@ -86,7 +89,7 @@ export function CheckoutModal({
 
       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.error || 'Failed to initialize payment');
+        throw new Error(errData.error || t('initFailed'));
       }
 
       const data = await res.json();
@@ -103,14 +106,17 @@ export function CheckoutModal({
   if (invoiceResult) {
     if (invoiceResult.paymentMethod === 'PAY_ON_SITE') {
       return (
-        <div className="bg-emerald-950/50 border border-emerald-500/50 rounded-2xl p-8 text-center space-y-4">
+        <div className="bg-green-900/50 border border-green-500/50 rounded-2xl p-8 text-center space-y-4">
           <div className="text-4xl">✅</div>
-          <h3 className="text-2xl font-bold text-emerald-400">
-            Бронирование подтверждено (Оплата при визите)
+          <h3 className="text-2xl font-bold text-green-400">
+            {t('payOnSiteConfirmedTitle')}
           </h3>
-          <p className="text-gray-300 text-sm">
-            Заказ <strong>{invoiceResult.order?.orderNumber}</strong> зарегистрирован без предоплаты.
-            Оплата ({priceFormatted}) производится на месте после оказания услуги.
+          <p className="text-base-content/80 text-sm">
+            {t.rich('payOnSiteConfirmedDesc', {
+              order: (chunks) => <strong>{invoiceResult.order?.orderNumber || chunks}</strong>,
+              orderNumber: invoiceResult.order?.orderNumber ?? '',
+              price: priceFormatted,
+            })}
           </p>
         </div>
       );
@@ -118,14 +124,16 @@ export function CheckoutModal({
 
     if (invoiceResult.deferredUntilStaffApproval) {
       return (
-        <div className="bg-amber-950/50 border border-amber-500/50 rounded-2xl p-8 text-center space-y-4">
+        <div className="bg-warning-surface/50 border border-warning/50 rounded-2xl p-8 text-center space-y-4">
           <div className="text-4xl">⏳</div>
-          <h3 className="text-2xl font-bold text-amber-300">
-            Ожидается подтверждение мастера (AFTER_STAFF_APPROVAL)
+          <h3 className="text-2xl font-bold text-warning">
+            {t('deferredTitle')}
           </h3>
-          <p className="text-gray-300 text-sm">
-            Заявка <strong>{invoiceResult.order?.orderNumber}</strong> отправлена мастеру в Staff-бот.
-            Как только мастер нажмёт «Принять», вам придёт счёт с 15-минутным окном на оплату.
+          <p className="text-base-content/80 text-sm">
+            {t.rich('deferredDesc', {
+              order: (chunks) => <strong>{invoiceResult.order?.orderNumber || chunks}</strong>,
+              orderNumber: invoiceResult.order?.orderNumber ?? '',
+            })}
           </p>
         </div>
       );
@@ -133,37 +141,40 @@ export function CheckoutModal({
 
     if (invoiceResult.paymentMethod === 'TELEGRAM_STARS') {
       return (
-        <div className="bg-yellow-950/40 border border-yellow-500/50 rounded-2xl p-8 text-center space-y-4">
+        <div className="bg-warning-surface/40 border border-warning/50 rounded-2xl p-8 text-center space-y-4">
           <div className="text-4xl">⭐</div>
-          <h3 className="text-2xl font-bold text-yellow-400">Telegram Stars Invoice Issued</h3>
-          <p className="text-gray-300 text-sm">
-            Invoice for order <strong>{invoiceResult.order?.orderNumber}</strong> has been generated.
+          <h3 className="text-2xl font-bold text-warning">{t('starsTitle')}</h3>
+          <p className="text-base-content/80 text-sm">
+            {t.rich('starsIssued', {
+              order: (chunks) => <strong>{invoiceResult.order?.orderNumber || chunks}</strong>,
+              orderNumber: invoiceResult.order?.orderNumber ?? '',
+            })}
           </p>
-          <div className="py-4 font-mono text-xl font-bold text-white">
-            Total: {invoiceResult.starsPrice?.toLocaleString()} Stars (XTR)
+          <div className="py-4 font-mono text-xl font-bold text-base-content">
+            {t('starsTotal', { count: invoiceResult.starsPrice?.toLocaleString() ?? '0' })}
           </div>
-          <p className="text-xs text-gray-400">
-            Please complete the payment prompt inside your Telegram chat or app dialog.
+          <p className="text-xs text-base-content/60">
+            {t('starsPrompt')}
           </p>
         </div>
       );
     }
 
     return (
-      <div className="bg-blue-950/40 border border-blue-500/50 rounded-2xl p-8 text-center space-y-4">
+      <div className="bg-purple-900/40 border border-purple-500/50 rounded-2xl p-8 text-center space-y-4">
         <div className="text-4xl">🌐</div>
-        <h3 className="text-2xl font-bold text-blue-400">NOWPayments Crypto Invoice</h3>
-        <p className="text-gray-300 text-sm">
-          Pay securely in BTC, ETH, USDT, TON or 150+ other cryptocurrencies.
+        <h3 className="text-2xl font-bold text-purple-400">{t('cryptoTitle')}</h3>
+        <p className="text-base-content/80 text-sm">
+          {t('cryptoDesc')}
         </p>
         <div className="pt-4">
           <a
             href={invoiceResult.invoiceUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-block bg-blue-600 hover:bg-blue-500 text-white font-extrabold py-3.5 px-8 rounded-xl shadow-lg transition"
+            className="inline-block bg-purple-600 hover:bg-purple-500 text-white font-extrabold py-3.5 px-8 rounded-xl shadow-lg transition"
           >
-            Open Hosted Invoice →
+            {t('openInvoice')}
           </a>
         </div>
       </div>
@@ -171,57 +182,61 @@ export function CheckoutModal({
   }
 
   return (
-    <div className="bg-gray-900/80 border border-gray-800 rounded-2xl p-8 shadow-2xl space-y-6">
+    <div className="bg-base-200/80 border border-base-300 rounded-2xl p-8 shadow-2xl space-y-6">
       <div>
-        <h2 className="text-2xl font-extrabold text-white mb-1">Способ оплаты</h2>
-        <p className="text-sm text-gray-400">
-          Заказ: <strong className="text-gray-200">{itemTitle}</strong> · Сумма:{' '}
-          <strong className="text-white">{priceFormatted}</strong>
+        <h2 className="text-2xl font-extrabold text-base-content mb-1">{t('paymentMethod')}</h2>
+        <p className="text-sm text-base-content/60">
+          {t.rich('orderAndSum', {
+            order: () => <strong className="text-base-content/90">{itemTitle}</strong>,
+            sum: () => <strong className="text-base-content">{priceFormatted}</strong>,
+            title: itemTitle,
+            price: priceFormatted,
+          })}
         </p>
         {prepaymentTiming === 'AFTER_STAFF_APPROVAL' && orderStatus === 'PENDING' && (
-          <p className="text-xs text-amber-300 mt-2">
-            ℹ️ Включён режим оплаты после одобрения мастера (AFTER_STAFF_APPROVAL). При выборе онлайн-предоплаты счёт на 15 минут выставляется после подтверждения записи мастером.
+          <p className="text-xs text-warning mt-2">
+            {t('deferredNotice')}
           </p>
         )}
       </div>
 
       {errorMsg && (
-        <div className="p-3 bg-rose-950/80 border border-rose-500 rounded-lg text-rose-200 text-xs">
+        <div className="p-3 bg-error-surface/80 border border-error rounded-lg text-error text-xs">
           ⚠️ {errorMsg}
         </div>
       )}
 
       {!isTma && !orderId && (
-        <div className="space-y-3 border-t border-b border-gray-800 py-4">
+        <div className="space-y-3 border-t border-b border-base-300 py-4">
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Full Name *</label>
+            <label className="block text-xs text-base-content/60 mb-1">{t('fullName')}</label>
             <input
               type="text"
               required
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
-              className="bg-gray-950 border border-gray-800 text-white px-3 py-2 rounded-lg w-full text-sm"
+              className="bg-base-100 border border-base-300 text-base-content px-3 py-2 rounded-lg w-full text-sm"
               placeholder="Alice Johnson"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Phone Number *</label>
+            <label className="block text-xs text-base-content/60 mb-1">{t('phone')}</label>
             <input
               type="tel"
               required
               value={customerPhone}
               onChange={(e) => setCustomerPhone(e.target.value)}
-              className="bg-gray-950 border border-gray-800 text-white px-3 py-2 rounded-lg w-full text-sm"
+              className="bg-base-100 border border-base-300 text-base-content px-3 py-2 rounded-lg w-full text-sm"
               placeholder="+1 555 123 4567"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Email (Optional)</label>
+            <label className="block text-xs text-base-content/60 mb-1">{t('email')}</label>
             <input
               type="email"
               value={customerEmail}
               onChange={(e) => setCustomerEmail(e.target.value)}
-              className="bg-gray-950 border border-gray-800 text-white px-3 py-2 rounded-lg w-full text-sm"
+              className="bg-base-100 border border-base-300 text-base-content px-3 py-2 rounded-lg w-full text-sm"
               placeholder="alice@example.com"
             />
           </div>
@@ -234,16 +249,16 @@ export function CheckoutModal({
             type="button"
             disabled={loading}
             onClick={() => handleSelectRail('PAY_ON_SITE')}
-            className={`flex flex-col items-center justify-center p-5 rounded-xl border text-white font-bold transition ${
+            className={`flex flex-col items-center justify-center p-5 rounded-xl border text-base-content font-bold transition ${
               defaultPaymentType === 'PAY_ON_SITE'
-                ? 'border-emerald-500 bg-emerald-950/50 hover:bg-emerald-950/70'
-                : 'border-emerald-700/50 bg-emerald-950/20 hover:bg-emerald-950/40'
+                ? 'border-green-500 bg-green-900/50 hover:bg-green-900/70'
+                : 'border-green-700/50 bg-green-900/20 hover:bg-green-900/40'
             }`}
           >
             <span className="text-2xl mb-1">💵</span>
-            <span className="text-base text-emerald-300">Оплата на месте (PAY_ON_SITE)</span>
-            <span className="text-xs text-gray-400 font-normal mt-1">
-              Без онлайн-предоплаты — наличными или картой при визите
+            <span className="text-base text-green-300">{t('payOnSiteTitle')}</span>
+            <span className="text-xs text-base-content/60 font-normal mt-1">
+              {t('payOnSiteDesc')}
             </span>
           </button>
         )}
@@ -253,12 +268,12 @@ export function CheckoutModal({
             type="button"
             disabled={loading}
             onClick={() => handleSelectRail('TELEGRAM_STARS')}
-            className="flex flex-col items-center justify-center p-6 rounded-xl border border-yellow-700/50 bg-yellow-950/30 hover:bg-yellow-950/60 text-white font-bold transition group"
+            className="flex flex-col items-center justify-center p-6 rounded-xl border border-warning/50 bg-warning-surface/30 hover:bg-warning-surface/60 text-white font-bold transition group"
           >
             <span className="text-3xl mb-2 group-hover:scale-110 transition">⭐</span>
-            <span className="text-base text-yellow-300">Telegram Stars</span>
-            <span className="text-xs text-gray-400 font-normal mt-1">
-              {starsPrice ? `${starsPrice.toLocaleString()} XTR` : 'Digital in-app tokens'}
+            <span className="text-base text-warning">Telegram Stars</span>
+            <span className="text-xs text-base-content/60 font-normal mt-1">
+              {starsPrice ? `${starsPrice.toLocaleString()} XTR` : t('digitalTokens')}
             </span>
           </button>
 
@@ -266,17 +281,17 @@ export function CheckoutModal({
             type="button"
             disabled={loading}
             onClick={() => handleSelectRail('CRYPTO_GATEWAY')}
-            className="flex flex-col items-center justify-center p-6 rounded-xl border border-blue-700/50 bg-blue-950/30 hover:bg-blue-950/60 text-white font-bold transition group"
+            className="flex flex-col items-center justify-center p-6 rounded-xl border border-purple-700/50 bg-purple-900/30 hover:bg-purple-900/60 text-white font-bold transition group"
           >
             <span className="text-3xl mb-2 group-hover:scale-110 transition">🪙</span>
-            <span className="text-base text-blue-300">Crypto Gateway</span>
-            <span className="text-xs text-gray-400 font-normal mt-1">BTC, TON, USDT, ETH</span>
+            <span className="text-base text-purple-300">Crypto Gateway</span>
+            <span className="text-xs text-base-content/60 font-normal mt-1">BTC, TON, USDT, ETH</span>
           </button>
         </div>
       </div>
 
-      <p className="text-center text-xs text-gray-500">
-        Transactions are cryptographically verified and recorded on ledger.
+      <p className="text-center text-xs text-base-content/50">
+        {t('ledgerNote')}
       </p>
     </div>
   );

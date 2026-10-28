@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { authenticateStaff } from '@/lib/security/staffAuth';
+import { getAnswersForBookings } from '@/lib/kernel/customFieldService';
 import { logger } from '@/lib/telemetry/logger';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -58,7 +59,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       };
     });
 
-    return NextResponse.json({ bookings }, { status: 200 });
+    // US6 (FR-424): sanitized custom-field answers travel with each booking
+    // (staff/authorized roles only — this route is authenticateStaff-gated).
+    const answersByBooking = await getAnswersForBookings(reservations.map((r) => r.id));
+    const bookingsWithAnswers = bookings.map((b) => ({
+      ...b,
+      fieldAnswers: answersByBooking[b.bookingId] ?? [],
+    }));
+
+    return NextResponse.json({ bookings: bookingsWithAnswers }, { status: 200 });
   } catch (err: unknown) {
     logger.error('Failed to list staff bookings', { error: String(err) });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

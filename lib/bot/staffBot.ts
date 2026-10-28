@@ -1,7 +1,10 @@
 import { Bot, InlineKeyboard } from 'grammy';
-import { prisma } from '@/lib/db/prisma';
+import type { UserFromGetMe } from '@grammyjs/types';
 import { logger } from '@/lib/telemetry/logger';
+import { getCurrencyMetadata } from '../../config/currency-registry';
 import { enqueueTelegramOutbox, OUTBOX_PRIORITY, classifyTelegramError } from './telegramOutbox';
+import { formatBotString, getStaffBotStrings } from '@/lib/i18n/botStrings';
+import type { I18nLocale } from '@/lib/i18n/config';
 
 const staffToken = process.env.STAFF_BOT_TOKEN || 'DUMMY_STAFF_TOKEN_FOR_BUILD';
 
@@ -9,11 +12,8 @@ const staffToken = process.env.STAFF_BOT_TOKEN || 'DUMMY_STAFF_TOKEN_FOR_BUILD';
  * Get cached botInfo from globalThis if available.
  * This survives Next.js module hot-reloads during development.
  */
-function getCachedStaffBotInfo(): any {
-  if (typeof globalThis !== 'undefined' && (globalThis as any).__staffBotInfo) {
-    return (globalThis as any).__staffBotInfo;
-  }
-  return undefined;
+function getCachedStaffBotInfo(): UserFromGetMe | undefined {
+  return typeof globalThis !== 'undefined' ? globalThis.__staffBotInfo : undefined;
 }
 
 // Create bot with cached botInfo if available
@@ -25,8 +25,8 @@ export const staffBot = new Bot(staffToken, {
 export const GDPR_REDACTED_PLACEHOLDER = '[ДАННЫЕ_КЛИЕНТА_УДАЛЕНЫ_ПО_GDPR]';
 export const MAGIC_RESCHEDULE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-export function maskCustomerPhone(phone: string | null | undefined): string {
-  if (!phone) return 'Не указан';
+export function maskCustomerPhone(phone: string | null | undefined, locale: I18nLocale = 'ru'): string {
+  if (!phone) return getStaffBotStrings(locale).phoneNotSpecified;
   const digits = String(phone).replace(/[^\d]/g, '');
   if (digits.length < 4) return '***';
   const last4 = digits.slice(-4);
@@ -62,92 +62,113 @@ export interface StaffOrderCardData {
   confirmationStatus?: string;
 }
 
-export function formatStaffOrderCard(data: StaffOrderCardData): string {
-  const formattedPrice = (data.totalMinor / 100).toFixed(2);
-  const clientSegmentLabel = data.isNewClient ? '🆕 Новый клиент' : '⭐ Постоянный клиент';
+export function formatStaffOrderCard(data: StaffOrderCardData, locale: I18nLocale = 'ru'): string {
+  // T026: registry minor-unit scale (JPY 0 / KWD 3), never hard-coded /100.
+  // T041 (FR-411/412): staff-bot chrome via StaffBotStrings keyed by
+  // ShopSettings.defaultLocale; service titles (business data) stay authored.
+  const minorUnit = getCurrencyMetadata(data.currency)?.minorUnit ?? 2;
+  const formattedPrice = (data.totalMinor / Math.pow(10, minorUnit)).toFixed(minorUnit);
+  const st = getStaffBotStrings(locale);
+  const clientSegmentLabel = data.isNewClient ? st.card.newClient : st.card.returningClient;
   const paymentLabel =
-    data.paymentType === 'PAY_ON_SITE' ? '💵 Оплата на месте' : '💳 Онлайн-предоплата';
+    data.paymentType === 'PAY_ON_SITE' ? st.card.payOnSite : st.card.prepaymentOnline;
   // Админки нет: примечание показываем мастеру целиком, оно нужно для работы.
   const notesText = (data.customerNotes || '').trim();
-  const notesIndicator = notesText ? `📝 Примечание: ${notesText}` : '📝 Примечание: нет';
+  const notesIndicator = notesText
+    ? formatBotString(st.card.notesWithText, { notes: notesText })
+    : st.card.notesNone;
 
   const servicesList = data.serviceTitles.map((t, i) => `  ${i + 1}. ${t}`).join('\n');
 
   const contactsLines: string[] = [];
   if (data.customerPhone) {
-    contactsLines.push(`📞 Телефон: ${data.customerPhone}`);
+    contactsLines.push(formatBotString(st.card.phone, { phone: data.customerPhone }));
   }
   if (data.hasWhatsApp) {
-    contactsLines.push('💬 WhatsApp: есть (по указанному номеру)');
+    contactsLines.push(st.card.whatsapp);
   }
   if (data.customerTgUsername) {
-    contactsLines.push(`📱 Telegram: @${data.customerTgUsername}`);
+    contactsLines.push(formatBotString(st.card.telegram, { username: data.customerTgUsername }));
   } else if (data.hasTelegram) {
-    contactsLines.push('📱 Telegram: есть (юзернейм не указан)');
+    contactsLines.push(st.card.telegramNoUsername);
   }
 
   return [
-    `🛎 Новая запись #${data.orderNumber}`,
-    `👤 Клиент: ${data.customerName || 'Гость'} (${clientSegmentLabel})`,
+    formatBotString(st.card.newOrder, { orderNumber: data.orderNumber }),
+    formatBotString(st.card.client, {
+      name: data.customerName || st.card.guest,
+      segment: clientSegmentLabel,
+    }),
     ...contactsLines,
-    `🧰 Услуги (${data.totalDurationMin} мин):\n${servicesList}`,
-    `🕒 Время: ${data.startTimeIso} — ${data.endTimeIso}`,
-    `💰 Сумма: ${formattedPrice} ${data.currency} (${paymentLabel})`,
+    formatBotString(st.card.services, { minutes: data.totalDurationMin, list: servicesList }),
+    formatBotString(st.card.time, { start: data.startTimeIso, end: data.endTimeIso }),
+    formatBotString(st.card.total, { price: `${formattedPrice} ${data.currency}`, payment: paymentLabel }),
     notesIndicator,
     '',
-    '📋 Контакты для копирования в WhatsApp/Telegram:',
+    st.card.contactsCopyHeader,
     `${data.customerName || 'Клиент'} ${data.customerPhone || ''} ${data.customerTgUsername ? '@' + data.customerTgUsername : ''}`.trim(),
   ].join('\n');
 }
 
-export function formatRedactedStaffOrderCard(orderNumber: string, finalStatusLabel: string): string {
+export function formatRedactedStaffOrderCard(
+  orderNumber: string,
+  finalStatusLabel: string,
+  locale: I18nLocale = 'ru'
+): string {
+  const st = getStaffBotStrings(locale);
   return [
-    `📋 Заказ #${orderNumber} — ${finalStatusLabel}`,
+    formatBotString(st.card.newOrder, { orderNumber })
+      .replace(/^🛎/, '📋') + ` — ${finalStatusLabel}`,
     `🔒 Персональные данные: ${GDPR_REDACTED_PLACEHOLDER}`,
   ].join('\n');
 }
 
-export function buildStaffActionKeyboard(orderId: string): InlineKeyboard {
+export function buildStaffActionKeyboard(orderId: string, locale: I18nLocale = 'ru'): InlineKeyboard {
+  const kb = getStaffBotStrings(locale).keyboard;
   return new InlineKeyboard()
-    .text('✅ Принять', `staff:approve:${orderId}`)
-    .text('❌ Отклонить', `staff:reject:${orderId}`)
+    .text(kb.approve, `staff:approve:${orderId}`)
+    .text(kb.reject, `staff:reject:${orderId}`)
     .row()
-    .text('🔄 Перенести', `staff:reschedule:${orderId}`)
-    .text('🚫 В чёрный список', `staff:blacklist:${orderId}`)
+    .text(kb.reschedule, `staff:reschedule:${orderId}`)
+    .text(kb.blacklist, `staff:blacklist:${orderId}`)
     .row()
-    .text('✅ Заказ выполнен', `staff:fulfill:${orderId}`)
+    .text(kb.fulfill, `staff:fulfill:${orderId}`)
     .row()
-    .text('📋 Копировать контакты', `staff:copy_contacts:${orderId}`);
+    .text(kb.copyContacts, `staff:copy_contacts:${orderId}`);
 }
 
 /**
  * Формирует готовый текст контактов клиента для копирования мастером
  * в WhatsApp/Telegram. Вызывается при нажатии «📋 Копировать контакты».
  */
-export function formatCopyContactsText(params: {
-  orderNumber: string;
-  customerName?: string | null;
-  customerPhone?: string | null;
-  customerTgUsername?: string | null;
-  hasWhatsApp?: boolean | null;
-  hasTelegram?: boolean | null;
-}): string {
+export function formatCopyContactsText(
+  params: {
+    orderNumber: string;
+    customerName?: string | null;
+    customerPhone?: string | null;
+    customerTgUsername?: string | null;
+    hasWhatsApp?: boolean | null;
+    hasTelegram?: boolean | null;
+  },
+  locale: I18nLocale = 'ru'
+): string {
   const { orderNumber, customerName, customerPhone } = params;
   let tgUsername = (params.customerTgUsername || '').trim();
   if (tgUsername.startsWith('@')) tgUsername = tgUsername.slice(1);
 
+  const st = getStaffBotStrings(locale).copyContacts;
   const lines: string[] = [
-    `Контакты клиента · заказ #${orderNumber}`,
-    `Имя: ${customerName || '—'}`,
-    `Телефон: ${customerPhone || '—'}`,
+    formatBotString(st.header, { orderNumber }),
+    formatBotString(st.name, { name: customerName || '—' }),
+    formatBotString(st.phone, { phone: customerPhone || '—' }),
   ];
   if (params.hasWhatsApp) {
-    lines.push(`WhatsApp: есть (${customerPhone || 'тот же номер'})`);
+    lines.push(formatBotString(st.whatsapp, { phone: customerPhone || '—' }));
   }
   if (tgUsername) {
-    lines.push(`Telegram: @${tgUsername}`);
+    lines.push(formatBotString(st.telegram, { username: tgUsername }));
   } else if (params.hasTelegram) {
-    lines.push('Telegram: есть (юзернейм не указан)');
+    lines.push(st.telegramNoUsername);
   }
   return lines.join('\n');
 }
@@ -187,61 +208,56 @@ export interface MasterTemplateParams {
 
 export function formatMasterTemplate(
   action: 'approve' | 'reject' | 'reschedule' | 'blacklist' | 'fulfill',
-  params: MasterTemplateParams
+  params: MasterTemplateParams,
+  locale: I18nLocale = 'ru'
 ): string {
-  const name = params.customerName || 'Здравствуйте';
+  // T041 (FR-411): customer-facing template texts via StaffBotStrings.
+  const tpl = getStaffBotStrings(locale).templates;
+  const name = params.customerName || tpl.greetingFallback;
   const timeRange = formatTimeRange(params.startTimeIso, params.endTimeIso);
   const servicesLine = params.serviceTitles && params.serviceTitles.length > 0
-    ? `Услуги: ${params.serviceTitles.join(', ')}.`
+    ? formatBotString(tpl.services, { services: params.serviceTitles.join(', ') })
     : null;
   const durationLine = params.totalDurationMin
-    ? `Длительность: ${params.totalDurationMin} мин.`
+    ? formatBotString(tpl.duration, { minutes: params.totalDurationMin })
     : null;
   const bookingDetails = [servicesLine, durationLine, timeRange].filter(Boolean).join(' ');
 
   switch (action) {
     case 'approve':
       return [
-        `${name}, ваша запись #${params.orderNumber} подтверждена! ✅`,
-        bookingDetails ? bookingDetails : 'Ждём вас в назначенное время.',
-        'Оплата — на месте. Если планы изменятся, напишите нам заранее.',
+        formatBotString(tpl.approveBody, { name, orderNumber: params.orderNumber }),
+        bookingDetails ? bookingDetails : tpl.waitAtTime,
+        tpl.approveFooter,
       ].join('\n');
     case 'reject':
       return [
-        `${name}, к сожалению, запись #${params.orderNumber} не может быть принята. ❌`,
-        bookingDetails || 'Напишите нам — подберём другое удобное время.',
+        formatBotString(tpl.rejectBody, { name, orderNumber: params.orderNumber }),
+        bookingDetails || tpl.rejectFooter,
       ].join('\n');
     case 'reschedule': {
       const linkLine = params.magicRescheduleUrl
-        ? `Выберите новое удобное время по одноразовой ссылке: ${params.magicRescheduleUrl}`
-        : 'Напишите нам — подберём новое удобное время.';
+        ? formatBotString(tpl.rescheduleLink, { url: params.magicRescheduleUrl })
+        : tpl.rescheduleNoLink;
       return [
-        `${name}, запись #${params.orderNumber} нужно перенести. 🔄`,
-        bookingDetails ? bookingDetails : '✏️ Мастер добавит сюда день и время переноса.',
+        formatBotString(tpl.rescheduleIntro, { name, orderNumber: params.orderNumber }),
+        bookingDetails ? bookingDetails : tpl.reschedulePlaceholder,
         linkLine,
       ].join('\n');
     }
     case 'blacklist':
       return [
-        `${name}, запись #${params.orderNumber} аннулирована.`,
+        formatBotString(tpl.blacklistIntro, { name, orderNumber: params.orderNumber }),
         ...(bookingDetails ? [bookingDetails] : []),
-        'Причина: нарушение правил сервиса (фиксированный прайс, запросы скидок/торга не рассматриваются). Доступ к онлайн-записи ограничен.',
+        tpl.blacklistReason,
       ].join('\n');
     case 'fulfill':
       return [
-        `${name}, спасибо за визит! ✅ Заказ #${params.orderNumber} выполнен.`,
+        formatBotString(tpl.fulfillIntro, { name, orderNumber: params.orderNumber }),
         ...(bookingDetails ? [bookingDetails] : []),
-        'Будем рады видеть вас снова.',
+        tpl.fulfillFooter,
       ].join('\n');
   }
-}
-
-function getRescheduleSecret(): string {
-  return (
-    process.env.STAFF_WEBHOOK_SECRET ||
-    process.env.ADMIN_TOKEN ||
-    'default-sovereign-reschedule-secret'
-  );
 }
 
 // Server-only crypto-функции живут в ./magicReschedule (node:crypto нельзя
@@ -250,10 +266,11 @@ function getRescheduleSecret(): string {
 
 export async function dispatchStaffOrderPagerCard(
   data: StaffOrderCardData,
-  destinationChatId: string
+  destinationChatId: string,
+  locale: I18nLocale = 'ru'
 ): Promise<{ queuedId: string; deduplicated: boolean }> {
-  const text = formatStaffOrderCard(data);
-  const keyboard = buildStaffActionKeyboard(data.orderId);
+  const text = formatStaffOrderCard(data, locale);
+  const keyboard = buildStaffActionKeyboard(data.orderId, locale);
 
   const res = await enqueueTelegramOutbox({
     botProfile: 'STAFF_BOT',

@@ -3,10 +3,13 @@
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { CatalogItem } from './ItemCard';
+import { useTranslations } from 'next-intl';
 
 export const MAX_CART_SERVICES = 10;
 
 export function CartDrawer({ items }: { items: CatalogItem[] }) {
+  // T040 (FR-411): cart chrome; service titles/durations stay authored (FR-414).
+  const t = useTranslations('web.cart');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -59,21 +62,21 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-gray-900/70 border border-gray-800 rounded-xl p-4">
+      <div className="bg-base-200/70 border border-base-300 rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h2 className="text-lg font-bold text-white">Комплексная запись (Корзина услуг)</h2>
-            <p className="text-xs text-gray-400">
-              Выберите до {MAX_CART_SERVICES} услуг для бронирования единого непрерывного окна с шагом 30 минут
+            <h2 className="text-lg font-bold text-base-content">{t('heading')}</h2>
+            <p className="text-xs text-base-content/60">
+              {t('sub', { count: MAX_CART_SERVICES })}
             </p>
           </div>
           {selectedIds.length > 0 && (
             <button
               type="button"
               onClick={() => setSelectedIds([])}
-              className="text-xs text-rose-400 hover:text-rose-300 underline"
+              className="text-xs text-error hover:text-error underline"
             >
-              Очистить ({selectedIds.length})
+              {t('clear', { count: selectedIds.length })}
             </button>
           )}
         </div>
@@ -93,19 +96,19 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
                 onClick={() => toggleService(srv.id)}
                 className={`text-left p-3.5 rounded-lg border transition flex items-center justify-between ${
                   isSelected
-                    ? 'bg-blue-950/60 border-blue-500 text-white'
-                    : 'bg-gray-950/60 border-gray-800 text-gray-300 hover:border-gray-700'
+                    ? 'bg-purple-900/60 border-purple-500 text-white'
+                    : 'bg-base-100/60 border-base-300 text-base-content/80 hover:border-base-300'
                 }`}
               >
                 <div className="pr-2">
                   <div className="font-semibold text-sm">{srv.title}</div>
-                  <div className="text-xs text-gray-400 font-mono mt-0.5">
-                    ⏱ {srv.durationMin} мин · {priceStr}
+                  <div className="text-xs text-base-content/60 font-mono mt-0.5">
+                    {t('durationPrice', { minutes: srv.durationMin ?? 0, price: priceStr })}
                   </div>
                 </div>
                 <span
                   className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                    isSelected ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400'
+                    isSelected ? 'bg-purple-600 text-white' : 'bg-base-300 text-base-content/60'
                   }`}
                 >
                   {isSelected ? '✓' : '+'}
@@ -117,48 +120,48 @@ export function CartDrawer({ items }: { items: CatalogItem[] }) {
       </div>
 
       {selectedServices.length > 0 && (
-        <div className="fixed bottom-4 left-4 right-4 max-w-3xl mx-auto z-50 bg-gray-900/95 backdrop-blur border border-blue-500/60 rounded-2xl p-4 shadow-2xl">
+        <div className="fixed bottom-4 left-4 right-4 max-w-3xl mx-auto z-50 bg-base-200/95 backdrop-blur border border-purple-500/60 rounded-2xl p-4 shadow-2xl">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
-                <span className="bg-blue-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
-                  {selectedServices.length} усл.
+                <span className="bg-purple-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
+                  {t('servicesCount', { count: selectedServices.length })}
                 </span>
-                <span className="text-white font-bold text-base">{formattedTotal}</span>
-                <span className="text-xs text-blue-300 font-mono">
-                  · ⏱ {totalDurationMin} мин подряд
+                <span className="text-base-content font-bold text-base">{formattedTotal}</span>
+                <span className="text-xs text-purple-300 font-mono">
+                  {t('consecutive', { minutes: totalDurationMin })}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => setIsOpen((v) => !v)}
-                className="text-xs text-gray-400 hover:text-gray-200 mt-1 underline"
+                className="text-xs text-base-content/60 hover:text-base-content/90 mt-1 underline"
               >
-                {isOpen ? 'Скрыть состав корзины ▲' : 'Показать состав корзины ▼'}
+                {isOpen ? t('hideContents') : t('showContents')}
               </button>
             </div>
 
             <Link
               href={bookHref}
-              className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-6 rounded-xl text-center shadow-lg transition text-sm"
+              className="bg-purple-600 hover:bg-purple-500 text-white font-bold py-2.5 px-6 rounded-xl text-center shadow-lg transition text-sm"
             >
-              Выбрать время ({totalDurationMin} мин) →
+              {t('chooseTime', { minutes: totalDurationMin })}
             </Link>
           </div>
 
           {isOpen && (
-            <div className="mt-3 pt-3 border-t border-gray-800 space-y-1.5 max-h-48 overflow-y-auto">
+            <div className="mt-3 pt-3 border-t border-base-300 space-y-1.5 max-h-48 overflow-y-auto">
               {selectedServices.map((srv) => (
-                <div key={srv.id} className="flex items-center justify-between text-xs text-gray-300">
+                <div key={srv.id} className="flex items-center justify-between text-xs text-base-content/80">
                   <span>
                     {srv.title} ({srv.durationMin} мин)
                   </span>
                   <button
                     type="button"
                     onClick={() => toggleService(srv.id)}
-                    className="text-rose-400 hover:text-rose-300 ml-2"
+                    className="text-error hover:text-error ml-2"
                   >
-                    Удалить
+                    {t('remove')}
                   </button>
                 </div>
               ))}

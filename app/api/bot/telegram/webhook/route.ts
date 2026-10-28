@@ -112,7 +112,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             hasUpdateBody: !!body,
           });
 
-          await bot.handleUpdate(body as any);
+          await bot.handleUpdate(body as unknown as Parameters<typeof bot.handleUpdate>[0]);
 
           logger.info('[BOT_UPDATE_HANDLED]', { updateId, chatId, messageText });
         } else {

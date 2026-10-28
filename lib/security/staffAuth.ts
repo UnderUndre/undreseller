@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '../db/prisma';
 import { logger } from '../telemetry/logger';
 import { authenticateAdmin } from './adminAuth';
+import { Prisma } from '@prisma/client';
 import { StaffActorContext, StaffRole, hasMinimumRole } from './staffRbac';
 
 // PII Sanitization for Audit Events (INV-010)
@@ -25,9 +26,25 @@ const PII_KEYS = new Set([
   'address',
 ]);
 
-export function sanitizeMetadata(metadata: any): Record<string, any> {
+/**
+ * T092/FR-428: redacts PII from free-text fields (audit reasons) BEFORE
+ * persistence — emails, phone numbers and card-like sequences never land in
+ * the immutable audit log.
+ */
+export function redactFreeText(text: string | null | undefined): string | null {
+  if (!text) return null;
+  return (
+    text
+      // PAN before phone: 13-16 digit groups would otherwise match the phone rule
+      .replace(/\b(?:\d[ -]*?){13,16}\b/g, '[REDACTED_PAN]')
+      .replace(/[\w.+-]+@[\w-]+\.[\w.-]{2,}/g, '[REDACTED_EMAIL]')
+      .replace(/(\+?\d[\d\s()-]{8,}\d)/g, '[REDACTED_PHONE]')
+  );
+}
+
+export function sanitizeMetadata(metadata: unknown): Record<string, unknown> {
   if (!metadata || typeof metadata !== 'object') return {};
-  const clean: Record<string, any> = {};
+  const clean: Record<string, unknown> = {};
 
   for (const [key, val] of Object.entries(metadata)) {
     const lowerKey = key.toLowerCase();
@@ -53,7 +70,7 @@ export async function emitAuditEvent(params: {
   aggregateType: string;
   aggregateId: string;
   reason?: string | null;
-  metadataJson?: Record<string, any>;
+  metadataJson?: Record<string, unknown>;
 }): Promise<void> {
   try {
     const sanitizedMeta = sanitizeMetadata(params.metadataJson || {});
@@ -61,11 +78,11 @@ export async function emitAuditEvent(params: {
       data: {
         action: params.action,
         actorId: params.actorId,
-        actorRole: (params.actorRole as any) || null,
+        actorRole: params.actorRole || null,
         aggregateType: params.aggregateType,
         aggregateId: params.aggregateId,
-        reason: params.reason ? params.reason.slice(0, 500) : null,
-        metadataJson: sanitizedMeta,
+        reason: redactFreeText(params.reason)?.slice(0, 500) ?? null,
+        metadataJson: sanitizedMeta as Prisma.InputJsonValue,
       },
     });
   } catch (err: unknown) {

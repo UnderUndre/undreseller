@@ -3,6 +3,7 @@
  * Extracted to separate file to avoid circular imports and browser bundling issues
  */
 
+import type { InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove, ForceReply } from '@grammyjs/types';
 import { logger } from '@/lib/telemetry/logger';
 import { handleClientConfirmationCallback } from '@/lib/bot/clientConfirmation';
 import { bot, sendWithRetry } from '@/lib/bot/telegramBot';
@@ -65,7 +66,15 @@ export async function processInboxEventRow(eventRow: {
         const action = payload.action as string;
         const messageId = payload.messageId as number | undefined;
         const text = payload.text as string | undefined;
-        const replyMarkup = payload.replyMarkup as Record<string, unknown> | null | undefined;
+        type TelegramReplyMarkup =
+  | InlineKeyboardMarkup
+  | ReplyKeyboardMarkup
+  | ReplyKeyboardRemove
+  | ForceReply;
+
+const replyMarkup = payload.replyMarkup
+        ? (payload.replyMarkup as TelegramReplyMarkup)
+        : undefined;
         const orderId = payload.orderId as string | undefined;
 
         // Select correct bot based on kind
@@ -79,7 +88,7 @@ export async function processInboxEventRow(eventRow: {
             await sendWithRetry(() =>
               targetBot.api.sendMessage(chatId, text, {
                 parse_mode: 'HTML',
-                reply_markup: replyMarkup as any,
+                reply_markup: replyMarkup,
               })
             );
             
@@ -98,7 +107,7 @@ export async function processInboxEventRow(eventRow: {
             await sendWithRetry(() =>
               targetBot.api.editMessageText(chatId, messageId, text, {
                 parse_mode: 'HTML',
-                reply_markup: replyMarkup as any,
+                reply_markup: replyMarkup as InlineKeyboardMarkup | undefined,
               })
             );
             
@@ -117,7 +126,7 @@ export async function processInboxEventRow(eventRow: {
             
             await sendWithRetry(() =>
               targetBot.api.editMessageReplyMarkup(chatId, messageId, {
-                reply_markup: replyMarkup as any,
+                reply_markup: replyMarkup as InlineKeyboardMarkup | undefined,
               })
             );
             

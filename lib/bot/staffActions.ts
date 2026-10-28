@@ -7,8 +7,54 @@ import {
 } from './magicReschedule';
 import { enqueueStaffMessageRedaction } from './staffBot';
 import { enqueueTelegramOutbox, OUTBOX_PRIORITY } from './telegramOutbox';
+import {
+  formatBotString,
+  getStaffBotStrings,
+  resolveStaffLocale,
+} from '@/lib/i18n/botStrings';
 
 export type StaffActionType = 'approve' | 'reject' | 'reschedule' | 'blacklist' | 'fulfill' | 'copy_contacts';
+
+// ---------------------------------------------------------------------------
+// FR-429 (T093): configurable rejection notification policy.
+//
+// No suitable ShopSettings/StaffMember column exists in the current schema
+// (adding one would require a migration out of scope here), so the policy is
+// env-configured: STAFF_REJECT_NOTIFY_MODE = 'notify_customer' | 'silent' |
+// 'staff_only'. Default 'notify_customer' preserves existing behaviour.
+// Documented in the 004 release-readiness tasks (T093).
+// ---------------------------------------------------------------------------
+
+export type StaffRejectNotifyMode = 'notify_customer' | 'silent' | 'staff_only';
+
+export function resolveRejectNotifyMode(raw: string | null | undefined = process.env.STAFF_REJECT_NOTIFY_MODE): StaffRejectNotifyMode {
+  const mode = (raw || '').trim().toLowerCase();
+  if (mode === 'silent' || mode === 'staff_only' || mode === 'notify_customer') {
+    return mode;
+  }
+  return 'notify_customer';
+}
+
+export interface RejectNotificationDecision {
+  notifyCustomer: boolean;
+  notifyStaff: boolean;
+}
+
+/** Pure decision: who gets informed when staff reject an order (FR-429). */
+export function decideRejectNotification(
+  mode: StaffRejectNotifyMode,
+  hasCustomerTgId: boolean
+): RejectNotificationDecision {
+  switch (mode) {
+    case 'silent':
+      return { notifyCustomer: false, notifyStaff: false };
+    case 'staff_only':
+      return { notifyCustomer: false, notifyStaff: true };
+    case 'notify_customer':
+    default:
+      return { notifyCustomer: hasCustomerTgId, notifyStaff: false };
+  }
+}
 
 export function verifyStaffWebhookSecret(
   providedSecret: string | null,
@@ -305,7 +351,7 @@ export function executeStaffOrderActionPure(params: {
         updatedOrder: updated,
         emittedEvent: 'order/fulfilled',
         removeInlineKeyboard: true,
-        triggerGdprRedaction: false,
+        triggerGdprRedaction: true,
       };
     }
 
@@ -345,6 +391,9 @@ export async function executeStaffCallbackTransaction(params: {
   }
 
   const now = new Date();
+  // T041 (FR-412-equivalent): staff locale = ShopSettings.defaultLocale
+  // (no per-staff override column — documented in botStrings.ts).
+  let instanceDefault: string | null = null;
   const txResult = await prisma.$transaction(async (tx) => {
     await tx.inboxEvent.create({
       data: {
@@ -375,6 +424,7 @@ export async function executeStaffCallbackTransaction(params: {
     const settings = await tx.shopSettings.findUnique({ where: { id: 1 } });
     const prepaymentTiming =
       (settings?.prepaymentTiming as 'IMMEDIATE' | 'AFTER_STAFF_APPROVAL') || 'IMMEDIATE';
+    instanceDefault = settings?.defaultLocale ?? null;
 
     const pureOutcome = executeStaffOrderActionPure({
       order: {
@@ -527,19 +577,43 @@ export async function executeStaffCallbackTransaction(params: {
 
   // Enqueue client notification if client has Telegram ID
   if (order.customerTgId) {
+    // T041 (FR-411): client notices keyed by the staff-surface locale
+    // (ShopSettings.defaultLocale via resolveStaffLocale).
+    const notices = getStaffBotStrings(resolveStaffLocale(instanceDefault)).clientNotices;
     let clientNotice: string | null = null;
     if (action === 'approve') {
       clientNotice =
         pureOutcome.updatedOrder.status === 'AWAITING_PAYMENT'
-          ? `✅ Мастер подтвердил вашу запись #${order.orderNumber}! Пожалуйста, оплатите счёт в течение 15 минут.`
-          : `✅ Ваша запись #${order.orderNumber} подтверждена мастером! Ждём вас.`;
+          ? formatBotString(notices.approveAwaitingPayment, { orderNumber: order.orderNumber })
+          : formatBotString(notices.approveConfirmed, { orderNumber: order.orderNumber });
     } else if (action === 'reject') {
-      clientNotice = `❌ К сожалению, запись #${order.orderNumber} была отклонена мастером.`;
+      clientNotice = formatBotString(notices.rejected, { orderNumber: order.orderNumber });
     } else if (action === 'blacklist') {
-      clientNotice =
-        'Ваша запись аннулирована в связи с нарушением правил сервиса (запрос скидки/торга при фиксированном прайсе). Доступ к онлайн-записи ограничен';
+      clientNotice = notices.blacklisted;
     } else if (action === 'reschedule' && pureOutcome.magicRescheduleUrl) {
-      clientNotice = `🔄 Мастер предложил перенести запись #${order.orderNumber}. Выберите новое удобное время по одноразовой ссылке: ${pureOutcome.magicRescheduleUrl}`;
+      clientNotice = formatBotString(notices.rescheduleOffered, {
+        orderNumber: order.orderNumber,
+        url: pureOutcome.magicRescheduleUrl,
+      });
+    }
+
+    // FR-429 (T093): rejection notices follow the owner-configurable policy.
+    if (action === 'reject' && clientNotice) {
+      const decision = decideRejectNotification(resolveRejectNotifyMode(), Boolean(order.customerTgId));
+      if (decision.notifyStaff) {
+        await enqueueTelegramOutbox({
+          botProfile: 'STAFF_BOT',
+          chatId,
+          priority: OUTBOX_PRIORITY.HIGH_STAFF_PAGER,
+          dedupeKey: `staff_notice_${order.id}_reject_v${pureOutcome.updatedOrder.scheduleVersion}`,
+          action: 'sendMessage',
+          text: clientNotice,
+          orderId: order.id,
+        });
+      }
+      if (!decision.notifyCustomer) {
+        clientNotice = null;
+      }
     }
 
     if (clientNotice) {

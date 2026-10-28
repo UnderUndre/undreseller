@@ -972,3 +972,55 @@ Critical Failure Mode: отсутствие явной Booking State Machine (AV
 4. Всё это влезает в соло + 500 MB, если не тащить тяжёлые карты и не крутить LLM на том же процессе.
 
 Если нужно — могу оформить это в виде конкретных полей схемы (Prisma) и переходов FSM для Spec 004.
+
+---
+
+# Plan Phase 0 — Engineering Decisions (2026-10-24, /speckit.plan)
+
+> Формат: Decision / Rationale / Alternatives / Spike Governance (Constitution XI). Полный контекст решений — в plan.md §Technical Context.
+
+## D1. i18n движок: `next-intl` + ICU MessageFormat
+- **Decision**: next-intl (App Router native), ICU-сообщения; локали `ru`/`en` в релизе, `uk` пост-лонч как данные.
+- **Rationale**: нативная RSC-интеграция; ICU-плюрализм ru/uk из коробки (FR-411/413); нулевой runtime-след в RSS; ключи закрываются AST-гейтом (NFR-406).
+- **Alternatives**: react-i18next (слабее RSC); свой словарь поверх Intl.PluralRules (дублирование); FormatJS standalone (тяжелее).
+- **Spike Governance**: спайк не нужен; AST-гейт покрытия — спайк S3.
+
+## D2. Тема: undesign токены + class-driven dark + Telegram themeParams
+- **Decision**: `html.dark` / `data-theme="undrlla-dark"` управляет токенами undesign (подключены в 1b7bd23); themeParams Mini App маппится на выбор темы; серые нейтралы → `base-*`.
+- **Rationale**: единый источник бренда; FR-417/FR-431; light-тема обязательна.
+- **Alternatives**: попараметровый перебор themeParams (хрупко, расходится с брендом); только тёмная (нарушает FR-417).
+- **Spike Governance (S1)**: Timebox 1 день. Метрика: полный флип всех поверхностей в обеих темах без несочитаемых пар; 0 регрессий скриншот-проверки витрины. Disposal: прототип-маппер удаляется, продакшн-реализация clean-room в lib.
+
+## D3. Медиа: Cloudflare R2 presigned + клиентское сжатие
+- **Decision**: `browser-image-compression` (Canvas → WebP ≤200 КБ) → `POST /api/admin/uploads/presign` → прямой PUT в R2; сервер не видит байты (FR-441).
+- **Rationale**: OOM-гарантия (HEIC 48Мп ≈ 192 МБ RAM серверной распаковки); R2 zero-egress, S3-совместим [COST: $0 до 10 ГБ].
+- **Abstraction note (copilot review)**: presign-слой — за интерфейсом `ObjectStorageProvider`; S3-совместимые цели (R2/MinIO/AWS) взаимозаменяемы окружением, без правок кода. Degradation: отказ хранилища не блокирует сохранение карточек — image optional, retry позже (FR-441).
+- **Alternatives**: серверный sharp (запрещён расчётом); локальный диск (риск Postgres); AWS S3 (egress-счета).
+- **Spike Governance (S2)**: Timebox 1 день. Метрики: p95 выдачи presign < 50 мс; полный цикл HEIC→WebP→PUT→URL < 10 с; 0 байт через Node. Disposal: тестовый бакет/скрипт удаляются, код не в проде.
+
+## D4. Better Auth: самописные сессии остаются, зависимость удаляется
+- **Decision**: текущий session-слой (cookie + prisma.session, покрыт тестами 003 T034) остаётся; неиспользуемая зависимость `better-auth` удаляется в supply-chain задаче.
+- **Rationale**: аудит 003 — библиотека не импортируется ни разу; подмена auth в release-релизе = риск без требований; dead-dep убираем.
+- **Alternatives**: полная интеграция (нет требований в спеке, регрессионный риск); оставить dep (мёртвый вес, audit-поверхность).
+- **Spike Governance**: не требуется (решение по факту аудита).
+
+## D5. Email-фоллбек: провайдер-изолированный SaaS-адаптер
+- **Decision**: транзакционный email через SaaS (рекомендация Resend [COST], HTTP API) за адаптером; self-hosted SMTP запрещён бизнес-планом (Production Blacklist).
+- **Rationale**: FR-409 фоллбек ≤5 мин; изоляция адаптером = замена провайдера без изменений ядра.
+- **Alternatives**: Mailcow self-hosted (blacklist); отправка из контейнера (доставка умирает на Hetzner IP).
+- **Spike Governance**: не требуется; контрактный тест с мок-провайдером + ручная проверка на лонче.
+
+## D6. Waitlist broadcast: Inngest-событие + inbox, claim через единый booking-путь
+- **Decision**: `booking.cancelled` → Inngest job (fallback deadlineSweeper) → топ-N матчей → офферы клиент-ботом; claim идёт тем же атомарным booking-кодом (единая гонка, FR-420/433).
+- **Rationale**: переиспользование существующей durable-механики (inbox/outbox, 429-шейпинг); ноль нового рантайма.
+- **Alternatives**: синхронная рассылка из обработчика отмены (блокирует запрос); отдельный воркер (новая топология против монолита).
+- **Spike Governance**: не требуется.
+
+## D7. Квант длительности 15 минут
+- **Decision**: длительности/буферы — селектор с шагом 15 мин (FR-442); шаг сетки слотов — настройка инстанса (15/30).
+- **Rationale**: чинит конфликт «сетка 30 × услуга 45» (дыры/накладки); индустриальный стандарт.
+- **Alternatives**: жёсткие 30 (режет 45-мин услуги); свободный ввод (текущая дыра).
+- **Spike Governance**: не требуется; фиксируется в zod-схемах и data-model.
+
+## Spike Disposal Protocol (Constitution XI)
+S1–S3: timebox ≤2 дней; численные критерии выше; ветки `spike/*`; после снятия метрик ветка и код полностью удаляются, в прод — только clean-room реализация по контрактам; TDD-балласт на спайк-коде запрещён.

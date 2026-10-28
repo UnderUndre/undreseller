@@ -5,9 +5,8 @@ import { acquireResourceSlotLock, acquireItemSlotLock } from '@/lib/booking/advi
 import { sendWhatsAppTemplate } from '@/lib/bot/whatsappClient';
 import { enqueueTelegramOutbox, OUTBOX_PRIORITY } from '@/lib/bot/telegramOutbox';
 import { buildClientReminderKeyboard } from '@/lib/bot/clientConfirmation';
-import { bot, sendWithRetry } from '@/lib/bot/telegramBot';
-import { staffBot } from '@/lib/bot/staffBot';
 import { processInboxEventRow } from './inboxProcessor';
+import { MAX_CONFIRMING_FREEZE_MS } from '@/lib/kernel/bookingFsm';
 import {
   evaluateReminderWakeUpCas,
   evaluateAutoCancelWakeUpCas,
@@ -170,10 +169,16 @@ export const holdSweep = inngest.createFunction(
     return await step.run('release-expired-holds-and-reconcile-deadlines', async () => {
       const now = new Date();
 
+      // T023: confirming freeze — holdFrozenAt suspends the TTL sweep; past the
+      // hard ceiling (MAX_CONFIRMING_FREEZE = 24h) the hold expires anyway and a
+      // late payment resolves via FR-432 (fulfillment collision path).
+      const freezeCeiling = new Date(now.getTime() - MAX_CONFIRMING_FREEZE_MS);
+
       const expired = await prisma.slotReservation.findMany({
         where: {
           status: 'HELD',
           holdExpiresAt: { lte: now },
+          OR: [{ holdFrozenAt: null }, { holdFrozenAt: { lte: freezeCeiling } }],
         },
         select: {
           id: true,
@@ -210,6 +215,7 @@ export const holdSweep = inngest.createFunction(
                 id: { in: reservationIds },
                 status: 'HELD',
                 holdExpiresAt: { lte: now },
+                OR: [{ holdFrozenAt: null }, { holdFrozenAt: { lte: freezeCeiling } }],
               },
               data: { status: 'RELEASED' },
             });
@@ -281,6 +287,30 @@ export const nightlyPurge = inngest.createFunction(
         data: {
           customerTgId: null,
         },
+      });
+
+      // 004 T014: NotificationDeliveryLog 90-day retention (FR-409)
+      const deliveryLog90d = await prisma.notificationDeliveryLog.deleteMany({
+        where: { attemptAt: { lte: ninetyDaysAgo } },
+      });
+
+      // 004 T092/FR-428: PII closure for new surfaces
+      // (a) custom-field answers on terminal reservations past retention (PII)
+      const fieldAnswers30d = await prisma.bookingFieldAnswer.deleteMany({
+        where: { slotReservation: { order: { status: { in: ['CANCELLED', 'FULFILLED'] } }, createdAt: { lte: thirtyDaysAgo } } },
+      });
+      // (b) out-call address snapshots on terminal reservations (PII)
+      const addressSnapshots30d = await prisma.slotReservation.updateMany({
+        where: { order: { status: { in: ['CANCELLED', 'FULFILLED'] } }, createdAt: { lte: thirtyDaysAgo }, serviceAddressSnapshot: { not: null } },
+        data: { serviceAddressSnapshot: null },
+      });
+      // (c) waitlist offers/entries: closed rows past 90d (PII: tg ids, contacts)
+      const waitlistOffers90d = await prisma.waitlistOffer.deleteMany({
+        where: { status: { in: ['TAKEN', 'EXPIRED'] }, sentAt: { lte: ninetyDaysAgo } },
+      });
+      const waitlistEntries90d = await prisma.waitlistEntry.updateMany({
+        where: { status: { in: ['FULFILLED', 'EXPIRED', 'CANCELLED'] }, createdAt: { lte: ninetyDaysAgo } },
+        data: { customerTgId: null, customerContact: null },
       });
 
       const inboxScrub7d = await prisma.inboxEvent.updateMany({

@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db/prisma';
 import { cancelBooking, CancellationError } from '@/lib/kernel/bookingService';
 import { resolveStaffSession } from '@/lib/security/staffAuth';
+import {
+  enforceRateLimit,
+  rateLimitKey,
+  isPayloadWithinCap,
+  PAYLOAD_CAPS,
+} from '@/lib/security/rateLimit';
 import { logger } from '@/lib/telemetry/logger';
 
 const cancelSchema = z.object({
@@ -18,7 +24,7 @@ const cancelSchema = z.object({
  */
 export async function GET(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> | { id: string } }
+  context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
     const { id } = await context.params;
@@ -73,11 +79,16 @@ export async function GET(
  */
 export async function POST(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> | { id: string } }
+  context: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   try {
     const { id } = await context.params;
-    const body = await req.json().catch(() => ({}));
+    // FR-427 (T091): bounded payload + per-actor rate limit on cancellation.
+    const rawBody = await req.text();
+    if (!isPayloadWithinCap(rawBody, PAYLOAD_CAPS.BOOKING_CANCEL_BODY_BYTES)) {
+      return NextResponse.json({ error: 'Payload Too Large' }, { status: 413 });
+    }
+    const body = JSON.parse(rawBody || '{}');
     const parsed = cancelSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.format() }, { status: 400 });
@@ -91,6 +102,12 @@ export async function POST(
         { error: 'Unauthorized: cancellation token or authenticated staff session required' },
         { status: 401 }
       );
+    }
+
+    const cancelKey = token ? `token:${token}` : `staff:${staffActor!.actorId}`;
+    const rateCheck = enforceRateLimit(rateLimitKey('booking_cancel', cancelKey), 10, 60 * 1000);
+    if (!rateCheck.allowed) {
+      return NextResponse.json({ error: 'Too many cancel attempts. Please wait.' }, { status: 429 });
     }
 
     await cancelBooking({
@@ -110,11 +127,11 @@ export async function POST(
         },
       }
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
     if (err instanceof CancellationError) {
       return NextResponse.json({ error: err.message }, { status: err.statusCode });
     }
     logger.error('Failed to submit booking cancellation', { error: String(err) });
-    return NextResponse.json({ error: err.message || 'Failed to cancel booking' }, { status: 400 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to cancel booking' }, { status: 400 });
   }
 }

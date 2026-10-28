@@ -53,7 +53,7 @@ describe('Staff RBAC & Security Boundaries (T034, US5, FR-325a, FR-325b, INV-010
     expect(sanitized.serviceAddress).toBe('[REDACTED]');
     expect(sanitized.initialPassword).toBe('[REDACTED]');
     expect(sanitized.cancellationToken).toBe('[REDACTED]');
-    expect(sanitized.nested.token).toBe('[REDACTED]');
-    expect(sanitized.nested.action).toBe('SAFE_ACTION');
+    expect((sanitized.nested as Record<string, unknown>).token).toBe('[REDACTED]');
+    expect((sanitized.nested as Record<string, unknown>).action).toBe('SAFE_ACTION');
   });
 });

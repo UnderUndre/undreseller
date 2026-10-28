@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db/prisma';
 import { SlotGrid } from '@/components/booking/SlotGrid';
-import { shopConfig } from '@/config/shop.config';
+import { getActiveFieldsForService } from '@/lib/kernel/customFieldService';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,9 +30,20 @@ export default async function BookPage(props: {
   const settings = await prisma.shopSettings.findUnique({ where: { id: 1 } });
   const currency = settings?.currency || 'USD';
 
+  // US6 (FR-423): active custom fields bound to this service (or instance-wide)
+  const customFields = await getActiveFieldsForService(service.id);
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 pb-24">
       <SlotGrid
+        customFields={customFields.map((f) => ({
+          id: f.id,
+          key: f.key,
+          label: f.label,
+          type: f.type,
+          required: f.required,
+          optionsJson: (f.optionsJson as { options?: string[]; min?: number; max?: number } | null) ?? null,
+        }))}
         service={{
           id: service.id,
           title: service.title,

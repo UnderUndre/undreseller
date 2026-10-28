@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/prisma';
 import { authenticateStaff, emitAuditEvent } from '@/lib/security/staffAuth';
 import { logger } from '@/lib/telemetry/logger';
@@ -10,6 +11,12 @@ import {
   contactLinkSchema,
 } from '@/config/shop.config';
 import { isValidCurrency } from '@/config/currency-registry';
+import {
+  partitionSettingsBody,
+  foundationSettingsSchema,
+  operationalSettingsSchema,
+  FOUNDATION_SETTINGS_FIELDS,
+} from '@/lib/validation/adminSchemas';
 import { validateIntegrationProfileEnv } from '@/lib/config/integrationProfile';
 
 const updateSettingsSchema = z.object({
@@ -172,7 +179,7 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const updateData: any = { ...directFields };
+    const updateData = { ...directFields } as Prisma.ShopSettingsUncheckedUpdateInput;
     if (publicContactLinks !== undefined) {
       updateData.publicContactLinksJson = publicContactLinks;
     }
@@ -182,10 +189,17 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
       update: updateData,
       create: {
         id: 1,
-        currency: updateData.currency || 'USD',
-        greeting: updateData.greeting || '👋 Welcome to our store!',
-        whatsappTemplateName: updateData.whatsappTemplateName || 'order_status_update',
-        ...updateData,
+        ...(updateData as Prisma.ShopSettingsUncheckedCreateInput),
+        currency:
+          typeof updateData.currency === 'string' ? updateData.currency : 'USD',
+        greeting:
+          typeof updateData.greeting === 'string'
+            ? updateData.greeting
+            : '👋 Welcome to our store!',
+        whatsappTemplateName:
+          typeof updateData.whatsappTemplateName === 'string'
+            ? updateData.whatsappTemplateName
+            : 'order_status_update',
       },
     });
 
@@ -209,6 +223,119 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ settings }, { status: 200 });
   } catch (err: unknown) {
     logger.error('Failed to update shop settings', { error: String(err) });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+/**
+ * PATCH /api/admin/settings (T064, US9, FR-438, FR-442)
+ * Operational fields: OPERATOR and above. Foundation fields (currency,
+ * timeZone, defaultLocale, enabledLocales, currencyConfirmed): OWNER only,
+ * server-enforced — a non-OWNER sending any foundation field gets 403.
+ * Currency gate (FR-438): applying a currency change resets currencyConfirmed
+ * to false; OWNER must confirm in a follow-up PATCH { currencyConfirmed: true }.
+ */
+export async function PATCH(req: NextRequest): Promise<NextResponse> {
+  const auth = await authenticateStaff(req, 'OPERATOR');
+  if (!auth.authenticated || !auth.actor) {
+    return auth.errorResponse ?? NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const body = (await req.json()) as Record<string, unknown>;
+    const { foundation, operational, unknownKeys } = partitionSettingsBody(body);
+
+    if (unknownKeys.length > 0) {
+      return NextResponse.json(
+        { error: `Unknown settings fields: ${unknownKeys.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
+    const foundationParsed = foundationSettingsSchema.safeParse(foundation);
+    if (!foundationParsed.success) {
+      return NextResponse.json(
+        { error: 'Invalid foundation settings', details: foundationParsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+
+    const operationalParsed = operationalSettingsSchema.safeParse(operational);
+    if (!operationalParsed.success) {
+      return NextResponse.json(
+        { error: 'Invalid operational settings', details: operationalParsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+
+    const isOwner = auth.actor.actorRole === 'OWNER';
+    if (!isOwner && Object.keys(foundationParsed.data).length > 0) {
+      return NextResponse.json(
+        {
+          error: `Forbidden: foundation fields (${FOUNDATION_SETTINGS_FIELDS.join(', ')}) require OWNER privilege`,
+        },
+        { status: 403 }
+      );
+    }
+
+    const current = await prisma.shopSettings.findUnique({ where: { id: 1 } });
+
+    const updateData: Prisma.ShopSettingsUncheckedUpdateInput = { ...operationalParsed.data };
+    const foundationData = { ...foundationParsed.data };
+
+    // FR-438 currency-confirm gate
+    if (foundationData.currency) {
+      if (!isValidCurrency(foundationData.currency)) {
+        return NextResponse.json(
+          { error: `Currency '${foundationData.currency}' is not registered in currency registry` },
+          { status: 400 }
+        );
+      }
+      const currencyChanged = !current || current.currency !== foundationData.currency;
+      if (currencyChanged) {
+        // A change always resets confirmation; confirmation is a separate OWNER action
+        foundationData.currencyConfirmed = false;
+      }
+    }
+
+    if (Object.keys(foundationData).length > 0) {
+      Object.assign(updateData, foundationData);
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'No settings fields to update' }, { status: 400 });
+    }
+
+    const settings = await prisma.shopSettings.upsert({
+      where: { id: 1 },
+      update: updateData,
+      create: {
+        id: 1,
+        ...(updateData as Prisma.ShopSettingsUncheckedCreateInput),
+        currency: typeof updateData.currency === 'string' ? updateData.currency : 'USD',
+        greeting: '👋 Welcome to our store!',
+        whatsappTemplateName: 'order_status_update',
+      },
+    });
+
+    await emitAuditEvent({
+      action: 'BUSINESS_SETTINGS_PATCHED',
+      actorId: auth.actor.actorId,
+      actorRole: auth.actor.actorRole,
+      aggregateType: 'SHOP_SETTINGS',
+      aggregateId: '1',
+      reason: 'Staff updated settings via admin console',
+      metadataJson: {
+        fields: Object.keys(updateData),
+        currency: settings.currency,
+        currencyConfirmed: settings.currencyConfirmed,
+      },
+    });
+
+    logger.adminAction('/api/admin/settings', 'PATCH', String(settings.id), 200);
+    return NextResponse.json({ settings }, { status: 200 });
+  } catch (err: unknown) {
+    logger.error('Failed to patch shop settings', { error: String(err) });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

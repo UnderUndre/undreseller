@@ -81,6 +81,58 @@
         "specs/003-commerce-operations-capability-packs/data_model.md"
       ],
       "complianceNote": "Permissive Apache-2.0 license. Entity relationship design patterns."
+    },
+    {
+      "component": "next-intl",
+      "license": "MIT",
+      "sourceRepo": "https://github.com/amannn/next-intl",
+      "adaptedFiles": [
+        "lib/i18n/",
+        "package.json"
+      ],
+      "complianceNote": "004 T003: i18n runtime dependency (ru/en chrome). MIT allowlisted; consumed as dependency, no source vendored."
+    },
+    {
+      "component": "@aws-sdk/client-s3 + @aws-sdk/s3-request-presigner",
+      "license": "Apache-2.0",
+      "sourceRepo": "https://github.com/aws/aws-sdk-js-v3",
+      "adaptedFiles": [
+        "lib/uploads/presign.ts",
+        "app/api/admin/uploads/presign/route.ts",
+        "package.json"
+      ],
+      "complianceNote": "004 T003/T060: R2 presigned upload issuance (Cloudflare R2 S3-compatible API). Apache-2.0 allowlisted."
+    },
+    {
+      "component": "browser-image-compression",
+      "license": "MIT",
+      "sourceRepo": "https://github.com/Donaldcwl/browser-image-compression",
+      "adaptedFiles": [
+        "components/admin/ImageUploader.tsx",
+        "package.json"
+      ],
+      "complianceNote": "004 T003/T062: client-side WebP resize before presigned PUT. MIT allowlisted."
+    },
+    {
+      "component": "stripe",
+      "license": "MIT",
+      "sourceRepo": "https://github.com/stripe/stripe-node",
+      "adaptedFiles": [
+        "lib/payments/stripe.ts",
+        "app/api/payments/stripe/webhook/route.ts",
+        "package.json"
+      ],
+      "complianceNote": "005 T001: Stripe Node SDK for Hosted Checkout. MIT allowlisted."
+    },
+    {
+      "component": "@node-rs/argon2",
+      "license": "MIT",
+      "sourceRepo": "https://github.com/napi-rs/node-rs",
+      "adaptedFiles": [
+        "lib/security/argon2.ts",
+        "package.json"
+      ],
+      "complianceNote": "005 T001: Native Argon2id password hashing bindings. MIT allowlisted."
     }
   ]
 }

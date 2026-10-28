@@ -195,3 +195,79 @@ Every new client installation is initialized with sovereign defaults in `config/
   - `Phase 10`: Order Change Requests & Document Reversals (`US8`)
   - `Phase 11`: Jurisdiction Compliance SPI (`US9`)
   - `Phase 12`: Redacted Read Models & Quarantined Staging (`US10`)
+
+---
+
+## 11. 004 Release Readiness — New Surfaces Operator Guide (T110)
+
+> Feature: `specs/004-release-readiness` (US1–US9). All new behavior is flag-gated; legacy paths are the default until flags flip.
+
+### 11.1 Feature Flags (killswitch = unset or `false`; no DDL, immediate)
+
+| Env var | Enables | Rollback semantics |
+|---|---|---|
+| `FEATURE_FLAG_FSM_CUTOVER` | Two-track booking FSM (prepayment track, UNDERPAID, freeze) | Legacy 003 status mapping restored verbatim |
+| `FEATURE_FLAG_PAYMENT_PROVIDER_CUTOVER` | Invoice via PaymentProvider contract | Crypto checkout degrades to 503 in zero-provider mode (FR-401) |
+| `FEATURE_FLAG_WAITLIST` | Waitlist join/fan-out/claim | Waitlist endpoints return feature-disabled |
+| `FEATURE_FLAG_I18N` | next-intl ru/en chrome | Legacy hardcoded strings |
+| `FEATURE_FLAG_EMAIL_FALLBACK` | Email fallback when TG fails | TG-only notifications |
+
+### 11.2 Required env additions (004)
+
+```
+# Staff web sign-in (FR-427) — users/Account seeded by scripts/bootstrap-owner.ts
+# Sessions: prisma.session; lockout 5 fails -> 15 min (in-memory)
+
+PAYMENT_PROVIDERS=NOWPAYMENTS          # or TELEGRAM_STARS, comma-separated
+NOWPAYMENTS_API_KEY=...                # server-side invoice creation
+NOWPAYMENTS_IPN_SECRET=...             # webhook HMAC (existing)
+
+R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET
+R2_PUBLIC_BASE_URL=https://media.<customer-domain>   # public media host
+# R2 bucket CORS must allow: PUT, content-type/content-length headers, ExposeHeaders: [ETag]
+
+DELIVERY_LOG_SALT=<random>             # salted target hashes in NotificationDeliveryLog
+EMAIL_PROVIDER=RESEND                  # optional; RESEND_API_KEY for email fallback
+STAFF_REJECT_NOTIFY_MODE=notify_customer  # notify_customer | silent | staff_only (FR-429)
+
+# next-intl server config requires BABEL? none — no extra flags
+```
+
+### 11.3 Media / R2 setup
+
+1. Create the R2 bucket, bind the custom domain to `R2_PUBLIC_BASE_URL`.
+2. Apply the CORS policy (PUT + ETag expose, app origin only).
+3. Bucket lifecycle rule: purge unlinked objects older than 48h (FR-441).
+4. Uploads are presigned server-side (`POST /api/admin/uploads/presign`, TTL ≤5 min, content-type/length signed); bytes never pass through the app container.
+
+### 11.4 Email setup (FR-409 fallback)
+
+- `EMAIL_PROVIDER=RESEND` + `RESEND_API_KEY`; self-hosted SMTP is blacklisted by the business plan.
+- No key configured → notifications degrade to TG-only; TG failures without a customer email raise `NOTIFY_NO_EMAIL_CHANNEL_ON_FILE` (staff warning path).
+- Retry budget: 3 attempts over ≤5 min (`EMAIL_FALLBACK_RETRY_SCHEDULE`).
+
+### 11.5 i18n setup (US3)
+
+- Locales: `ru`, `en` in `messages/*.json` — adding `uk` is data-only (copy a file, rerun `node scripts/i18n-coverage-gate.mjs --locales ru,en,uk`).
+- Gate: `scripts/i18n-coverage-gate.mjs` verifies 100% key resolution + locale parity + ICU `other` forms. Wire into CI after build.
+- Instance default locale: `ShopSettings.defaultLocale`; customer override: `UserPreference.languageOverride` (bot: 🌐 Language quick action).
+
+### 11.6 Content admin (US9)
+
+- `/admin/login` (staff web sign-in; session cookie HttpOnly/Secure/SameSite, rotation on login).
+- 3-tab mobile-first UI: `/admin/catalog`, `/admin/team`, `/admin/settings` (+ `/admin/fields` for custom booking fields).
+- Foundation settings (currency, timezone, defaultLocale) are OWNER-only, server-enforced; currency change re-opens the `currencyConfirmed` gate (FR-438).
+- Slugs are immutable: renames create 301 redirects (`SlugRedirect`).
+
+### 11.7 DR drill (T094)
+
+```powershell
+$env:DR_BACKUP_DIR="D:\backups"
+powershell -ExecutionPolicy Bypass -File scripts\dr-restore-drill.ps1 -OutputJson artifacts\dr-drill-result.json
+```
+PASS requires: actual `pg_restore` into a scratch DB + verified business rows + RTO ≤60 min + RPO ≤24 h (evidence JSON).
+
+### 11.8 Rollback rehearsal (T112)
+
+1. Flip each feature flag to `false` → verify legacy read paths (no DDL involved).
+2. Down-migration: `prisma/migrations/20261025000000_004_release_readiness_expand/down.sql` drops only 004 objects; enum ADD VALUEs stay (inert).

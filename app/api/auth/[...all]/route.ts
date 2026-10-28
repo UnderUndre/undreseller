@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import { logger } from '@/lib/telemetry/logger';
 
 /**
  * Better Auth App Router Handler Mount (T031, FR-325b)

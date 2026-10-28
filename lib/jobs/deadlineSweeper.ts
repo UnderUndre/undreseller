@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db/prisma';
 import { logger } from '@/lib/telemetry/logger';
+import { MAX_CONFIRMING_FREEZE_MS } from '@/lib/kernel/bookingFsm';
 
 export const DEADLINE_LAG_ALERT_THRESHOLD_MS = 120 * 1000; // 2 minutes lag alert threshold
 
@@ -26,6 +27,8 @@ export interface LifecycleOrderSnapshot {
   invoiceExpiresAt: Date | null;
   reminderSentAt: Date | null;
   reservationStatus: 'HELD' | 'BOOKED' | 'RELEASED';
+  /** T023: confirming freeze on the reservation — suspends the TTL sweep (24h ceiling). */
+  holdFrozenAt?: Date | null;
   customerTgId?: string | null;
   customerPhone?: string | null;
 }
@@ -114,17 +117,27 @@ export function evaluateAutoCancelWakeUpCas(params: {
 export function evaluateInvoiceExpiryWakeUpCas(params: {
   order: LifecycleOrderSnapshot;
   expectedScheduleVersion: number;
+  /** Injected clock for the freeze check; defaults to sweep-time evaluation. */
+  now?: Date;
 }): {
-  action: 'EXPIRED_RELEASED' | 'STALE_OR_ALREADY_PAID_NO_OP';
+  action: 'EXPIRED_RELEASED' | 'STALE_OR_ALREADY_PAID_NO_OP' | 'FROZEN_NO_OP';
   updatedOrder: LifecycleOrderSnapshot;
 } {
-  const { order, expectedScheduleVersion } = params;
+  const { order, expectedScheduleVersion, now = new Date() } = params;
 
   if (
     order.scheduleVersion !== expectedScheduleVersion ||
     order.status !== 'AWAITING_PAYMENT'
   ) {
     return { action: 'STALE_OR_ALREADY_PAID_NO_OP', updatedOrder: order };
+  }
+
+  // T023: hold frozen on gateway `confirming` — TTL suspended until the 24h ceiling.
+  if (
+    order.holdFrozenAt &&
+    now.getTime() - order.holdFrozenAt.getTime() < MAX_CONFIRMING_FREEZE_MS
+  ) {
+    return { action: 'FROZEN_NO_OP', updatedOrder: order };
   }
 
   const updated: LifecycleOrderSnapshot = {
@@ -174,6 +187,7 @@ export function runDeadlineSweeperInMemory(params: {
       const res = evaluateInvoiceExpiryWakeUpCas({
         order: ord,
         expectedScheduleVersion: ord.scheduleVersion,
+        now,
       });
       if (res.action === 'EXPIRED_RELEASED') {
         orders[i] = res.updatedOrder;
@@ -282,6 +296,7 @@ export async function runPostgresDeadlineReconciliationSweeper(
       invoiceExpiresAt: o.invoiceExpiresAt,
       reminderSentAt: o.reminderSentAt,
       reservationStatus: o.reservation!.status as 'HELD' | 'BOOKED' | 'RELEASED',
+      holdFrozenAt: o.reservation!.holdFrozenAt,
       customerTgId: o.customerTgId,
       customerPhone: o.customerPhone,
     }));

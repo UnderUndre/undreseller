@@ -36,8 +36,9 @@ export function assertStaffRole(
   requiredRole: StaffRole
 ): void {
   if (!hasMinimumRole(actor.actorRole, requiredRole)) {
-    const error = new Error(`Forbidden: requires role ${requiredRole}, actor has ${actor.actorRole}`);
-    (error as any).statusCode = 403;
-    throw error;
+    throw Object.assign(
+      new Error(`Forbidden: requires role ${requiredRole}, actor has ${actor.actorRole}`),
+      { statusCode: 403 }
+    );
   }
 }

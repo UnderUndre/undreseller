@@ -3,7 +3,20 @@ import {
   sanitizeCustomerNotes,
   AuthoritativeServiceItem,
 } from '@/lib/booking/cart';
-import { computeContiguousAvailableSlots } from '@/lib/booking/windows';
+import { computeAvailableSlots } from '@/lib/booking/windows';
+
+jest.mock('@/lib/db/prisma', () => ({
+  prisma: {
+    availabilityException: { findUnique: jest.fn().mockResolvedValue(null) },
+    weeklyHours: { findFirst: jest.fn() },
+    slotReservation: { findMany: jest.fn().mockResolvedValue([]) },
+  },
+}));
+
+import { prisma } from '@/lib/db/prisma';
+
+const mockedWeeklyHours = prisma.weeklyHours.findFirst as jest.Mock;
+const mockedReservations = prisma.slotReservation.findMany as jest.Mock;
 
 describe('Multi-Service Cart & 30-Minute Contiguous Slot Grid (T-103, T-104, T-114)', () => {
   const sampleCatalog: AuthoritativeServiceItem[] = [
@@ -139,32 +152,37 @@ describe('Multi-Service Cart & 30-Minute Contiguous Slot Grid (T-103, T-104, T-1
   });
 
   describe('30-Minute Grid & Contiguous Window Filtering (T-104)', () => {
-    it('filters out 30-min grid start times where 75-min contiguous interval overlaps existing booking or lunch break (US1 Acceptance 1)', () => {
-      const now = new Date('2026-10-20T06:00:00Z');
+    beforeEach(() => {
+      jest.clearAllMocks();
       // Working hours 10:00 (600) to 18:00 (1080), lunch break 13:00 (780) to 14:00 (840)
+      mockedWeeklyHours.mockResolvedValue({
+        startMin: 10 * 60,
+        endMin: 18 * 60,
+        breakStartMin: 13 * 60,
+        breakEndMin: 14 * 60,
+      });
       // Existing reservation: 11:30 to 12:30 on 2026-10-21
-      const slots = computeContiguousAvailableSlots({
+      mockedReservations.mockResolvedValue([
+        {
+          startTime: new Date('2026-10-21T11:30:00.000Z'),
+          endTime: new Date('2026-10-21T12:30:00.000Z'),
+        },
+      ]);
+    });
+
+    it('filters out 30-min grid start times where 75-min contiguous interval overlaps existing booking or lunch break (US1 Acceptance 1)', async () => {
+      const now = new Date('2026-10-20T06:00:00Z');
+      const slots = await computeAvailableSlots({
         dateStr: '2026-10-21',
-        totalDurationMin: 75,
+        durationMin: 75,
+        fulfillmentMode: 'IN_CALL',
         slotGridStepMin: 30,
         minNoticeMin: 60,
         now,
         resourceId: 'default_master',
-        workingHours: {
-          startMin: 10 * 60,
-          endMin: 18 * 60,
-          breakStartMin: 13 * 60,
-          breakEndMin: 14 * 60,
-        },
-        existingReservations: [
-          {
-            startTime: new Date('2026-10-21T11:30:00.000Z'),
-            endTime: new Date('2026-10-21T12:30:00.000Z'),
-          },
-        ],
       });
 
-      const startTimes = slots.map((s) => s.startTime);
+      const startTimes = slots.map((s) => s.startsAt);
 
       // 10:00 -> 10:00..11:15 (fits before 11:30!)
       expect(startTimes).toContain('2026-10-21T10:00:00.000Z');

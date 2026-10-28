@@ -4,7 +4,7 @@ import { logger } from '@/lib/telemetry/logger';
 
 export async function GET(
   req: NextRequest,
-  context: { params: Promise<{ slug: string }> | { slug: string } }
+  context: { params: Promise<{ slug: string }> }
 ): Promise<NextResponse> {
   try {
     const resolvedParams = await context.params;

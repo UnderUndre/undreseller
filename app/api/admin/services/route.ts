@@ -1,27 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { authenticateStaff } from '@/lib/security/staffAuth';
 import { listServices, createService } from '@/lib/kernel/serviceService';
 import { logger } from '@/lib/telemetry/logger';
+import { adminServiceCreateSchema } from '@/lib/validation/adminSchemas';
 
-const createServiceSchema = z.object({
-  title: z.string().trim().min(2).max(120),
-  slug: z.string().trim().min(2).max(80).regex(/^[a-z0-9-]+$/).optional(),
-  description: z.string().trim().max(1000).default(''),
-  durationMin: z.number().int().min(15).max(480).default(60),
-  priceMinor: z.number().int().min(0),
-  currency: z.string().trim().length(3).toUpperCase().optional(),
-  inCallEnabled: z.boolean().default(true),
-  outCallEnabled: z.boolean().default(false),
-  outCallPriceMinor: z.number().int().min(0).nullable().optional(),
-  outCallTravelFeeMinor: z.number().int().min(0).default(0),
-  bufferBeforeMin: z.number().int().min(0).max(120).default(0),
-  bufferAfterMin: z.number().int().min(0).max(120).default(0),
-  outCallTravelBeforeMin: z.number().int().min(0).max(120).default(0),
-  outCallTravelAfterMin: z.number().int().min(0).max(120).default(0),
-  cancellationCutoffHours: z.number().int().min(1).max(72).default(3),
-  isActive: z.boolean().default(true),
-});
+const createServiceSchema = adminServiceCreateSchema;
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const auth = await authenticateStaff(req, 'PERFORMER');
@@ -49,8 +32,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const service = await createService(parsed.data, auth.actor!);
     return NextResponse.json({ service }, { status: 201 });
-  } catch (err: any) {
+  } catch (err: unknown) {
     logger.error('Failed to create admin service', { error: String(err) });
-    return NextResponse.json({ error: err.message || 'Failed to create service' }, { status: 400 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to create service' }, { status: 400 });
   }
 }

@@ -5,8 +5,8 @@
  */
 
 import { randomBytes, createHash } from 'node:crypto';
+import { ConfirmationStatus, ReservationStatus } from '@prisma/client';
 import { prisma } from '../db/prisma';
-import { logger } from '../telemetry/logger';
 import { acquireResourceSlotLock } from '../booking/advisoryLock';
 import { calculateEffectiveBuffers } from '../booking/windows';
 import { validateCustomerContact } from '../booking/lock';
@@ -14,6 +14,13 @@ import { resolveServicePrice } from '../../config/currency-registry';
 import { HTML_TAG_REGEX } from '../../config/shop.config';
 import { StaffActorContext } from '../security/staffRbac';
 import { emitAuditEvent } from '../security/staffAuth';
+import { getReleaseReadinessFlags } from '../config/integrationProfile';
+import { logger } from '../telemetry/logger';
+import {
+  SPEC_TO_DB_RESERVATION_STATUS,
+  transitionBookingFsm,
+  type BookingFsmState,
+} from './bookingFsm';
 
 export class SlotConflictError extends Error {
   constructor(message = 'Selected slot has just been taken by another customer') {
@@ -165,7 +172,8 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
 
     const now = new Date();
 
-    // Check overlap with active BOOKED or active HELD
+    // Check overlap with active bookings (FREE: BOOKED; PREPAID: HELD/PAYMENT_PENDING; approval: PENDING_APPROVAL)
+    const fsmActive = getReleaseReadinessFlags().fsmCutover;
     const conflict = await tx.slotReservation.findFirst({
       where: {
         resourceId,
@@ -179,6 +187,19 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
                 status: 'HELD',
                 OR: [{ holdExpiresAt: null }, { holdExpiresAt: { gt: now } }],
               },
+              // FSM cutover (T021): new active states also occupy the slot.
+              // PAYMENT_PENDING keeps the TTL guard; PENDING_APPROVAL has no TTL
+              // (legacy flag-off path never writes these statuses).
+              ...(fsmActive
+                ? [
+                    {
+                      status: 'PAYMENT_PENDING' as const,
+                      OR: [{ holdExpiresAt: null }, { holdExpiresAt: { gt: now } }],
+                    },
+                    { status: 'UNDERPAID' as const },
+                    { status: 'PENDING_APPROVAL' as const },
+                  ]
+                : []),
             ],
           },
         ],
@@ -189,14 +210,41 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
       throw new SlotConflictError('Selected slot has just been taken by another customer');
     }
 
-    // Determine status & hold semantics (FR-337, FR-338)
+    // Determine status & hold semantics (FR-337, FR-338, FR-407).
+    // Two-track FSM cutover (T021): when the fsmCutover flag is ON the initial
+    // state and hold TTL come from the pure FSM in bookingFsm.ts; when OFF the
+    // legacy 003 mapping below is preserved verbatim (killswitch, no DDL).
     const isOutCall = fulfillmentMode === 'OUT_CALL';
     const requireApproval = isOutCall || settings.requireStaffApprovalForInCall;
+    const fsmCutover = getReleaseReadinessFlags().fsmCutover;
 
-    const initialReservationStatus = requireApproval ? 'HELD' : 'BOOKED';
-    const initialConfirmationStatus = requireApproval ? 'PENDING_STAFF_REVIEW' : 'STAFF_APPROVED';
-    // OUT_CALL pending approval gets holdExpiresAt = null so it does not auto-cancel (FR-338)
-    const holdExpiresAt = null;
+    let initialReservationStatus: ReservationStatus;
+    let initialConfirmationStatus: ConfirmationStatus;
+    let holdExpiresAt: Date | null = null;
+
+    if (fsmCutover) {
+      const prepaid = item.requiresFullPrepayment === true;
+      const fsm = transitionBookingFsm('AVAILABLE', 'CREATE_BOOKING', {
+        now,
+        track: prepaid ? 'PREPAID' : 'FREE',
+        requiresApproval: requireApproval,
+      });
+      if (!fsm.ok) {
+        throw new Error(`Booking FSM rejected initial transition: ${fsm.reason}`);
+      }
+      initialReservationStatus = SPEC_TO_DB_RESERVATION_STATUS[
+        fsm.state as BookingFsmState
+      ] as ReservationStatus;
+      // Spec CONFIRMED maps to DB BOOKED; prepaid HELD carries the 15m payment TTL (FR-433).
+      holdExpiresAt = fsm.effects.holdExpiresAt ?? null;
+      initialConfirmationStatus =
+        fsm.state === 'PENDING_APPROVAL' ? 'PENDING_STAFF_REVIEW' : 'STAFF_APPROVED';
+    } else {
+      initialReservationStatus = requireApproval ? 'HELD' : 'BOOKED';
+      initialConfirmationStatus = requireApproval ? 'PENDING_STAFF_REVIEW' : 'STAFF_APPROVED';
+      // OUT_CALL pending approval gets holdExpiresAt = null so it does not auto-cancel (FR-338)
+      holdExpiresAt = null;
+    }
 
     const addressSnapshot = isOutCall ? serviceAddress!.trim() : settings.businessServiceAddress;
 
@@ -213,7 +261,7 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
         customerPhone: contactValidation.type === 'PHONE' ? contactValidation.normalized : null,
         customerEmail: contactValidation.type === 'EMAIL' ? contactValidation.normalized : null,
         customerNotes: customerNote ? customerNote.trim() : null,
-        confirmationStatus: initialConfirmationStatus as any,
+        confirmationStatus: initialConfirmationStatus,
         paymentType: 'PAY_ON_SITE',
         scheduleVersion: 1,
         items: {
@@ -239,7 +287,7 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
         startTime,
         endTime,
         totalDurationMin,
-        status: initialReservationStatus as any,
+        status: initialReservationStatus,
         holdExpiresAt,
         fulfillmentMode,
         servicePriceMinor: pricing.servicePriceMinor,
@@ -303,6 +351,11 @@ export async function cancelBooking(params: CancelBookingParams): Promise<void> 
     throw new CancellationError('Unauthorized: cancellation token or staff authentication required', 401);
   }
 
+  // Captured for the T072 waitlist fan-out after the transaction commits.
+  // Holder object: assignments happen inside the transaction callback, which
+  // TS control-flow analysis does not track for a plain `let`.
+  const freedSlot: { slotReservationId?: string; serviceId?: string | null } = {};
+
   await prisma.$transaction(async (tx) => {
     const reservation = await tx.slotReservation.findFirst({
       where: {
@@ -365,6 +418,8 @@ export async function cancelBooking(params: CancelBookingParams): Promise<void> 
           cancellationTokenConsumedAt: now,
         },
       });
+      freedSlot.slotReservationId = reservation.id;
+      freedSlot.serviceId = reservation.itemId ?? null;
 
       await tx.order.update({
         where: { id: reservation.orderId },
@@ -391,6 +446,8 @@ export async function cancelBooking(params: CancelBookingParams): Promise<void> 
           cancellationTokenRevokedAt: now,
         },
       });
+      freedSlot.slotReservationId = reservation.id;
+      freedSlot.serviceId = reservation.itemId ?? null;
 
       await tx.order.update({
         where: { id: reservation.orderId },
@@ -411,4 +468,35 @@ export async function cancelBooking(params: CancelBookingParams): Promise<void> 
       });
     }
   });
+
+  // T028 (FR-430): prepaid cancellation refund policy — flag-gated, legacy path untouched.
+  // The cancellation itself must never fail because of refund wiring, hence the catch.
+  if (getReleaseReadinessFlags().fsmCutover) {
+    try {
+      const { applyRefundPolicyOnCancellation } = await import('../payments/refundPolicy');
+      await applyRefundPolicyOnCancellation({
+        bookingId,
+        actor: token ? 'CUSTOMER_CANCELLATION_LINK' : staffActor?.actorId || 'STAFF',
+      });
+    } catch (err: unknown) {
+      logger.error('[REFUND_POLICY_WIRING_FAILED]', { error: String(err) });
+    }
+  }
+
+  // T072 (FR-420/433): waitlist fan-out dispatch on the freed slot — offers are
+  // Telegram-only, first claim wins through the standard atomic booking path.
+  // Fire-and-forget: dispatch failure must never fail the cancellation.
+  if (freedSlot.slotReservationId) {
+    try {
+      const { dispatchWaitlistOffers } = await import('../waitlist/offerDispatch');
+      void dispatchWaitlistOffers({
+        slotReservationId: freedSlot.slotReservationId,
+        serviceId: freedSlot.serviceId ?? null,
+      }).catch((err: unknown) => {
+        logger.error('[WAITLIST_FANOUT_DISPATCH_FAILED]', { error: String(err) });
+      });
+    } catch (err: unknown) {
+      logger.error('[WAITLIST_FANOUT_WIRING_FAILED]', { error: String(err) });
+    }
+  }
 }

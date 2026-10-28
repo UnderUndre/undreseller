@@ -5,6 +5,9 @@ import { verifyTelegramInitData } from '@/lib/security/initData';
 import { checkRateLimit } from '@/lib/security/rateLimiter';
 import { logger } from '@/lib/telemetry/logger';
 import { dispatchStaffOrderPagerCard } from '@/lib/bot/staffBot';
+import { resolveStaffLocale } from '@/lib/i18n/botStrings';
+import { getPrimaryPaymentProvider } from '@/lib/payments/providerContract';
+import '@/lib/payments/nowpayments'; // side-effect: registers the NOWPAYMENTS factory (FR-401)
 
 const checkoutSchema = z
   .object({
@@ -77,6 +80,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const settings = await prisma.shopSettings.findUnique({ where: { id: 1 } });
+    // T041 (FR-412-equivalent): staff pager locale rides ShopSettings.defaultLocale.
+    const staffLocale = resolveStaffLocale(settings?.defaultLocale ?? null);
     const prepaymentTiming = settings?.prepaymentTiming || 'IMMEDIATE';
     const staffChatId = settings?.staffDestinationChatId || process.env.STAFF_CHAT_ID || null;
 
@@ -132,7 +137,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             customerNotes: updated.customerNotes,
             isNewClient: updated.autoCancelOnNoConfirmation,
           },
-          staffChatId
+          staffChatId,
+          staffLocale
         );
       }
 
@@ -165,11 +171,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         );
       }
 
-      const invoiceData = generateInvoiceMetadata(
+      const invoiceData = await createCheckoutInvoice(
         updated.id,
         updated.totalMinor,
-        paymentMethod
+        updated.currency,
+        paymentMethod,
+        req.nextUrl.origin
       );
+      if ('error' in invoiceData) {
+        return NextResponse.json({ error: invoiceData.error }, { status: invoiceData.status });
+      }
       return NextResponse.json({ order: updated, ...invoiceData }, { status: 200 });
     }
 
@@ -238,7 +249,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           customerNotes: null,
           isNewClient: true, // Product orders are always new clients
         },
-        staffChatId
+        staffChatId,
+        staffLocale
       );
     }
 
@@ -249,11 +261,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const invoiceData = generateInvoiceMetadata(
+    const invoiceData = await createCheckoutInvoice(
       newOrder.id,
       newOrder.totalMinor,
-      paymentMethod
+      newOrder.currency,
+      paymentMethod,
+      req.nextUrl.origin
     );
+    if ('error' in invoiceData) {
+      return NextResponse.json({ error: invoiceData.error }, { status: invoiceData.status });
+    }
     return NextResponse.json({ order: newOrder, ...invoiceData }, { status: 201 });
   } catch (err: unknown) {
     logger.error('Failed to process checkout', { error: String(err) });
@@ -261,15 +278,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 }
 
-function generateInvoiceMetadata(
+/**
+ * T022 (contracts/payment-provider.md): crypto invoices are created SERVER-SIDE
+ * through the PaymentProvider contract — the payment URL is always
+ * provider-issued. The legacy hand-built `nowpayments.io/payment/?iid=...` URL
+ * branch (003 audit finding) is removed; hand-assembled gateway URLs are prohibited.
+ * Zero-provider mode: PAY_ON_SITE and TELEGRAM_STARS remain fully functional;
+ * CRYPTO_GATEWAY checkout is unavailable (503) — booking free-track unaffected (FR-401).
+ */
+async function createCheckoutInvoice(
   orderId: string,
   totalMinor: number,
-  method: 'TELEGRAM_STARS' | 'CRYPTO_GATEWAY'
-): {
-  paymentMethod: 'TELEGRAM_STARS' | 'CRYPTO_GATEWAY';
-  invoiceUrl?: string;
-  starsPrice?: number;
-} {
+  currency: string,
+  method: 'TELEGRAM_STARS' | 'CRYPTO_GATEWAY',
+  callbackBaseUrl: string
+):
+  Promise<
+    | { paymentMethod: 'TELEGRAM_STARS'; starsPrice: number }
+    | { paymentMethod: 'CRYPTO_GATEWAY'; invoiceUrl: string }
+    | { error: string; status: number }
+  > {
   if (method === 'TELEGRAM_STARS') {
     const calculatedStars = Math.max(1, Math.round(totalMinor / 2));
     return {
@@ -278,11 +306,26 @@ function generateInvoiceMetadata(
     };
   }
 
-  const amountUsd = (totalMinor / 100).toFixed(2);
-  const nowpaymentsUrl = `https://nowpayments.io/payment/?iid=${orderId}&amount=${amountUsd}`;
+  const provider = getPrimaryPaymentProvider();
+  if (!provider || provider.id !== 'NOWPAYMENTS') {
+    return {
+      error: 'Crypto gateway is not configured for this store',
+      status: 503,
+    };
+  }
 
-  return {
-    paymentMethod: 'CRYPTO_GATEWAY',
-    invoiceUrl: nowpaymentsUrl,
-  };
+  try {
+    const invoice = await provider.createInvoice({
+      orderId,
+      amountMinor: totalMinor,
+      currency,
+      callbackBaseUrl,
+    });
+    // FE compatibility: the historical field name is `invoiceUrl`; the VALUE is
+    // now the provider-issued payment URL.
+    return { paymentMethod: 'CRYPTO_GATEWAY', invoiceUrl: invoice.paymentUrl };
+  } catch (err: unknown) {
+    logger.error('Provider invoice creation failed', { error: String(err), orderId });
+    return { error: 'Failed to create payment invoice', status: 502 };
+  }
 }

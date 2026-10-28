@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db/prisma';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -15,7 +16,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   });
 
   if (!item) {
-    return { title: 'Item Not Found' };
+    return { title: (await getTranslations('web.item'))('itemNotFound') };
   }
 
   return {
@@ -58,6 +59,9 @@ export default async function CatalogItemPage({ params }: Props) {
 
   const safeJsonLdString = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
 
+  // T040 (FR-411): chrome labels only; item.title/description stay authored (FR-414).
+  const t = await getTranslations('web.item');
+
   return (
     <div className="max-w-3xl mx-auto space-y-8">
       {/* Schema.org Structured Data */}
@@ -66,33 +70,33 @@ export default async function CatalogItemPage({ params }: Props) {
         dangerouslySetInnerHTML={{ __html: safeJsonLdString }}
       />
 
-      <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-8 shadow-xl">
+      <div className="bg-base-200/60 border border-base-300 rounded-2xl p-8 shadow-xl">
         <div className="flex items-center gap-3 mb-4">
-          <span className="text-xs uppercase font-extrabold tracking-wider text-blue-400 bg-blue-950 px-2.5 py-1 rounded">
+          <span className="text-xs uppercase font-extrabold tracking-wider text-purple-400 bg-purple-900 px-2.5 py-1 rounded">
             {item.itemType}
           </span>
           {item.itemType === 'SERVICE' && item.durationMin && (
-            <span className="text-xs text-gray-400 font-mono">
-              ⏱ {item.durationMin} min duration
+            <span className="text-xs text-base-content/60 font-mono">
+              {t('minDuration', { minutes: item.durationMin })}
             </span>
           )}
           {item.itemType === 'PRODUCT' && item.stock !== null && (
-            <span className="text-xs text-emerald-400 font-mono">
-              📦 Stock: {item.stock}
+            <span className="text-xs text-green-400 font-mono">
+              {t('stock', { stock: item.stock })}
             </span>
           )}
         </div>
 
-        <h1 className="text-3xl font-extrabold text-white mb-4">{item.title}</h1>
-        <p className="text-gray-300 text-base leading-relaxed mb-6 whitespace-pre-line">
+        <h1 className="text-3xl font-extrabold text-base-content mb-4">{item.title}</h1>
+        <p className="text-base-content/80 text-base leading-relaxed mb-6 whitespace-pre-line">
           {item.description}
         </p>
 
-        <div className="flex items-baseline gap-4 py-6 border-t border-b border-gray-800 my-6">
-          <span className="text-3xl font-black text-white">{formattedPrice}</span>
+        <div className="flex items-baseline gap-4 py-6 border-t border-b border-base-300 my-6">
+          <span className="text-3xl font-black text-base-content">{formattedPrice}</span>
           {item.starsPrice && (
-            <span className="text-sm font-bold text-yellow-400 bg-yellow-950/40 px-3 py-1 rounded-full border border-yellow-700/50">
-              ⭐ {item.starsPrice.toLocaleString()} Stars (XTR)
+            <span className="text-sm font-bold text-warning bg-warning-surface/40 px-3 py-1 rounded-full border border-warning/50">
+              {t('starsPrice', { count: item.starsPrice.toLocaleString() })}
             </span>
           )}
         </div>
@@ -101,16 +105,16 @@ export default async function CatalogItemPage({ params }: Props) {
           {item.itemType === 'SERVICE' ? (
             <Link
               href={`/book?itemId=${item.id}`}
-              className="w-full text-center bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition"
+              className="w-full text-center bg-purple-600 hover:bg-purple-500 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition"
             >
-              Select Time & Book Slot →
+              {t('selectTimeBook')}
             </Link>
           ) : (
             <Link
               href={`/checkout?itemId=${item.id}`}
-              className="w-full text-center bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition"
+              className="w-full text-center bg-green-600 hover:bg-green-500 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition"
             >
-              Buy with Crypto or Stars →
+              {t('buyCryptoOrStars')}
             </Link>
           )}
         </div>
