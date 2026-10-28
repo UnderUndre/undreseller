@@ -62,7 +62,7 @@ Reviewers identify themselves by tool — `claude`, `codex`, `antigravity`, `gem
 
 ### VII. Artifact Versioning
 
-Every pipeline stage that mutates a feature artifact (specify, clarify, plan, tasks, review, **bizplan**) MUST tag the commit via `.specify/scripts/{bash,powershell}/snapshot-stage.{sh,ps1}` using the convention `<stage>/<slug>/v<N>`.
+Every pipeline stage that mutates a feature artifact (specify, clarify, **requirements-audit**, plan, tasks, **test-design**, review, **qa-signoff**, **bizplan**, **workaround-audit**) MUST tag the commit via `.specify/scripts/{bash,powershell}/snapshot-stage.{sh,ps1}` using the convention `<stage>/<slug>/v<N>`.
 
 - Tags are the **only** historical record. **No parallel `.history/` files** — git is the history. Duplicating into `specs/<slug>/.history/` is an anti-pattern: it drifts and bloats the tree.
 - `/speckit.diff <slug>` reads tags to compare iterations without speculative file copies.
@@ -121,8 +121,6 @@ Feature development uses two distinct branch phases:
 
 This replaces the old `feature/<N>-<slug>` convention. Existing `feature/<N>-<slug>` branches are grandfathered; new features MUST use the two-phase pattern.
 
-**Consumer-tooling carve-out (1.7.2)**: consumer repositories whose shipped `.specify/scripts/` (`create-new-feature.ps1`, `snapshot-stage.ps1`) implement the `NNN-slug` branch convention (e.g., `undreseller` 002–004) continue under that convention — the tooling IS the local branch standard. The principle's substance still applies however branches are named: planning artifacts live on the planning branch with no implementation code, implementation lands on its own branch after planning merge, and the review gates (VI) are unchanged. Consumer copies carry this carve-out locally; promotion upstream to `UnderUndre/ai` happens via a dedicated PR, not sync-drift.
-
 **Hotfix carve-out**: production hotfixes (<50 LOC, prod incident with ticket reference) skip the two-phase flow and may branch directly from `main` using a `hotfix/` prefix.
 
 **Spec patch drift policy**: during implementation, minor spec clarifications that don't change scope may be patched directly into the spec with a dated note (e.g., `<!-- Drift note: 2026-05-25 — clarified error handling → validated with Zod -->`). Scope-changing drift requires a new planning PR.
@@ -153,6 +151,32 @@ Exploratory research spikes and Proof-of-Concepts (PoC) MUST adhere to formal De
 3. **Mandatory Code Disposal**: Prototype code and exploratory branches MUST be completely discarded. Merging or copy-pasting raw spike code into production files is strictly prohibited. Production deliverables must be implemented clean-room from scratch against typed contracts and automated test suites.
 4. **No fake TDD ballast**: Rigid TDD test suites are prohibited on temporary spike code to prevent accumulating throwaway abstraction debt.
 
+### XII. QA & Test Artifact Contour (ISO/IEC/IEEE 29119 + 29148)
+
+Manual QA artifacts are part of the pipeline canon, not an afterthought. Three commands form the contour:
+
+1. **Stage 2.5 — `/speckit.requirements-audit`** (gate): audits `spec.md` against ISO/IEC/IEEE 29148:2018 (Verifiability, Consistency, Completeness, Unambiguity) and scores every FR/NFR with Risk = Impact (1–5) × Probability (1–5). Outputs `specs/<slug>/requirements-audit.md` + draft `specs/<slug>/qa/preliminary-rtm.md`. Verdict **REJECTED blocks `/speckit.plan`** (bypass only via `--override-gate "<reason>"`, logged). Runs after `/speckit.specify` (or `/speckit.clarify`), before `/speckit.plan`.
+2. **Stage 5.5 — `/speckit.test-design`**: after `/speckit.tasks`, generates `specs/<slug>/qa/{rtm-matrix.md, test-cases.md, uat-scenarios.md, regression-suite.md}` per ISO/IEC/IEEE 29119-3:2021 (artifacts) and 29119-4:2021 (techniques: BVA, EP, Decision Table, State Transition, Error Guessing). Test depth scales by Risk Score. RTM traceability is end-to-end: `FR ↔ Task ↔ Commit/PR ↔ TC ↔ Bug`, with an NFR Level 1 Evidence table (raw benchmark/scan artifacts, not impressions). Runs before/parallel to `/speckit.implement`.
+3. **Stage 8.5 — `/speckit.qa-signoff`** (gate): after manual QA execution on staging/preview, issues a three-position verdict — `APPROVED` / `APPROVED WITH RISKS` (requires a filled Residual Risk Register + explicit risk owner confirmation) / `BLOCKED`. **BLOCKED prohibits `/speckit.code-review` and merge.** Outputs `specs/<slug>/qa/signoff-report.md`. Bypass via `--override-gate "<reason>"`, logged.
+
+Rules:
+
+- `/speckit.analyze` MUST check RTM coverage: every FR/NFR traces to at least one test case; Risk ≥ 20 requirements MUST have Decision Table + State Transition + Exploratory Charter + UAT coverage.
+- QA (does the build match the spec) and UAT (does the feature serve the business) are separate artifacts and separate questions; `uat-scenarios.md` is not a test-case dump.
+- SKIPPED ≠ PASSED. Sign-off trusts explicit execution marks only.
+- Snapshot stage names `requirements-audit`, `test-design`, `qa-signoff` are reserved per Principle VII.
+- Hotfixes under the Principle IX carve-out skip the contour. Chore-only features may waive the contour via `specs/<slug>/qa/waiver.md` + reason (mirrors VII-B.5).
+
+Rationale: a requirements defect caught at stage 2.5 costs minutes; the same defect at stage 9 or in production costs a release. If a requirement cannot be tested, the requirement is the defect.
+
+### XIII. Sovereign Capacity & Productization Discipline (Little's Law & ISO 29110)
+
+Production capacity in productized engineering is strictly constrained by physical queuing theory ($L = \lambda W$). A solo or micro-engineering unit MUST NOT allow unbuffered commercial intake to induce context-switching thrashing or violate delivery SLAs.
+
+1. **Strict WIP Caps:** `/speckit.implement` MUST NOT be initiated on a new commercial client slot if active implementation branches exceed the declared concurrency limit (`MAX_CONCURRENT_SPRINTS = 2` by default). Excess demand is queued into a deterministic, deposit-backed Waitlist.
+2. **The Intake Gate (Zero-Start on Unsanitized Input):** The delivery timebox clock (e.g. 14 days) CANNOT start upon financial receipt alone. It is strictly gated by the completion of the formal Intake Checklist (domain parameters, access tokens, entity schemas). An incomplete intake locks the project in `ON_HOLD_PENDING_ASSETS` without burning production capacity.
+3. **Mandatory Productization Extraction (Cycle 6):** Every completed commercial delivery MUST execute a 1-day Knowledge Capture phase before initiating the next major build. Reusable FSM models, API connectors, and diagnostic rules MUST be extracted into internal SpecKit templates or packages (`/learn` and `/improve` loop). Re-inventing solved operational logic in subsequent client engagements is classified as architectural waste.
+
 ## Technical Constraints
 
 > Moved to [`../../specs/main/requirements.md`](../../specs/main/requirements.md) §2.1 (single source of truth). Constitution governs **principles**; concrete tech-stack constraints live alongside requirements where they belong.
@@ -169,7 +193,7 @@ Exploratory research spikes and Proof-of-Concepts (PoC) MUST adhere to formal De
 
 ### `/speckit.*` pipeline for features
 
-`/speckit.specify` → `/speckit.clarify` → `/speckit.plan` → `/speckit.tasks` → `/speckit.analyze` → **`/speckit.review`** (×2 from external AI tools) → `/speckit.implement` → `/speckit.status`.
+`/speckit.specify` → **`/speckit.requirements-audit`** (Principle XII gate) → `/speckit.clarify` → `/speckit.plan` → `/speckit.tasks` → **`/speckit.test-design`** (Principle XII) → `/speckit.analyze` → **`/speckit.review`** (×2 from external AI tools) → `/speckit.implement` → **`/speckit.qa-signoff`** (Principle XII gate, after manual QA) → `/speckit.code-review` → `/speckit.status`.
 
 This file (the constitution) is loaded at the Constitution Check gate of `/speckit.plan`. Violations block until resolved.
 
@@ -196,11 +220,13 @@ This file (the constitution) is loaded at the Constitution Check gate of `/speck
 4. **Complexity must be justified.** Every new agent, transformer, target, or skill adds load to every downstream session. A change that doesn't earn its weight is rejected.
 5. **Anti-sycophancy applies to review of this file too.** If a principle above is wrong for the project, say so and propose an amendment. Don't quietly ignore it.
 
-**Version**: 1.7.2 | **Ratified**: 2026-04-17 | **Last Amended**: 2026-10-24
+**Version**: 1.9.0 | **Ratified**: 2026-04-17 | **Last Amended**: 2026-10-26
 
 ### Changelog
 
-- **1.7.2** (2026-10-24) — Principle IX consumer-tooling carve-out: repos whose `.specify/scripts/` implement `NNN-slug` branches (undreseller 002–004 lineage) continue under tooling convention; two-phase substance (planning/implementation separation + review gates) unchanged. Raised by 004-release-readiness analyze D1 (deviation was documented but unamended).
+- **1.9.0** (2026-10-26) — Added Principle **XIII: Sovereign Capacity & Productization Discipline** (Little's Law, ISO/IEC 29110 VSE basic profile, WIP limit $\le 2$ parallel sprints, 48h Zero-Call Intake Gate, mandatory 24h Productization Extraction loop). Prevents solo-engineer hydraulic overload and asset waste.
+
+- **1.8.0** (2026-10-25) — Added Principle **XII: QA & Test Artifact Contour** (ISO/IEC/IEEE 29119-2/3/4 + 29148). Three new stages: `/speckit.requirements-audit` (2.5, REJECT blocks plan), `/speckit.test-design` (5.5, generates `qa/{rtm-matrix,test-cases,uat-scenarios,regression-suite}.md`), `/speckit.qa-signoff` (8.5, APPROVED / APPROVED WITH RISKS / BLOCKED; BLOCKED gates code-review & merge). Snapshot stages `requirements-audit|test-design|qa-signoff` reserved. Hotfix carve-out (IX) and chore waiver apply. Pipeline line updated.
 
 - **1.7.1** (2026-10-11) — Clarified Principle III: CLI-computed, lock-recorded fields (stack binding of `skills:`) are pipeline output, not project overrides. No behavioral change. Raised by 003-stack-aware-agents analyze D3.
 

@@ -21,16 +21,19 @@
 
 | Компонент | Технология | Точная версия / Стандарт | Назначение |
 |---|---|---|---|
-| **Framework** | Next.js 15 (App Router, no `src/`) | `next@15.2.1` | SSR, API-роуты, `instrumentation.ts` хук старта |
+| **Framework** | Next.js 15 (App Router, no `src/`) | `next@15.5.28` | SSR, API-роуты, `instrumentation.ts` хук старта |
 | **Runtime & Language** | Node.js 22 LTS / TypeScript | `typescript@5.8.2` | Строгая типизация, ESM |
 | **Database & ORM** | PostgreSQL 16 (`btree_gist`) + Prisma | `prisma@6.4.1`, `@prisma/client@6.4.1` | Реляционная модель, GiST exclusion, транзакции |
-| **Queue / Background Jobs** | In-process `inboxPoller` + Inngest + PG Sweeper | `inngest@3.40.1` | 5-сек поллер инбокса, фоновые таймеры с CAS, свиперы |
+| **Queue / Background Jobs** | In-process `inboxPoller` + Inngest + PG Sweeper | `inngest@3.54.2` | 5-сек поллер инбокса, фоновые таймеры с CAS, свиперы |
 | **Telegram Bot API** | grammY (Client `bot` + Staff `staffBot`) | `grammy@1.35.0` | Клиентская витрина и служебный пейджер мастера |
 | **Telegram Mini App** | @twa-dev/sdk | `@twa-dev/sdk@8.0.2` | Темы, гаптика, безопасные отступы |
+| **Payments** | Stripe Node SDK + NOWPayments REST | `stripe@17.5.0` (MIT) | Hosted Checkout (fiat), третий адаптер `PaymentProvider` (005) |
+| **Password Hashing** | @node-rs/argon2 | `@node-rs/argon2@1.8.3` (MIT) | Argon2id-харднинг staff-auth, сериализация через мьютекс (005 FR-501/504a) |
 | **In-Memory Cache / Limiter** | lru-cache | `lru-cache@11.1.0` | Рейт-лимитер (10 req / 60s на 10k ключей) |
 | **Tokenization & RAG** | js-tiktoken | `js-tiktoken@1.0.20` | Токенизация `cl100k_base` (500/50 чанки) |
 | **PDF Ingestion** | pdf-parse | `pdf-parse@1.1.1` | Парсинг базы знаний (до 10 MB, до 50 стр) |
-| **Schema Validation** | Zod | `zod@3.24.2` | Валидация входных тел и канонических пейлоудов |
+| **Schema Validation** | Zod | `zod@3.25.76` | Валидация входных тел и канонических пейлоудов; **миграция на 4.x отложена** (единственный оставшийся audit-high GHSA-mrhx-c7xc-m3w5, план — ближайший релиз) |
+| **i18n** | next-intl | `next-intl@4.14.9` | Chrome i18n ru/en (+uk data-only), locale resolution chain |
 | **Edge Proxy** | Traefik v3 | `traefik:v3.3` | Reverse proxy, Auto Let's Encrypt SSL |
 
 ---
@@ -51,6 +54,7 @@
      - `NOWPAYMENTS`: разрешает `NOWPAYMENTS_*` и запрещает оба Telegram-токена и `WHATSAPP_*`;
      - `NONE`: запрещает все внешние интеграционные токены;
      - Любой третий бот-токен (`THIRD_BOT_TOKEN`, `EXTRA_BOT_TOKEN`, `SECONDARY_STAFF_BOT_TOKEN`, `SUPPORT_BOT_TOKEN`) или смешанный набор ключей блокирует старт/готовность в режиме fail-closed (`ERR_INTEGRATION_PROFILE_VIOLATION`).
+   - **Классификация платёжных и инфраструктурных адаптеров (уточнение 004/005)**: платежи (NOWPayments, Telegram Stars, Stripe) — **инфраструктурный адаптер**, не расходует лимит «≤1 бизнес-интеграция» (бизнес-план v18.5/v18.8). Провайдеры включаются per-instance через `PAYMENT_PROVIDERS` (zero-provider семантика — полностью рабочий магазин без ключей). Лимит «1 бизнес-интеграция» резервируется под контуры уровня Google Calendar / WhatsApp Business и выбирается до старта SOW через адаптер.
 
 ---
 
@@ -90,6 +94,18 @@
 - **FR-122 / FR-022 (Provider-Separated Refunds & Immutable PaymentEvent)**: ведение возвратов исключительно через `RefundOperation` (`TELEGRAM_STARS_REFUND` и `CRYPTO_REIMBURSEMENT` с 24ч SLA) при полной неизменяемости таблицы `PaymentEvent`.
 - **FR-123 (Client Messenger Flags & Copy Contacts Action)**: хранение в `Order` полей `customerTgUsername`, `hasWhatsApp` и `hasTelegram` (миграция `20261020140000_add_client_contact_fields`) и обработка немутирующей кнопки `📋 Копировать контакты` (`staff:copy_contacts:<orderId>`) с отправкой мастеру форматированной карточки контактов (`formatCopyContactsText`).
 - **FR-124 (Graceful Inngest Degradation & In-Process Continuity)**: проверка `isInngestConfigured` (`Boolean(process.env.INNGEST_EVENT_KEY)`) перед отправкой событий в Inngest SDK, чтобы локальная разработка и работа при недоступности Inngest Cloud продолжались без ошибок за счёт встроенного 5-секундного поллера `inboxPoller.ts` и `deadlineSweeper.ts`.
+
+### 4.3. Релиз 004: платежи/FSM, надёжность, i18n, waitlist (`004-release-readiness`, 2026-10-24)
+- **FR-401..FR-440 (сокращённая сводка, полные акцептансы в `specs/004-release-readiness/spec.md`)**: провайдер-нейтральный платёжный контракт `lib/payments/providerContract.ts` (реестр адаптеров, minor units, zero-provider семантика), двухтрековый FSM (`lib/kernel/bookingFsm.ts`: FREE/PREPAID, hold 15 мин, UNDERPAID, поздний платёж FR-432), durable Telegram outbox с шейпингом 429, waitlist (фан-аут офферов ≤10, атомарный claim), i18n ru/en (locale chain), кастомные поля бронирования, гибридный Telegram-режим витрины, контент-админка (3 таба), presigned R2-медиа, PII-редакция аудита, transactional email.
+
+### 4.4. Релиз 005: Stripe fiat-рельс + sovereign auth (`005-stripe-adapter-and-sovereign-auth`, 2026-10-26)
+- **FR-501..FR-505 (Auth hardening)**: Argon2id с прозрачным пере-хешем scrypt при следующем логине (`Account.passwordAlgo`), сериализация Argon2-операций мьютексом (≤1 оп/процесс, очередь ≤10, таймаут 5с → 503), мгновенный массовый отзыв сессий `sessionEpoch`/`epochCreated` (Model A: строгое равенство int-снимков), per-IP anti-bruteforce (5 неудач/15 мин → блок 30 мин) поверх per-account lockout 004, auth-аудит-события (`STAFF_SIGN_IN`, `STAFF_SIGN_IN_FAILED`, `STAFF_ACCOUNT_LOCKED`, `STAFF_IP_RATE_LIMITED`, `STAFF_SESSIONS_REVOKED`) с PII-редакцией (IP /24).
+- **FR-510..FR-516 (Stripe-адаптер)**: четвёртый провайдер `PaymentProvider` (`lib/payments/stripe.ts`, `id: "STRIPE"`, dashboard-driven методы без `payment_method_types`), Checkout Session `mode:"payment"` с TTL = hold-TTL 15 мин, сессия создаётся ДО холда (отказ Stripe → 503 без холда, аудит `STRIPE_INVOICE_FAILED`, Idempotency-Key `inv_<orderId>`), канонический `providerPaymentId = payment_intent (pi_...)`, вебхук `POST /api/payments/stripe/webhook` с **атомарной транзакцией** (InboxEvent-дедуп + FSM-переход в одном `prisma.$transaction` — исключает потерю оплат на реплеях), возвраты вручную в Dashboard → `RefundOperation(kind: STRIPE, actor: stripe_dashboard)`.
+- **FR-530..FR-531 (Booking API consolidation)**: `/api/booking/lock` → 308 Permanent Redirect с заголовками `Deprecation`/`Sunset` (+90 дней); 410 не позже релиза 006.
+- **FR-540..FR-542 (Polish)**: `staffRejectNotifyMode` env → колонка `ShopSettings` (+enum `StaffRejectNotifyMode`, idempotent backfill), uk-локаль data-only (гейт ⇔ `enabledLocales`), `formatMinor` по registry-скейлу (JPY 0 / KWD 3).
+- **FR-550 (Orphan cleanup)**: 14 schema-only моделей 003 удалены из `schema.prisma` без SQL (таблиц не существовало) + CI rg-гейт.
+- **Design upgrade (послепечатная полировка 2026-10-26)**: хедер очищен от дублирующих нав-кнопок Catalog/Book Slot (каталог = главная, букать — с карточки услуги; логотип ведёт на `/`), ноль эмодзи в chrome (SVG-иконки), `LocaleSwitcher` — одиночная кнопка с dropdown-пиклистом (нативные названия, check-индикатор, Esc/click-outside), `ThemeSwitcher` — system/light/dark с `localStorage` + anti-FOUC инлайн-скриптом, шрифты Geist/Geist Mono через `next/font/google`, favicon как бренд-логотип хедера, `text-wrap: balance/pretty`, микро-интеракции `active:scale-[0.98]`.
+- **Отложенный долг**: миграция zod 3.25 → 4.x (единственный audit-high GHSA-mrhx-c7xc-m3w5) — перенесена в ближайший релиз (кандидат на 006).
 
 ### Матрица переходов конечного автомата заказа
 

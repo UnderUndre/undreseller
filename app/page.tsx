@@ -108,7 +108,7 @@ export default async function HomePage() {
                 <div className="pt-6">
                   <Link
                     href={`/book?serviceId=${svc.id}`}
-                    className="block w-full text-center bg-purple-600 hover:bg-purple-500 text-white font-medium py-2.5 px-4 rounded-xl text-sm transition-colors shadow-sm"
+                    className="block w-full text-center bg-purple-600 hover:bg-purple-500 text-white font-semibold py-2.5 px-4 rounded-xl text-sm transition-all shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/50"
                   >
 {t('bookNow')}
                   </Link>

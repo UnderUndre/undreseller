@@ -35,9 +35,9 @@
 
 ## Phase 2: Foundational (blocking prerequisites, sync barrier)
 
-- [ ] T010 [DB] Expand-миграция `prisma/migrations/20261101000000_005_stripe_and_hardening/` (+`down.sql`): `user.sessionEpoch INT NOT NULL DEFAULT 1`, `session.epochCreated INT NOT NULL DEFAULT 1`, `account.passwordAlgo TEXT`, `CREATE TYPE "StaffRejectNotifyMode"` + колонка `ShopSettings.staffRejectNotifyMode` (default NOTIFY_CUSTOMER); `prisma/schema.prisma` + guard-тест в lineage `tests/unit/db-gist-and-migration.test.ts` (timeout-guards, down дропает только новое)
+- [ ] T010 [DB] Expand-миграция `prisma/migrations/20261101000000_005_stripe_and_hardening/` (+`down.sql`): `user.sessionEpoch INT NOT NULL DEFAULT 1`, `session.epochCreated INT NOT NULL DEFAULT 1`, `account.passwordAlgo TEXT`, `CREATE TYPE "StaffRejectNotifyMode"` + колонка `ShopSettings.staffRejectNotifyMode` (default NOTIFY_CUSTOMER), `ALTER TYPE "RefundOperationKind" ADD VALUE 'STRIPE'` (F1); `prisma/schema.prisma` + guard-тест в lineage `tests/unit/db-gist-and-migration.test.ts` (timeout-guards, down дропает только новое)
 - [ ] T011 [DB] Idempotent backfill `scripts/backfill-005-reject-notify-mode.ts` (env `STAFF_REJECT_NOTIFY_MODE` → колонка, rate-limited batches) + юнит-тест
-- [ ] T012 [BE] Argon2-фундамент `lib/security/argon2.ts`: hash/verify через `@node-rs/argon2`, параметры из env (`ARGON2_M_KIB/T/P`) с захардкоженным полом (≥19456 KiB, ≥2 iter), PHC-строки, **мьютекс ≤1 операции (verify+hash) на процесс**; юнит-тесты: раунд-трип, пол параметров (низкие → throw), сериализация (2 параллельных вызова не пересекаются)
+- [ ] T012 [BE] Argon2-фундамент `lib/security/argon2.ts`: hash/verify через `@node-rs/argon2`, параметры из env (`ARGON2_M_KIB/T/P`) с захардкоженным полом (≥19456 KiB, ≥2 iter), PHC-строки, **мьютекс ≤1 операции (verify+hash) на процесс с лимитом очереди ≤10 и таймаутом 5000мс → HTTP 503** (F6); юнит-тесты: раунд-трип, пол параметров (низкие → throw), сериализация, отлуп 503 при переполнении очереди
 - [ ] T013 [BE] `lib/security/staffSessions.ts`: `revokeAllStaffAccess(userId, cause)` (epoch+1, session.deleteMany, аудит-событие) + `resolveStaffSession` проверка `epochCreated === sessionEpoch` (Model A); юнит-тесты incl. гонка «сессия создана между инкрементом и deleteMany → отвергнута»
 
 **Checkpoint**: схема расширена, Argon2 и epoch-механика готовы.
@@ -50,7 +50,7 @@
 **Independent Test** (spec §7.1): логин владельца без смены пароля (scrypt→argon2id прозрачно); увольнение OPERATOR режет живую сессию ≤1 запрос; 6-я попытка с одного IP → 429.
 
 - [ ] T020 [BE] [US1] `lib/security/staffSignIn.ts`: при логине `passwordAlgo != "argon2id"` → verify scrypt → при успехе пере-хеш Argon2id + маркер; сессия пишется с `epochCreated = user.sessionEpoch`; юнит-тесты (legacy-пароль проходит и пере-хешируется, битый хеш → INVALID, PHC-параметры из env)
-- [ ] T021 [BE] [US1] Per-IP sliding window на `/api/auth/sign-in` через `lib/security/rateLimit.ts`: 5 неудач/IP/15 мин → 429 на 30 мин (Retry-After), независимо от per-account lockout 004; юнит-тесты (4/5/6 попыток, второй IP не блокируется, независимость двух лимитов)
+- [ ] T021 [BE] [US1] Per-IP anti-bruteforce на `/api/auth/sign-in`: расширение `lib/security/rateLimit.ts` (функции `recordAuthFailure` / `isIpLockedOut` с двухфазным окном F7: 5 неудач / 15 мин → блок 30 мин Retry-After, успешный логин не штрафуется), независимо от per-account lockout 004; юнит-тесты (4/5/6 попыток, второй IP не блокируется, независимость двух лимитов)
 - [ ] T022 [BE] [US1] Auth-обсервабилит FR-505: расширить `STAFF_SIGN_IN`/`STAFF_SIGN_IN_FAILED`, добавить `STAFF_ACCOUNT_LOCKED`, `STAFF_IP_RATE_LIMITED`, `STAFF_SESSIONS_REVOKED` (cause: deactivated|role_change|compromise; PII-redacted, IP только /24); юнит-тест «ровно один event на действие» + zero-PII скан
 - [ ] T023 [BE] [US1] Интеграция отзыва: deactivate/role-change в admin staff API (`app/api/admin/staff/*`) → `revokeAllStaffAccess`; тесты (увольнение режет живую сессию ≤1 запрос)
 - [ ] T024 [PERF] [US1] Argon2 микро-бенчмарк (FR-504a/NFR-5): 5 последовательных логинов + живой TG-поллер, `process.memoryUsage().rss` до/после, пик ≤500 MB → evidence `specs/005/evidence/argon2-benchmark.md` **до merge фазы**; при превышении — снижение env-параметров до пола и повторный замер (число фиксируется)
@@ -64,11 +64,11 @@
 **Goal**: Stripe за контрактом 004, дедуп InboxEvent, FSM-маппинг, отказоустойчивость (FR-510..516).
 **Independent Test** (spec §7.2, quickstart): stubbed-цикл book → Checkout URL → webhook completed → BOOKED + PaymentAllocationLink; replay ×100 → 1 эффект; refunded → CANCELLED + RefundOperation.
 
-- [ ] T030 [BE] [US2] `lib/payments/stripe.ts`: адаптер `PaymentProvider` (createInvoice: TTL = `PREPAID_HOLD_TTL_MS`/1000 = 15 мин, dashboard-driven — БЕЗ payment_method_types, line_items в registry minor units, Idempotency-Key `inv_<orderId>`; verifyCallback через SDK constructEventAsync; parseCallback → CallbackStatus); саморегистрация `registerPaymentProviderFactory("STRIPE")`; юнит-тесты incl. BVA TTL (14.9–15.1 мин) и JPY(0)/KWD(3)
-- [ ] T031 [BE] [US2] `lib/payments/stripeWebhook.ts` + `app/api/payments/stripe/webhook/route.ts` (thin, raw `req.text()`): дедуп `InboxEvent(dedupeKey=stripe_<event.id>)` ПЕРВЫМ шагом → FSM §3 (completed → BOOKED/PAID + PaymentAllocationLink; expired → RELEASED при живом незафриженном холде; payment_failed → без смены статусов + TG-напоминание; charge.refunded → RefundOperation(STRIPE, stripe_dashboard) + CANCELLED); invalid signature → 401 zero-processing
+- [ ] T030 [BE] [US2] `lib/payments/stripe.ts` + `app/api/checkout/route.ts` (F2, F4): адаптер `PaymentProvider` (createInvoice: TTL = `PREPAID_HOLD_TTL_MS`/1000 = 15 мин, dashboard-driven — БЕЗ payment_method_types, line_items в registry minor units, Idempotency-Key `inv_<orderId>`; verifyCallback через SDK constructEventAsync; parseCallback → CallbackStatus с `providerPaymentId = session.payment_intent pi_...`); саморегистрация `registerPaymentProviderFactory("STRIPE")`; сквозная интеграция чекаута: side-effect импорт stripe в `app/api/checkout/route.ts`, расширение `checkoutSchema.paymentMethod` (`STRIPE`/`CARD`), диспетчеризация вызова `createInvoice` по выбранному провайдеру; юнит-тесты incl. BVA TTL (14.9–15.1 мин) и JPY(0)/KWD(3)
+- [ ] T031 [BE] [US2] `lib/payments/stripeWebhook.ts` + `app/api/payments/stripe/webhook/route.ts` (thin, raw `req.text()`): **дедуп InboxEvent и FSM-переход строго внутри единой атомарной транзакции `prisma.$transaction`** (F3, исключает потерю оплат при сбое FSM) → FSM §3 (completed → BOOKED/PAID + PaymentAllocationLink с `pi_...`; expired → RELEASED при живом незафриженном холде; payment_failed → без смены статусов + TG-напоминание; charge.refunded → RefundOperation(kind: STRIPE, actor: stripe_dashboard) + CANCELLED); invalid signature → 401 zero-processing
 - [ ] T032 [E2E] [US2] Контрактный сьют `tests/unit/stripe-contract.test.ts` по ПОНОЙ матрице `contracts/stripe-adapter.md` §4: конкурентный залп `Promise.all(Array.from({length:100}, ...))` → 1 эффект/99 deduplicated; гонка expired-после-completed; freeze-канон; Decision Table (4 события × статусы) + State Transition
 - [ ] T033 [BE] [US2] FR-511a отказ Stripe при createInvoice: сессия ДО холда; 5xx/timeout → холд не ставится, HTTP 503 + retry-сообщение, аудит `STRIPE_INVOICE_FAILED`; повтор с тем же Idempotency-Key безопасен; юнит-тесты (все классы ошибок SDK)
-- [ ] T034 [FE] [US2] Checkout UI: при ≥2 включённых провайдерах — выбор способа (карта/крипта/Stars), при 1 — прямой путь; i18n-ключи ru/en (+uk из T061 позже); кнопка ведёт на `paymentUrl` адаптера
+- [ ] T034 [FE] [US2] Checkout UI: при ≥2 включённых провайдерах — выбор способа (карта/крипта/Stars), при 1 — прямой путь; i18n-ключи ru/en (+uk из T061 позже); кнопка ведёт на `paymentUrl` адаптера; **обработка возврата клиента (F9):** `app/checkout/page.tsx` рендерит подтверждение бронирования для заказов со статусом PAID/BOOKED вместо 404 notFound()
 
 **Checkpoint**: money-path Stripe закрыт контрактом ×100.
 
@@ -110,7 +110,7 @@
 
 ## Phase 8: US6 — Orphan Model Cleanup (P1)
 
-- [ ] T070 [DB] [US6] FR-550: удалить 14 schema-only моделей + неиспользуемые enum'ы из `prisma/schema.prisma` (SQL-миграции НЕТ — таблиц не существовало); `npx prisma generate` + `npx tsc --noEmit` зелёные; `rg`-гейт (T002) = 0; `npx prisma migrate dev` на чистой scratch-базе без P2021 (evidence в tasks-коммит)
+- [ ] T070 [DB] [US6] FR-550: удалить 14 schema-only моделей + неиспользуемые enum'ы и **поля связей `orderLines/paymentPlan/fulfillmentPlan` из `model Order`** (F5) в `prisma/schema.prisma` (SQL-миграции НЕТ — таблиц не существовало); `npx prisma generate` + `npx tsc --noEmit` зелёные; `rg`-гейт (T002) = 0; `npx prisma migrate dev` на чистой scratch-базе без P2021 (evidence в tasks-коммит)
 
 ---
 

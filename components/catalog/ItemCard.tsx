@@ -52,8 +52,11 @@ export function ItemCard({ item }: { item: CatalogItem }) {
           <div>
             <span className="text-2xl font-extrabold text-base-content">{formattedPrice}</span>
             {item.starsPrice && (
-              <span className="ml-2 text-xs font-bold text-warning">
-                ⭐ {item.starsPrice.toLocaleString()} XTR
+              <span className="ml-2 inline-flex items-center gap-1 text-xs font-bold text-warning bg-warning/10 px-2 py-0.5 rounded-md border border-warning/20">
+                <svg className="w-3 h-3 text-warning fill-current" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+                </svg>
+                <span>{item.starsPrice.toLocaleString()} XTR</span>
               </span>
             )}
           </div>
@@ -62,14 +65,14 @@ export function ItemCard({ item }: { item: CatalogItem }) {
         {item.itemType === 'SERVICE' ? (
           <Link
             href={`/book?itemId=${item.id}`}
-            className="w-full block text-center bg-purple-600 hover:bg-purple-500 text-white font-medium py-2.5 px-4 rounded-lg transition"
+            className="w-full block text-center bg-purple-600 hover:bg-purple-500 text-white font-semibold py-2.5 px-4 rounded-xl text-sm transition-all shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/50"
           >
             {t('bookAppointment')}
           </Link>
         ) : (
           <Link
             href={`/checkout?itemId=${item.id}`}
-            className="w-full block text-center bg-green-600 hover:bg-green-500 text-white font-medium py-2.5 px-4 rounded-lg transition"
+            className="w-full block text-center bg-green-600 hover:bg-green-500 text-white font-semibold py-2.5 px-4 rounded-xl text-sm transition-all shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500/50"
           >
             {t('buyNow')}
           </Link>

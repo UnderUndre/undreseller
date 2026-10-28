@@ -17,6 +17,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1156.0",
     "@aws-sdk/s3-request-presigner": "^3.1156.0",
+    "@node-rs/argon2": "^1.8.3",
     "@prisma/client": "6.4.1",
     "@twa-dev/sdk": "8.0.2",
     "@underundre/undesign": "^0.1.0",
@@ -31,6 +32,7 @@
     "pdf-parse": "1.1.1",
     "react": "19.0.0",
     "react-dom": "19.0.0",
+    "stripe": "^17.5.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {

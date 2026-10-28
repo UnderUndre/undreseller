@@ -39,6 +39,7 @@ enum PaymentMethod {
   PAY_ON_SITE
   TELEGRAM_STARS
   CRYPTO_GATEWAY
+  STRIPE // 005: Stripe Hosted Checkout fiat rail
 }
 
 enum PaymentType {
@@ -83,6 +84,7 @@ enum RefundStatus {
 enum RefundOperationKind {
   TELEGRAM_STARS_REFUND
   CRYPTO_REIMBURSEMENT
+  STRIPE // 005 F1: fiat refunds and overbooking collisions via Stripe
 }
 
 enum RefundOperationStatus {
@@ -91,6 +93,12 @@ enum RefundOperationStatus {
   CONFIRMED
   FAILED
   UNKNOWN
+}
+
+enum StaffRejectNotifyMode {
+  NOTIFY_CUSTOMER
+  SILENT
+  STAFF_ONLY
 }
 
 enum MessengerPlatform {
@@ -109,6 +117,7 @@ enum InboxEventKind {
   TELEGRAM_UPDATE
   WHATSAPP_MESSAGE
   NOWPAYMENTS_WEBHOOK
+  STRIPE_WEBHOOK // 005 F3: Stripe webhook inbox event kind
   SYSTEM_ALERT
   TELEGRAM_OUTBOUND
   STAFF_BOT_OUTBOUND
@@ -139,20 +148,22 @@ model User {
   updatedAt     DateTime  @updatedAt
   sessions      Session[]
   accounts      Account[]
+  sessionEpoch  Int       @default(1) // 005 FR-502: instant mass session revocation epoch
 
   @@map("user")
 }
 
 model Session {
-  id        String   @id @default(uuid())
-  expiresAt DateTime
-  token     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  ipAddress String?
-  userAgent String?
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String   @id @default(uuid())
+  expiresAt    DateTime
+  token        String   @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  ipAddress    String?
+  userAgent    String?
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  epochCreated Int      @default(1) // 005 FR-502: session creation epoch snapshot
 
   @@map("session")
 }
@@ -170,6 +181,7 @@ model Account {
   refreshTokenExpiresAt DateTime?
   scope                 String?
   password              String?
+  passwordAlgo          String?   // 005 FR-501: null = scrypt, "argon2id" = migrated hash algorithm
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -329,7 +341,8 @@ model ShopSettings {
   businessServiceAddress        String?
   businessServiceAddressPublic  Boolean  @default(false)
   outCallCoverageDescription    String?
-  requireStaffApprovalForInCall Boolean  @default(false)
+  requireStaffApprovalForInCall Boolean @default(false)
+  staffRejectNotifyMode         StaffRejectNotifyMode @default(NOTIFY_CUSTOMER) // 005 FR-540: staff rejection notification mode
 }
 
 model Item {

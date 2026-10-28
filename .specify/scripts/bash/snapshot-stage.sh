@@ -19,12 +19,12 @@
 
 set -euo pipefail
 
-stage="${1:?stage required (spec|clarify|plan|tasks|review|bizplan|requirements-audit|test-design|qa-signoff)}"
+stage="${1:?stage required (spec|clarify|plan|tasks|review|bizplan|requirements-audit|test-design|qa-signoff|workaround-audit)}"
 slug="${2:?slug required (e.g. 001-orchestrator)}"
 
 case "$stage" in
-    spec|clarify|plan|tasks|review|bizplan|requirements-audit|test-design|qa-signoff) ;;
-    *) echo "ERROR: invalid stage '$stage'. Must be one of: spec, clarify, plan, tasks, review, bizplan" >&2; exit 2 ;;
+    spec|clarify|plan|tasks|review|bizplan|requirements-audit|test-design|qa-signoff|workaround-audit) ;;
+    *) echo "ERROR: invalid stage '$stage'. Must be one of: spec, clarify, plan, tasks, review, bizplan, workaround-audit" >&2; exit 2 ;;
 esac
 
 if ! git rev-parse --show-toplevel >/dev/null 2>&1; then

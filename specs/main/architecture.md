@@ -316,22 +316,25 @@ undreseller/
 
 ---
 
-## 5. Feature Reference: `004-release-readiness` (2026-10-24)
-## 5a. Feature Reference: `005` (2026-10-26)
+## 5a. Feature Reference: `005` (2026-10-26, as-built)
 
 Продолжение платёжного слоя 004 без новой топологии:
 
-- **Stripe Hosted Checkout** — третий адаптер `PaymentProvider` (`lib/payments/stripe.ts`): dashboard-driven методы, TTL сессии = hold-TTL (15 мин), сессия создаётся до постановки холда (отказ Stripe = 503 без холда), дедуп вебхука через `InboxEvent` (retention-контракт: webhook-дедуп-строки вечные), возвраты вручную через Dashboard → `RefundOperation`.
-- **Auth-харднинг**: Argon2id (`@node-rs/argon2`, пере-хеш при следующем логине, `Account.passwordAlgo`), `sessionEpoch`/`epochCreated` мгновенный отзыв (Model A), per-IP rate limit поверх per-account lockout.
-- **Tech-debt**: zod 4, консолидация booking-API, `staffRejectNotifyMode` в ShopSettings, uk-локаль, `formatMinor`, вычистка 14 schema-only моделей 003 (без SQL — таблиц не существовало).
+- **Stripe Hosted Checkout** — четвёртый адаптер `PaymentProvider` (`lib/payments/stripe.ts`): dashboard-driven методы (`payment_method_types` не передаётся), TTL сессии = hold-TTL (15 мин), сессия создаётся до постановки холда (отказ Stripe = 503 без холда, аудит `STRIPE_INVOICE_FAILED`, Idempotency-Key `inv_<orderId>`), канонический `PaymentAllocationLink.providerPaymentId = payment_intent (pi_...)`, дедуп вебхука через `InboxEvent` (retention-контракт: webhook-дедуп-строки вечные), возвраты вручную через Dashboard → `RefundOperation(kind: STRIPE, actor: stripe_dashboard)`.
+- **Атомарный вебхук (antigravity F3)**: `InboxEvent`-дедуп и FSM-переход выполняются строго внутри единой `prisma.$transaction` — реплей после сбоя FSM не «съедает» оплату по P2002.
+- **Сквозной чекаут (F2)**: `app/api/checkout/route.ts` диспетчеризует `createInvoice` по выбранному провайдеру (`PAYMENT_PROVIDERS`); в схему добавлены `PaymentMethod.STRIPE`, `InboxEventKind.STRIPE_WEBHOOK`, `RefundOperationKind.STRIPE` (Expand-миграция `20261101000000_005_stripe_and_hardening`, включая `ALTER TYPE ... ADD VALUE 'STRIPE'`).
+- **Auth-харднинг**: Argon2id (`@node-rs/argon2`, пере-хеш при следующем логине, `Account.passwordAlgo`), сериализация Argon2-операций мьютексом (очередь ≤10, таймаут 5с → 503), `sessionEpoch`/`epochCreated` мгновенный отзыв (Model A), per-IP rate limit (двухфазный штрафной трекер `recordAuthFailure`/`isIpLockedOut`) поверх per-account lockout.
+- **Tech-debt**: консолидация booking-API (`/api/booking/lock` → 308 + `Deprecation`/`Sunset`; 410 ≤006), `staffRejectNotifyMode` в ShopSettings (+enum +idempotent backfill), uk-локаль data-only, `formatMinor` (JPY 0/KWD 3), вычистка 14 schema-only моделей 003 и связей `Order.orderLines/paymentPlan/fulfillmentPlan` (без SQL — таблиц не существовало) + CI rg-гейт.
+- **Design upgrade (chrome)**: хедер без дублирующих Catalog/Book Slot кнопок (каталог = главная; логотип с favicon-ассетом ведёт на `/`), ноль эмодзи, `LocaleSwitcher` — dropdown-пиклист на одной кнопке, `ThemeSwitcher` (system/light/dark, `localStorage` `undrlla_theme`, anti-FOUC инлайн-скрипт в `<head>`), Geist/Geist Mono через `next/font/google`, `text-wrap: balance/pretty`, `active:scale-[0.98]`.
+- **Отложено**: zod 3.25 → 4.x (последний audit-high GHSA-mrhx-c7xc-m3w5) — перенесено в ближайший релиз.
 
 | Спека | Статус |
 |---|---|
-| `specs/005/` | spec rev 2.2 (requirements-audit PASS) + plan + research + data-model + contracts/stripe-adapter + quickstart |
+| `specs/005/` | spec rev 2.3 (audit PASS + antigravity review PASS, F1–F9 закрыты) + plan + tasks (29, реализованы) + research + data-model + contracts/stripe-adapter + quickstart + design-upgrade-tasks |
 
 
 
-> Living-spec append per `/speckit.plan` (Principle VIII). Source: `specs/004-release-readiness/{spec,plan,data-model}.md`.
+> Living-spec append per `/speckit.plan` (Principle VIII). Source: `specs/004-release-readiness/{spec,plan,data-model}.md`, `specs/005/{spec,plan,tasks}.md`.
 
 ### Новые технологии (004)
 
@@ -363,3 +366,5 @@ undreseller/
 | `specs/002-service-cart-and-staff-bot/` | v2 actualized |
 | `specs/003-commerce-operations-capability-packs/` | 003.1 core actualized; 003.2 packs reopened → `specs/004-release-readiness/backlog-carried-over-0032.md` |
 | `specs/004-release-readiness/` | spec v6 + plan + tasks (release: платежи/FSM, надёжность, i18n, гибрид TG, waitlist, кастом-поля, харденинг, undesign, контент-админка) |
+| `specs/005-stripe-adapter-and-sovereign-auth/` | реализовано (2026-10-26): Stripe-адаптер, auth-харднинг, booking-API 308, polish-пакет, orphan-cleanup, design-upgrade chrome |
+| `specs/006-integrations/` | **в плане** (2026-10-26): Google Calendar per-resource (OAuth2 + AES-256-GCM vault, FSM→GC push по Decision Table, инкрементальный busy-импорт 15 мин с syncToken/410-fallback), ICS-аттач, outbound webhooks (HMAC, Inngest-ретраи, SSRF-гейт) + read-only API, zod@4. Артефакты: spec rev 1.1 (audit PASS), plan, research (0 спайков), data-model (3 таблицы), contracts/{gcal-adapter,outbound-webhooks}, quickstart, qa/preliminary-rtm (2 Critical: FR-602/603) |

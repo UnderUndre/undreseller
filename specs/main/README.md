@@ -1,7 +1,7 @@
 # 📚 UnderUndre Modular Commerce — Documentation Hub
 
 **Repository**: `UnderUndre/undreseller`  
-**Version**: 2.1.0 (`001-modular-commerce-template` + `002-service-cart-and-staff-bot` actualized + `003-commerce-operations-capability-packs` planned)  
+**Version**: 2.3.0 (`001`+`002`+`003.1` actualized, `004-release-readiness` shipped, `005-stripe-adapter-and-sovereign-auth` shipped 2026-10-26, `006-integrations` planned)  
 **Product**: Sprint B (HERO) — 14-Day SaaS MVP & Sovereign Commerce Factory ($4,900 flat)  
 **Methodology**: **Diátaxis Framework** (Tutorials, How-To, Reference, Explanation)  
 **Compliance Standards**: ISO/IEC/IEEE 29148:2018, ISO/IEC/IEEE 12207:2017 & NIST SP 800-218 SSDF
@@ -113,3 +113,6 @@ DIRECT_URL="postgresql://..." .specify/scripts/bash/migrate-safe.sh
   - Локальный FTS RAG-движок (`lib/ai/documentParser.ts`, `lib/ai/knowledgeEngine.ts`) с защитой от prompt-injection и каскадом моделей (`4s primary -> 3s fallback -> 8s total`).
   - Защита спящих воркеров Inngest через `cancelOn` ($\le 4$ событий) + `scheduleVersion` CAS, независимый PostgreSQL deadline sweeper и durable Telegram outbox с шейпингом и защитой от 429 rate-limit.
   - Стандарт **Docker Memory Fencing (v18.3)** на сервере Hetzner CPX42 (лимит $\le 500\text{ MB RAM}$ на контейнер приложения).
+  - **Платёжная топология (004/005)**: провайдер-нейтральный контракт `lib/payments/providerContract.ts` с реестром адаптеров (NOWPayments, Telegram Stars, **Stripe Hosted Checkout**), zero-provider семантика `PAYMENT_PROVIDERS`, атомарный вебхук Stripe (`prisma.$transaction`: InboxEvent-дедуп + FSM).
+  - **Sovereign auth (005)**: Argon2id (сериализация мьютексом, пик RSS ≤500 MB), мгновенный отзыв сессий `sessionEpoch` (Model A), двухфазный per-IP anti-bruteforce, auth-аудит с PII-редакцией.
+  - **Chrome-дизайн (005 polish)**: хедер без дублирующих нав-кнопок (каталог = главная), dropdown-пиклисты локали и темы (system/light/dark, anti-FOUC), Geist-типографика, ноль эмодзи.

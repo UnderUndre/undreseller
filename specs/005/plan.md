@@ -4,22 +4,22 @@
 > "These walls are funny. First you hate 'em, then you get used to 'em." — _Побег из Шоушенка_
 > "Scissors cuts paper, paper covers rock — Распределённый дедлок в микросервисах." — Шелдон Купер
 
-**Branch**: `005` | **Date**: 2026-10-26 | **Spec**: [spec.md](./spec.md) (rev 2.2, requirements-audit PASS)
+**Branch**: `005` | **Date**: 2026-10-26 | **Spec**: [spec.md](./spec.md) (rev 2.3, antigravity review remediation)
 **Input**: `specs/005/spec.md` + `requirements-audit.md` + `qa/preliminary-rtm.md` (27 требований; 3 Critical)
 
 ## Summary
 
-Фиат-рельс + харднинг + долговая зачистка поверх монолита 004, без новой топологии: (1) **Stripe Hosted Checkout** — третий адаптер за провайдер-нейтральным контрактом 004 (dashboard-driven методы, TTL = hold-TTL 15 мин, сессия до холда, дедуп InboxEvent, возвраты через Dashboard → RefundOperation); (2) **auth-харднинг** — Argon2id с прозрачным пере-хешем scrypt, `sessionEpoch`-отзыв (Model A), per-IP anti-bruteforce, auth-обсервабилит; (3) **tech-debt** — zod 3→4 (последний audit-high), консолидация `/api/booking/lock` → `/api/booking` (308/410), `staffRejectNotifyMode` env→DB, uk-локаль, `formatMinor` (JPY/KWD), вычистка 14 schema-only моделей 003 (P2021-мина). Ноль новых таблиц, одна аддитивная миграция, лимит ≤500 MB RSS ненарушим (Argon2 сериализуется + бенчмарк-гейт).
+Фиат-рельс + харднинг + долговая зачистка поверх монолита 004, без новой топологии: (1) **Stripe Hosted Checkout** — третий адаптер за провайдер-нейтральным контрактом 004 (dashboard-driven методы, TTL = hold-TTL 15 мин, сессия до холда, атомарный дедуп InboxEvent + FSM-переход, возвраты через Dashboard → RefundOperation с расширенным enum `RefundOperationKind.STRIPE`, сквозной чекаут через `/api/checkout`); (2) **auth-харднинг** — Argon2id с прозрачным пере-хешем scrypt, `sessionEpoch`-отзыв (Model A), per-IP anti-bruteforce (двухфазный штрафной трекер), auth-обсервабилит; (3) **tech-debt** — zod 3→4 (последний audit-high), консолидация `/api/booking/lock` → `/api/booking` (308/410), `staffRejectNotifyMode` env→DB, uk-локаль, `formatMinor` (JPY/KWD), вычистка 14 schema-only моделей 003 и связей `Order` (P2021-мина). Ноль новых таблиц, одна аддитивная миграция (с `ALTER TYPE RefundOperationKind ADD VALUE 'STRIPE'`), лимит ≤500 MB RSS ненарушим (Argon2 сериализуется с лимитом очереди и таймаутом + бенчмарк-гейт).
 
 ## Technical Context
 
 **Language/Version**: TypeScript 5.8, Node 22 (alpine), Next.js 15.5 App Router — без изменений.
 **Primary Dependencies**: существующий стек 004 + **новые**: `stripe` (официальный SDK, MIT, exact-pin), `@node-rs/argon2` (prebuilt binaries, Apache-2.0/MIT). **Обновление**: `zod` 3.25 → 4.x exact-pin. Удалений deps нет.
-**Storage**: PostgreSQL 16 / Prisma — единственная ORM. Изменения: `User.sessionEpoch`, `Session.epochCreated`, `Account.passwordAlgo`, `ShopSettings.staffRejectNotifyMode` (+enum), удаление 14 schema-only моделей (без SQL — таблиц не существует).
+**Storage**: PostgreSQL 16 / Prisma — единственная ORM. Изменения: `User.sessionEpoch`, `Session.epochCreated`, `Account.passwordAlgo`, `ShopSettings.staffRejectNotifyMode` (+enum), `RefundOperationKind` (+enum value `STRIPE`), удаление 14 schema-only моделей и полей связей `orderLines/paymentPlan/fulfillmentPlan` из `Order` (без SQL — таблиц не существует).
 **Testing**: Jest 29 + ts-jest (unit/contract; сейчас 50 suites/367 tests — не ломать), снапшоты форм 400-ошибок (новое), Argon2-бенчмарк (evidence-файл).
 **Target Platform**: Docker `node:22-alpine`, Hetzner CPX42, `REPLICA_COUNT=1`, Traefik v3.
 **Project Type**: web-монолит (тот же).
-**Performance Goals**: ≤500 MB RSS включая Argon2-пики (сериализация ≤1 оп/процесс); p95 инстанса не деградирует (Stripe-вызовы только в booking-пути prepaid, уже асинхронно-замороженный путь 004).
+**Performance Goals**: ≤500 MB RSS включая Argon2-пики (сериализация ≤1 оп/процесс, лимит очереди 10, таймаут 5000ms → 503); p95 инстанса не деградирует (Stripe-вызовы только в booking-пути prepaid, уже асинхронно-замороженный путь 004).
 **Constraints**: ≤500 MB RSS (бизнес-план), GDPR-рынок, solo-dev, Expand/Contract (Constitution X), kanon 004 (thin controllers, deny-list logger, minor units).
 **Scale/Scope**: white-label ≤ ~200 items / ≤ ~20 staff / ≤ ~2k bookings/мес — без изменений.
 **Security Surface & STRIDE Triggers**: новый сетевой эндпоинт (Stripe webhook) + crypto (Argon2id, stripe-signature) + money-path → STRIDE-матрица ниже, обязательна.
@@ -70,14 +70,16 @@ lib/
 ├── security/staffSignIn.ts         # MOD: Argon2id пере-хеш + epochCreated + auth-события
 ├── security/staffAuth.ts           # MOD: resolveStaffSession проверяет epochCreated
 ├── security/staffSessions.ts       # NEW: revokeAllStaffAccess (epoch+deleteMany)
-├── security/rateLimit.ts           # MOD: per-IP слайдинг-окно на /api/auth/sign-in
+├── security/rateLimit.ts           # MOD: per-IP двухфазный штрафной трекер на /api/auth/sign-in
 ├── config/currency-registry.ts     # MOD: formatMinor(amountMinor, currency)
 app/
 ├── api/payments/stripe/webhook/route.ts  # NEW
+├── api/checkout/route.ts           # MOD: F2 — интеграция Stripe (side-effect import, paymentMethod, провайдер)
+├── checkout/page.tsx               # MOD: F9 — подтверждение бронирования для PAID/BOOKED без 404
 ├── api/booking/route.ts            # MOD: поглощает lock-логику (канон)
 └── api/booking/lock/route.ts       # MOD: 308 + Sunset (затем 410 ≤006)
 messages/uk.json                    # NEW (data-only)
-prisma/schema.prisma                # MOD: +4 поля, +enum, −14 orphan-моделей
+prisma/schema.prisma                # MOD: +4 поля, +enum, +RefundOperationKind.STRIPE, −14 orphan-моделей и связей Order
 prisma/migrations/20261101000000_005_stripe_and_hardening/
 scripts/backfill-005-reject-notify-mode.ts
 ```
@@ -90,19 +92,19 @@ scripts/backfill-005-reject-notify-mode.ts
 | **T**ampering | Суммы/валюта; metadata orderId | Подмена line_items/metadata | Суммы сверяются с квотой заказа в registry minor units (как NOWPayments 004); orderId из metadata валидируется против БД |
 | **R**epudiation | Платежи/возвраты; auth-действия | «платежа не было»/«это не я логинился» | InboxEvent (event.id) + PaymentAllocationLink + RefundOperation — неизменяемый аудит; FR-505 auth-события |
 | **I**nformation Disclosure | Логи auth; audit | Утечка паролей/токенов/IP | deny-list logger (004) + FR-505: ноль секретов, IP только /24 |
-| **D**enial of Service | Вебхук-шторм; Argon2-пики | replay-флуд; параллельные логины | дедуп первым шагом (O(1)); условные переходы (no-op на реплеях); Argon2-мьютекс ≤1/процесс |
+| **D**enial of Service | Вебхук-шторм; Argon2-пики | replay-флуд; параллельные логины | атомарная транзакция дедупа (O(1)); условные переходы; Argon2-мьютекс ≤1/процесс + очередь ≤10 + таймаут 5с → 503 |
 | **E**levation | Вебхук как командный канал | event → сменить роль/создать админа | вебхук не несёт авторизационных решений; только FSM-переходы по §3 спеки |
 
 ## Database Migration Strategy
 
-Манифест — data-model.md §3 (Expand 20261101000000 / backfill reject-notify / cutover кодом / contract = D6-схема + удаление lock-route). Rollback: down.sql (только новые объекты) + `PAYMENT_PROVIDERS` без STRIPE (zero-provider 004) + git-revert схемы. Enum ADD не задействован (новый тип, а не ADD VALUE) — down.sql полон.
+Манифест — data-model.md §3 (Expand 20261101000000 / backfill reject-notify / cutover кодом / contract = D6-схема + удаление lock-route). В Expand входит `ALTER TYPE "RefundOperationKind" ADD VALUE 'STRIPE';` (F1). Rollback: down.sql дропает только новые колонки/табличный enum (безопасно — additive); удаление значения enum `STRIPE` невозможно средствами Postgres (документированный no-op); Stripe выключается через `PAYMENT_PROVIDERS` (zero-provider 004, без DDL); D6-коммит откатывается git-revert схемы.
 
 ## Observability, Recovery & Rollback
 
 - **Метрики/логи**: auth-события FR-505 (PII-redacted); `STRIPE_INVOICE_FAILED`, webhook accept/dedup счётчики — через существующий deny-list logger; нулевой PII-скан (lineage SC-403).
 - **Бенчмарк-гейт (NFR-5)**: Argon2 микро-бенчмарк — evidence-файл в спеку ДО merge задачи FR-501/504a.
 - **Health**: `/api/health` без изменений (Stripe — внешний SaaS; недоступность видна как 503 в booking-пути, алертить нечем на free-тарифе — фиксируется ops-заметкой в runbook).
-- **DR**: RTO/RPO неизменны; вебхуки — Stripe ретраит до 3 суток (FLP-механика), дедуп гарантирует ровно один эффект.
+- **DR**: RTO/RPO неизменны; вебхуки — Stripe ретраит до 3 суток (FLP-механика), дедуп и FSM-переход выполняются в единой атомарной транзакции `prisma.$transaction` (F3), исключая потерю оплат при реплеях.
 - **Rollback-триггеры**: деградация p95 booking >2×, двойные эффекты платежей, auth-регрессии на логине. Процедура: флаг `PAYMENT_PROVIDERS` без STRIPE → revert образа → down.sql при необходимости.
 
 ## Risks & Complexity Tracking

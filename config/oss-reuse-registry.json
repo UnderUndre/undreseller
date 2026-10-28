@@ -114,14 +114,25 @@
       "complianceNote": "004 T003/T062: client-side WebP resize before presigned PUT. MIT allowlisted."
     },
     {
-      "component": "date-fns-tz",
+      "component": "stripe",
       "license": "MIT",
-      "sourceRepo": "https://github.com/marnusw/date-fns-tz",
+      "sourceRepo": "https://github.com/stripe/stripe-node",
       "adaptedFiles": [
-        "lib/booking/windows.ts",
+        "lib/payments/stripe.ts",
+        "app/api/payments/stripe/webhook/route.ts",
         "package.json"
       ],
-      "complianceNote": "004 T003/T030: IANA/DST-correct slot math (replaces hand-rolled timezone arithmetic per antigravity F7). MIT allowlisted."
+      "complianceNote": "005 T001: Stripe Node SDK for Hosted Checkout. MIT allowlisted."
+    },
+    {
+      "component": "@node-rs/argon2",
+      "license": "MIT",
+      "sourceRepo": "https://github.com/napi-rs/node-rs",
+      "adaptedFiles": [
+        "lib/security/argon2.ts",
+        "package.json"
+      ],
+      "complianceNote": "005 T001: Native Argon2id password hashing bindings. MIT allowlisted."
     }
   ]
 }
