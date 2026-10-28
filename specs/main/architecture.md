@@ -27,7 +27,7 @@
          │                                                                     │
          ▼                                                                     ▼
 ┌───────────────────────────────┐                     ┌───────────────────────────────┐
-│     repos/undrllanding        │                     │      repos/undreseller        │
+│           undrllanding        │                     │            undreseller        │
 │   (Marketing Lander, :3000)   │                     │  (Transactional Engine, :3000)│
 │                               │                     │                               │
 │  Host:                        │                     │  Host:                        │
