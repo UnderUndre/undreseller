@@ -1,9 +1,9 @@
 # System Requirements: Modular E-Commerce & Multi-Service Booking Engine (Track 1)
 
 **Repository**: `UnderUndre/undreseller`  
-**Version**: 2.1.0 (`001-modular-commerce-template` + `002-service-cart-and-staff-bot` actualized; `003.1` Booking-First Service Template planned)  
+**Version**: 2.4.0 (`001-modular-commerce-template` + `002-service-cart-and-staff-bot` actualized; `004` & `005` shipped; `006-integrations` specced & reviewed PASS)  
 **Standard Compliance**: ISO/IEC/IEEE 29148:2018 (Requirements Engineering), ISO/IEC/IEEE 12207:2017 & NIST SP 800-218 SSDF  
-**Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v18.4**
+**Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v20.0**
 
 ---
 
@@ -32,7 +32,8 @@
 | **In-Memory Cache / Limiter** | lru-cache | `lru-cache@11.1.0` | Рейт-лимитер (10 req / 60s на 10k ключей) |
 | **Tokenization & RAG** | js-tiktoken | `js-tiktoken@1.0.20` | Токенизация `cl100k_base` (500/50 чанки) |
 | **PDF Ingestion** | pdf-parse | `pdf-parse@1.1.1` | Парсинг базы знаний (до 10 MB, до 50 стр) |
-| **Schema Validation** | Zod | `zod@3.25.76` | Валидация входных тел и канонических пейлоудов; **миграция на 4.x отложена** (единственный оставшийся audit-high GHSA-mrhx-c7xc-m3w5, план — ближайший релиз) |
+| **Schema Validation** | Zod | `zod@4.0.0` (exact-pin) | Валидация входных тел и канонических пейлоудов; миграция с 3.25 завершена (006) |
+| **Calendar SDK** | googleapis | `googleapis@144.0.0` (exact-pin, Apache-2.0) | Официальный клиент Google Calendar и FreeBusy API (006) |
 | **i18n** | next-intl | `next-intl@4.14.9` | Chrome i18n ru/en (+uk data-only), locale resolution chain |
 | **Edge Proxy** | Traefik v3 | `traefik:v3.3` | Reverse proxy, Auto Let's Encrypt SSL |
 
@@ -168,4 +169,17 @@
 | **Repudiation (Отказ)** | Несанкционированные действия персонала, разбан или спор по возврату | Структурированное логирование `[STAFF_ACTION]`, `[CLIENT_BLACKLISTED]`, `[CLIENT_UNBLOCKED]` с `actor` и `reason`; неизменяемый `PaymentEvent` и идемпотентный `RefundOperation`. |
 | **Information Disclosure** | Утечка ПДн и секретов в логи или остаточные карточки после GDPR-запроса | Расширенный дени-лист в `logger.ts` (`customerNotes`, `phone`, `email`, `rescheduleToken`, `otp`, `initData`, `rawBody`, `payload`), GDPR-редакция `editMessageText` по `/purge` и ночной скраббинг `nightlyPurge`. |
 | **Denial of Service** | Комбинаторный взрыв корзины, паразитный холд слотов, 429 бан бота в Telegram | Лимит корзины $\le 10$ услуг и $\le 480$ минут, периметр 403 blacklist до взятия лока, durable Telegram outbox с шейпингом частоты и общим кулдауном `retry_after`. |
-| **Elevation of Privilege** | Нажатие кнопок Staff-бота посторонним участником чата или смешение ключей интеграций | Проверка `authorizeStaffCallback` с возвратом `Access denied` (403) без мутаций БД; fail-closed валидация профиля `enabledExternalIntegration` при старте. |
+---
+
+## 9. Функциональные требования интеграционного контура (Feature 006)
+
+- **FR-601 (OAuth2 Connect)**: Строго OWNER подключает Google Calendar (`/admin/settings`, OPERATOR/PERFORMER → 403) через OAuth2 consent с offline access. Токены шифруются `AES-256-GCM` (`INTEGRATION_ENCRYPTION_KEY`) в `IntegrationCredential.encryptedPayload`. Связь per-resource (`resourceId`) с каскадным удалением (`onDelete: Cascade`).
+- **FR-602 (Push: Бронь → GC)**: Асинхронный push через outbox по полной Decision Table (`gcalMapping.ts`): `BOOKED` → создание/обновление события ( Meet-ссылка при `remoteMeetingEnabled=true`), `CANCELLED`/`RELEASED` → удаление события (ошибки 404/410 от Google трактуются как идемпотентный NOOP).
+- **FR-603 (Import: GC → Занятость)**: Инкрементальный фоновый sync каждые 15 мин с гранулярным advisory lock per-credential (`gcal_sync_<id>`). События системы с `undresellerOrderId` строго фильтруются (защита от самоблокировки слотов). Сторонняя занятость сохраняется в `ExternalBusyBlock`.
+- **FR-604 (Sync Health)**: Статусы `CONNECTED / NEEDS_REAUTH / DISABLED` в админке; `invalid_grant` переводит интеграцию в `NEEDS_REAUTH` + алерт в `STAFF_CHAT_ID`; сбой GC никогда не блокирует приём броней (fail-open для бронирования).
+- **FR-605 (ICS Attach)**: Генерация RFC 5545 `.ics` аттача со стабильным UID (`booking-<orderId>@<instance>`) и таймзоной из `ShopSettings.timeZone` в email-подтверждении и отмене.
+- **FR-606 (Webhook Registry & Delivery)**: Регистрация до 5 эндпоинтов (OWNER) с шифрованием секретов (`encryptedSecret`) через `secretVault.ts`. Доставка через Inngest (`retries: 5`) с HMAC-SHA256 подписью (`X-Undreseller-Signature`). SSRF socket-level pinning (`undici.Agent`) и Circuit Breaker (авто-отключение при `failureCount >= 10`).
+- **FR-607 (Webhook Events)**: События `booking.created`, `confirmed`, `cancelled`, `paid`, `rescheduled` с payload (контакты замаскированы по умолчанию, `pii=masked`).
+- **FR-608 (Public Read API)**: `GET /api/public/bookings` с Bearer токеном `PUBLIC_API_KEY`, лимитом 30 req/min и детерминированной пагинацией по compound opaque-курсору `nextCursor`.
+- **FR-630..632 (Zod 4 Migration)**: Переход на Zod 4.x exact-pin, механическая миграция по changelog со снапшот-тестами форм 400-ответов (блогер merge при расхождении).
+- **NFR-601..605**: Память инстанса $\le 500\text{ MB RSS}$ (пачки sync $\le 50$), задержка слот-расчёта p95 $\le 50$ мс, шифрование секретов в покое, SLA доставки вебхуков $\le 5$ с, supply chain compliance (`googleapis` Apache-2.0).

@@ -1,9 +1,9 @@
 # System Architecture: Modular E-Commerce & Multi-Service Booking Engine (Track 1)
 
 **Repository**: `UnderUndre/undreseller`  
-**Version**: 2.2.0 (Production Architecture — `001` + `002` actualized; `003.1` booking-first core; `004-release-readiness` planned per specs/004-release-readiness)  
+**Version**: 2.4.0 (Production Architecture — `001`+`002` actualized; `003.1` booking-first core; `004` & `005` shipped; `006-integrations` specced & reviewed PASS)  
 **Standard Compliance**: ISO/IEC/IEEE 29148:2018, ISO/IEC/IEEE 12207:2017 & NIST SP 800-218 SSDF  
-**Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v18.4**
+**Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v20.0**
 
 ---
 
@@ -254,7 +254,17 @@ undreseller/
 
 ---
 
-### 3.3. Гибкие способы оплаты, отложенный счёт и провайдер-изолированные возвраты
+### 3.4. Интеграционный контур 006 (Google Calendar, Webhooks & Public API)
+
+1. **Двусторонняя синхронизация с Google Calendar (`lib/integrations/`):**
+   - **OAuth2 Connect & Vault (`secretVault.ts`):** Подключение календаря строго OWNER-пользователем через `/admin/settings` (OAuth consent с offline access). Токены шифруются `AES-256-GCM` (`node:crypto`) в `IntegrationCredential.encryptedPayload` с ключом `INTEGRATION_ENCRYPTION_KEY`. Поддержка автоматического рефреша токенов через `onTokenRefresh` коллбэк.
+   - **Push-воркер (`gcalPush.ts`):** Inngest-функция, потребляющая переходы FSM по Decision Table (`gcalMapping.ts`): `BOOKED` создает/обновляет событие ( Meet-ссылка при `remoteMeetingEnabled=true`), `CANCELLED` или `RELEASED` удаляют событие. Ошибки 404/410 от Google трактуются как идемпотентный NOOP (`already_deleted`).
+   - **Sync-воркер (`gcalSync.ts`):** Инкрементальный поллер каждые 15 минут per-credential (с гранулярным advisory lock `gcal_sync_<id>`), сохраняющий стороннюю занятость в `ExternalBusyBlock`. Собтия нашей системы (с `undresellerOrderId`) строго фильтруются и не импортируются (защита от самоблокировки слотов). При `410 Gone` — автоматический full-sync на 30 дней.
+2. **Outbound Webhooks и Public API (`webhookDelivery.ts`, `api/public/bookings/route.ts`):**
+   - **Подпись и доставка:** События FSM (`booking.created`, `confirmed`, `cancelled`, `paid`, `rescheduled`) доставляются через Inngest (`retries: 5`) с HMAC-SHA256 подписью (`X-Undreseller-Signature: t=..., v1=...`). Секреты хранятся зашифрованными в `WebhookEndpoint.encryptedSecret`.
+   - **SSRF & DNS Rebinding Protection:** Проверка URL при регистрации и socket-level pinning (`undici.Agent`) при вызове блокируют приватные IP-адреса и защищают от атак DNS Rebinding.
+   - **Circuit Breaker:** При накоплении `failureCount >= 10` подряд эндпоинт автоматически деактивируется (`active = false`), предотвращая шторм ложных доставок.
+   - **Public Read API:** `GET /api/public/bookings` с Bearer токеном `PUBLIC_API_KEY`, лимитом 30 req/min и детерминированной пагинацией по составному opaque-курсору `nextCursor`.
 
 1. **Способы оплаты и тайминг предоплаты (`ShopSettings.prepaymentTiming`):**
    - **`PAY_ON_SITE`**: запись оформляется без перехода на внешние платёжные шлюзы и закрывается мастером кнопкой `[ ✅ Заказ выполнен ]` $\to$ `FULFILLED`.

@@ -1,10 +1,11 @@
 # 📚 UnderUndre Modular Commerce — Documentation Hub
 
 **Repository**: `UnderUndre/undreseller`  
-**Version**: 2.3.0 (`001`+`002`+`003.1` actualized, `004-release-readiness` shipped, `005-stripe-adapter-and-sovereign-auth` shipped 2026-10-26, `006-integrations` planned)  
+**Version**: 2.4.0 (`001`+`002`+`003.1` actualized, `004` & `005` shipped, `006-integrations` specced & reviewed PASS per Principle VI)  
 **Product**: Sprint B (HERO) — 14-Day SaaS MVP & Sovereign Commerce Factory ($4,900 flat)  
 **Methodology**: **Diátaxis Framework** (Tutorials, How-To, Reference, Explanation)  
 **Compliance Standards**: ISO/IEC/IEEE 29148:2018, ISO/IEC/IEEE 12207:2017 & NIST SP 800-218 SSDF
+**Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v20.0**
 
 ---
 
@@ -100,7 +101,9 @@ DIRECT_URL="postgresql://..." .specify/scripts/bash/migrate-safe.sh
 - **[`prisma/schema.prisma`](../../prisma/schema.prisma)**: Полная реляционная схема базы данных с перечислениями, `Order` (`customerTgUsername`, `hasWhatsApp`, `hasTelegram`), `SlotReservation` (`resourceId`), `RefundOperation`, `TelegramRateState` и констрейнтами.
 - **[`.env.example`](../../.env.example)**: Справочник всех переменных окружения (включая `STAFF_CHAT_ID`, `STAFF_AUTHORIZED_IDS`, `INNGEST_EVENT_KEY`, `ENABLED_EXTERNAL_INTEGRATION`).
 - **[`config/shop.config.ts`](../../config/shop.config.ts)**: Конфигурация брендинга, таймзоны (`Asia/Yerevan`), FTS (`simple`) и правил санитизации приветствия.
-- **[specs/003-commerce-operations-capability-packs/spec.md](../003-commerce-operations-capability-packs/spec.md)**: Спецификация развития продукта в модульное операционное ядро малого бизнеса (Capability Packs, нейтральность к юрисдикции, портфельный AI Gateway с LM Studio и OmniRoute).
+- **[specs/006-integrations/spec.md](../006-integrations/spec.md)**: Спецификация интеграционного контура (Google Calendar двусторонняя sync, ICS-аттач, Outbound Webhooks с HMAC/SSRF/Circuit Breaker, Public Read API, миграция Zod 4).
+- **[specs/006-integrations/contracts/gcal-adapter.md](../006-integrations/contracts/gcal-adapter.md)**: Контракт Google Calendar адаптера (FSM→GC Decision Table, 404/410 NOOP, per-credential advisory lock).
+- **[specs/006-integrations/contracts/outbound-webhooks.md](../006-integrations/contracts/outbound-webhooks.md)**: Контракт исходящих вебхуков (Event Envelope, HMAC подпись, SSRF socket-level pinning, Public Read API с пагинацией `nextCursor`).
 
 ---
 

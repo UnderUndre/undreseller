@@ -6,10 +6,10 @@
 > "Пока не доказано — не ебёт, что сказано." — Презумпция в L1-аудите
 
 **Repository**: `UnderUndre/undreseller`  
-**Version**: 2.0.0 (Production Architecture — Track 1 Mono-Engine)  
+**Version**: 2.4.0 (Production Architecture — Track 1 Mono-Engine, Features 004/005 Shipped, 006 Integration Ready)  
 **Methodology**: **Diátaxis Framework** (Tutorials, How-To Guides, Reference, Explanation)  
 **Standard Compliance**: ISO/IEC/IEEE 29148:2018 (Requirements Engineering), ISO/IEC/IEEE 12207:2017 & NIST SP 800-218 SSDF  
-**Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v18.3**
+**Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v20.0**
 
 ---
 
@@ -41,14 +41,14 @@
 
 ### 💼 Параметры коммерческого предложения (Sprint B HERO)
 - **Стоимость и таймлайн**: **$4,900 flat fee**, срок выполнения — строго **14 календарных дней** (50% аванс через эскроу Upwork / DocuSeal, 50% финальный релиз в День 14).
-- **Продукт 0 (Tripwire)**: Архитектурный аудит и проектирование системного монолита (**$350–$490 flat**, SLA 24–48 часов).
-- **Demand Gate**: продажа больших спринтов (Sprint A и B) аппаратно заблокирована до закрытия **10 оплаченных трипвайров** ($350–$490).
+- **Продукт 0 (Tripwire / Workaround TCO Audit)**: TDABC-аудит костылей и проектирование системного байпаса (**$350–$490 flat**, SLA 24–48 часов).
+- **Demand Gate**: продажа больших форков заблокирована до закрытия **10 оплаченных Workaround TCO Audit**.
 - **Scope Knife (Границы поставки)**:
-  - Ровно **2 роли**: публичный посетитель (без обязательной регистрации аккаунта) и администратор/мастер.
+  - Ровно **3 роли**: `OWNER`, `OPERATOR`, `PERFORMER`.
   - Ровно **1 бизнес-процесс**: витрина каталога $\to$ мульти-сервисная корзина с шагом 30 минут $\to$ бронь слота $\to$ согласование/оплата.
-  - Ровно **1 активный профиль интеграций** на клиентский инстанс (`ENABLED_EXTERNAL_INTEGRATION`). Любые сторонние интеграции сверх скоупа (1С, ERP, СМС-агрегаторы, YooKassa, Stripe) выносятся в **Phase 2 Backlog по фиксированной ставке $100/час**.
-- **Гарантии**: 7-дневный Bugfix SLA (устранение блокеров P1/P2 за $< 24$ч) с последующим переходом на поддержку $500–$650/мес.
-- **Внимание**: Бизнес-план v16.0 из легаси-форка признан устаревшим и недействительным. Коммерческим источником правды является исключительно **v18.3**.
+  - **Первая бизнес-интеграция**: Google Calendar (двусторонняя sync push/freeBusy, расходует лимит «≤1» бизнес-интеграции). Riders (zod 4, ICS, outbound webhooks, read-only API) — инфраструктурный контур, лимит не расходуют.
+- **Гарантии**: 7-дневный Bugfix SLA (устранение блокеров P1/P2 за $< 24$ч) с последующим переходом на поддержку Care Standard ($349/мес).
+- **Внимание**: Все легаси-версии признаны устаревшими. Коммерческим источником правды является исключительно **v20.0**.
 
 ### 🌐 Сервисная граница с `repos/undrllanding`
 - **Маркетинговый лендинг (`repos/undrllanding`)**: живёт в отдельном репозитории `projects/undreseller/`, содержит прогрев лидов, 90-секундное видео Loom, trust-бейджеры Upwork/Salesforce и 2-SKU карточки тарифов ($3,500 FOSS / $4,900 Factory). Внутри `undreseller` маркетинговые лендинги **не создаются и не описываются**.
