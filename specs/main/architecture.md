@@ -3,7 +3,6 @@
 **Repository**: `UnderUndre/undreseller`  
 **Version**: 2.4.0 (Production Architecture — `001`+`002` actualized; `003.1` booking-first core; `004` & `005` shipped; `006-integrations` specced & reviewed PASS)  
 **Standard Compliance**: ISO/IEC/IEEE 29148:2018, ISO/IEC/IEEE 12207:2017 & NIST SP 800-218 SSDF  
-**Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v20.0**
 
 ---
 

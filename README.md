@@ -9,7 +9,6 @@
 **Version**: 2.4.0 (Production Architecture — Track 1 Mono-Engine, Features 004/005 Shipped, 006 Integration Ready)  
 **Methodology**: **Diátaxis Framework** (Tutorials, How-To Guides, Reference, Explanation)  
 **Standard Compliance**: ISO/IEC/IEEE 29148:2018 (Requirements Engineering), ISO/IEC/IEEE 12207:2017 & NIST SP 800-218 SSDF  
-**Commercial Source of Truth**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` **v20.0**
 
 ---
 
