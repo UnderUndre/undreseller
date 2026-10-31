@@ -4,18 +4,18 @@
 > "Синхронизация календарей — это как брак: главное, чтобы ни одна сторона не думала, что она главная." — Валера
 > "Two hard problems in computer science: cache invalidation, naming things, and off-by-one errors." — Phil Karlton
 
-**Branch**: `004-release-readiness` (grandfathered IX-девиация lineage 004/005/006 — закрытие в retro) | **Date**: 2026-10-26 | **Spec**: [spec.md](./spec.md) (rev 1.2, external-review remediation PASS)
+**Branch**: `004-release-readiness` (grandfathered IX-девиация lineage 004/005/006 — закрытие в retro) | **Date**: 2026-10-31 | **Spec**: [spec.md](./spec.md) (rev 1.3, zcode external-review remediation PASS-pending re-run)
 **Input**: `specs/006-integrations/spec.md` + `requirements-audit.md` + `qa/preliminary-rtm.md` (17 traceable rows: 16 FR/NFR + подстрока NFR-602b; 2 Critical: FR-602/FR-603)
 
 ## Summary
 
-Календарный контур + интеграционная обвязка поверх монолита 004/005, без новой топологии: (1) **Google Calendar — первая бизнес-интеграция Sprint B** (лимит «≤1» расходуется): OAuth2 per-resource подключение (OWNER-only, AES-256-GCM vault), push броней по полной FSM→GC-матрице через outbox (идемпотентно, 404/410 NOOP, Meet ⇔ `remoteMeetingEnabled`), инкрементальный freeBusy-импорт per-resource каждые 15 мин (syncToken, 410-fallback, per-credential advisory lock, фильтрация своих событий) с вычитанием занятости в `listAvailableSlots`; (2) **ICS-аттач** (RFC 5545, стабильный UID) в email-подтверждение/отмену; (3) **outbound webhooks** (HMAC-SHA256 `t.body` симметричным ключом из vault, Inngest-ретраи ≤5, SSRF socket-level гейт, circuit breaker) + **read-only API** по `PUBLIC_API_KEY` с детерминированной пагинацией `nextCursor`; (4) **долг из 005**: zod 3.25 → 4.x exact-pin со снапшотами 400-форм (атомарный коммит). Три новые таблицы, одна аддитивная миграция (`onDelete: Cascade` на `resourceId`), лимит ≤500 MB RSS ненарушим (sync-пачки ≤50, GC-воркер без буферов).
+Календарный контур + интеграционная обвязка поверх монолита 004/005, без новой топологии: (1) **Google Calendar — первая бизнес-интеграция Sprint B** (лимит «≤1» расходуется): OAuth2 per-resource подключение (OWNER-only, AES-256-GCM vault), push броней по полной FSM→GC-матрице через outbox (идемпотентно, 404/410 NOOP, Meet ⇔ `remoteMeetingEnabled`), инкрементальный busy-импорт (`events.list`/syncToken) per-resource каждые 15 мин (initial full-sync с `timeMin + singleEvents + showDeleted` → чистый syncToken-инкрементал без фильтров, рекуррентные серии как расширенные экземпляры, 410-fallback, session-level per-credential advisory lock, фильтрация своих событий) с вычитанием занятости в `listAvailableSlots`; (2) **ICS-аттач** (RFC 5545, стабильный UID) в email-подтверждение/отмену; (3) **outbound webhooks** (HMAC-SHA256 `t.body` симметричным ключом из vault, Inngest-ретраи ≤5, SSRF socket-level гейт, circuit breaker) + **read-only API** по `PUBLIC_API_KEY` с детерминированной пагинацией `nextCursor`; (4) **долг из 005**: zod 3.25 → 4.x exact-pin со снапшотами 400-форм (атомарный коммит). Три новые таблицы, одна аддитивная миграция (`onDelete: Cascade` на `resourceId`), лимит ≤500 MB RSS ненарушим (sync-пачки ≤50, GC-воркер без буферов).
 
 ## Technical Context
 
 **Language/Version**: TypeScript 5.8, Node 22 (alpine), Next.js 15.5 App Router — без изменений.
 **Primary Dependencies**: существующий стек 004/005 + **новые**: `googleapis` (официальный SDK, Apache-2.0, exact-pin). **Обновление**: `zod` 3.25 → 4.x exact-pin. Шифрование — `node:crypto` AES-256-GCM (stdlib, ноль новых deps на крипту). Удалений deps нет.
-**Storage**: PostgreSQL 16 / Prisma — единственная ORM. Изменения: **3 новые таблицы** (`IntegrationCredential`, `ExternalBusyBlock`, `WebhookEndpoint` с `onDelete: Cascade` на `resourceId`), enum'ы `IntegrationStatus`, новое поле `Item.remoteMeetingEnabled`. Всё аддитивно.
+**Storage**: PostgreSQL 16 / Prisma — единственная ORM. Изменения: **3 новые таблицы** (`IntegrationCredential` с UNIQUE `(provider, resourceId)` NULLS NOT DISTINCT — F2-rev, `ExternalBusyBlock`, `WebhookEndpoint` с `onDelete: Cascade` на `resourceId`), enum'ы `IntegrationStatus`, новые поля `Item.remoteMeetingEnabled` + `Order.meetLink` (nullable, F6-rev). Всё аддитивно.
 **Testing**: Jest 29 + ts-jest (сейчас 50 suites/367 tests — не ломать), characterization-снапшоты форм 400 (канон 005), stubbed-Google-SDK матрицы, ICS-парсер-валидация, perf-гейт слот-расчёта.
 **Target Platform**: Docker `node:22-alpine`, Hetzner CPX42, `REPLICA_COUNT=1`, Traefik v3.
 **Project Type**: web-монолит (тот же).
@@ -38,7 +38,7 @@
 | V. Token Economy | PASS | новых агентов/скиллов нет |
 | VI. Cross-AI Review | ON TRACK | гейт перед implement: analyze + ≥2 внешних ревьюера |
 | VII. Artifact Versioning | PASS | теги `spec/006-integrations/v1`, `bizplan/006-integrations/v1`, `requirements-audit/006-integrations/v1` ✅; `plan/006-integrations/v1` этим коммитом |
-| VII-B. Business Plan | PASS | v19.0 (2026-10-26): GC = первая бизнес-интеграция, лимит «≤1» расходуется; riders — инфраструктура; цены/ICP не меняются |
+| VII-B. Business Plan | PASS | v20.1 (2026-10-31; канон лимита — v19.0, не изменён v20.0/20.1): GC = первая бизнес-интеграция, лимит «≤1» расходуется; riders — инфраструктура; цены/ICP не меняются; ICP-нарратив спеки синхронизирован с v20.0 (сервисный бизнес 3–25, F8-rev) |
 | VIII. Self-Maintaining | PASS | architecture.md обновляется (§Feature Reference 006) |
 | IX. Two-Phase | DEVIATION (та же, что 004/005) | branch `004-release-readiness` — grandfathered lineage, в retro |
 | X. Expand/Contract | PASS | аддитивный Expand (`20270201000000_006_integrations` +down.sql); Contract-фаза не требуется (ни одно существующее поле не выводится из строя) |
@@ -56,7 +56,7 @@ specs/006-integrations/
 ├── checklists/requirements.md
 ├── qa/preliminary-rtm.md   # 17 требований, 2 Critical
 ├── research.md             # D1–D6, 0 спайков
-├── data-model.md           # 3 таблицы + enum + поле, Expand/Contract
+├── data-model.md           # 3 таблицы + enum + поля (remoteMeetingEnabled, meetLink), Expand/Contract
 ├── contracts/gcal-adapter.md
 ├── contracts/outbound-webhooks.md
 ├── quickstart.md           # трейсер
@@ -70,7 +70,7 @@ lib/
 ├── integrations/
 │   ├── secretVault.ts            # NEW: AES-256-GCM encrypt/decrypt (node:crypto)
 │   ├── gcalMapping.ts            # NEW: чистая FSM→GC-матрица (Decision Table, FR-602)
-│   ├── gcalClient.ts             # NEW: обёртка googleapis (auth refresh callback, events, freeBusy)
+│   ├── gcalClient.ts             # NEW: обёртка googleapis (auth refresh callback, events.list/inser/patch/delete, syncToken)
 │   ├── gcalPush.ts               # NEW: push-воркер (outbox-потребитель FSM-переходов, 404/410 NOOP)
 │   ├── gcalSync.ts               # NEW: инкрементальный busy-импорт (syncToken, per-credential lock, фильтрация своих событий)
 │   ├── ics.ts                    # NEW: RFC 5545 builder (PUBLISH/CANCEL, TZID, stable UID)
@@ -87,7 +87,7 @@ app/
 ├── admin/catalog/page.tsx        # MOD: чекбокс remoteMeetingEnabled
 components/catalog/…             # MOD: Meet-ссылка в подтверждении
 lib/telemetry/logger.ts           # MOD: дени-лист + (refreshToken|accessToken|webhookSecret|authorization)
-prisma/schema.prisma              # MOD: +3 таблицы (onDelete: Cascade на resourceId), +2 enum'а, +Item.remoteMeetingEnabled
+prisma/schema.prisma              # MOD: +3 таблицы (onDelete: Cascade на resourceId), +2 enum'а, +Item.remoteMeetingEnabled, +Order.meetLink
 prisma/migrations/20270201000000_006_integrations/
 package.json                      # MOD: +googleapis exact-pin, zod 3.25→4.x
 ```
@@ -105,7 +105,7 @@ package.json                      # MOD: +googleapis exact-pin, zod 3.25→4.x
 
 ## Database Migration Strategy
 
-Манифест — data-model.md §3: один аддитивный Expand `20270201000000_006_integrations` (+`down.sql`): 3 таблицы, 2 enum'а (`IntegrationProvider`, `IntegrationStatus`), `Item.remoteMeetingEnabled`, `onDelete: Cascade` на `resourceId`. Dual-write/backfill не требуется (новые сущности стартуют пустыми; существующие брони/слоты не затрагиваются). Cutover — код по фичам. Contract-фаза не нужна (ничего не выводится из строя; `/api/booking/lock` → 410 уже запланирован отдельным решением ≤007, не в 006).
+Манифест — data-model.md §3: один аддитивный Expand `20270201000000_006_integrations` (+`down.sql`): 3 таблицы (IntegrationCredential — UNIQUE `(provider, resourceId)` NULLS NOT DISTINCT, F2-rev), 2 enum'а (`IntegrationProvider`, `IntegrationStatus`), `Item.remoteMeetingEnabled`, `Order.meetLink` (F6-rev), `onDelete: Cascade` на `resourceId`. Dual-write/backfill не требуется (новые сущности стартуют пустыми; `meetLink` — nullable, существующие брони не затрагиваются). Cutover — код по фичам. Contract-фаза не нужна (ничего не выводится из строя; `/api/booking/lock` → 410 уже запланирован отдельным решением ≤007, не в 006).
 
 **Rollback**: `down.sql` дропает только новые объекты (безопасно — на них нет FK из старых таблиц; `resourceId` — nullable FK с `onDelete: Cascade`); git-revert схемы; GC-интеграция выключается disconnect'ом; webhooks — деактивацией эндпоинтов; zod-откат — git-revert коммита миграции T051 (изолированный атомарный коммит, снапшоты форм защищают контракт).
 

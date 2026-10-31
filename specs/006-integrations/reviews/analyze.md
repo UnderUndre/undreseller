@@ -1,58 +1,65 @@
 # SpecKit Analyze: 006-integrations (006-google-calendar-and-integrations)
 
 **Reviewer**: analyze (Claude self-consistency)
-**Reviewed at**: 2026-10-26T00:00:00Z (**re-run #3** — после фиксов X1–X8 из re-run #2)
-**Commit**: ea2b1be98f8af880b1fdfb316c81ba4a3e526289 (артефакты 006 в working tree)
-**Artifacts**: spec.md (rev 1.2), plan.md, tasks.md, data-model.md, contracts/gcal-adapter.md, contracts/outbound-webhooks.md, quickstart.md, requirements-audit.md, qa/ (rtm-matrix, test-cases 46 TC, uat-scenarios, regression-suite, preliminary-rtm), reviews/antigravity.md (PASS), reviews/analyze.md (re-run #2: FAIL → фиксы применены)
-**Feature resolution**: check-prerequisites резолвит по ветке (`004-release-readiness`, IX-девиация) — анализ явно по `specs/006-integrations/`.
+**Reviewed at**: 2026-10-31T12:30:00Z (**re-run #4** — после remediation zcode F1–F10)
+**Commit**: f8ea697c907116ae6714bebec2be2041174b8abc (артефакты 006 в working tree, незакоммичены)
+**Artifacts**: spec.md (rev 1.3), plan.md, tasks.md, data-model.md, contracts/gcal-adapter.md, contracts/outbound-webhooks.md, quickstart.md, requirements-audit.md, qa/ (rtm-matrix, test-cases 51 TC, uat-scenarios, regression-suite, preliminary-rtm), reviews/ (antigravity.md PASS, zcode.md PASS re-run), reviews/analyze.md (re-run #3 PASS)
+**Feature resolution**: check-prerequisites резолвит по ветке (`004-release-readiness`, IX-девиация → `specs/main`) — анализ явно по `specs/006-integrations/` (канон re-run #3).
 
 ## Context of re-runs
 
-- **Re-run #1**: PASS с 6 находками (2 MEDIUM + 4 LOW) → все закрыты в тот же день.
-- **Внешнее ревью antigravity**: PASS, F1–F10 закрыты автором ревью (verified: encryptedSecret+secretPrefix, F2-фильтр, F3 NOOP, F4 socket-level SSRF, F5 per-credential lock, F6 refresh-handler, F7 breaker, F8 cascade, F9 атомарный zod, F10 nextCursor).
-- **Re-run #2**: FAIL (1 HIGH X1 + 3 MEDIUM X2–X4 + 4 LOW X5–X8) — хвосты самой ремедиации.
-- **Re-run #3 (этот)**: верификация фиксов X1–X8 → все закрыты (см. таблицу).
+- **Re-run #3**: PASS (закрыты X1–X8 ремедиации antigravity/analyze #2).
+- **Внешнее ревью zcode**: первый раунд MEDIUM (2 HIGH / 6 MEDIUM / 2 LOW) → автор применил F1–F10 → zcode re-run PASS.
+- **Re-run #4 (этот)**: верификация фиксов F1–F10 по всем артефактам + grep-свипы.
 
 ## Findings
 
+> **Y1/Y2 закрыты (2026-10-31, после re-run #4)**: Y1 — терминология «freeBusy» заменена на «busy-импорт (`events.list`/syncToken)» по всему нарративу (spec §1.2/§3/Kill Criteria/STRIDE/Q1, plan Summary, gcalClient в plan/tasks — выровнено с контрактным интерфейсом `CalendarClient`, где freeBusy-метода нет); research.md сохраняет упоминания freeBusy легитимно — это документ альтернатив (D3). Y2 — TC-GCAL-045 типизирован Negative, соотношение в хедере пересчитано (9/39 = 18%/76%, гейт ≥40/60 держится). Вердикт PASS подтверждён.
+
 | ID | Category | Severity | Location(s) | Summary | Resolution |
-| --- | -------- | -------- | ----------- | ------- | -------------- |
-| X1 | Consistency (reintroduced audit conflict) | ~~HIGH~~ RESOLVED | spec.md §1.3 taboo | Табу-строка читала «OAuth — только OWNER/OPERATOR» вопреки FR-601/STRIDE/Q7 «строго OWNER» | **Закрыто**: табу теперь «OAuth для подключения календаря — **строго OWNER** (OPERATOR/PERFORMER → 403, канон FR-601/Q7)» — конфликт устранён по всему документу (grep-verified: OWNER/OPERATOR в табу больше нет) |
-| X2 | Logic gap (circuit breaker semantics) | ~~MEDIUM~~ RESOLVED | spec FR-606/NFR-604, data-model §1.3, contracts/outbound-webhooks §3 | Семантика `failureCount` не была определена (подряд vs кумулятив; сброс только через OWNER PATCH) | **Закрыто**: во всех 4 файлах зафиксировано «успешная доставка (2xx) → `failureCount = 0`», breaker строго на 10 подряд; в контракт добавлен тест-ряд «9 сбоев → успех → 9 сбоев → breaker НЕ сработал» |
-| X3 | Consistency (dead mechanism) | ~~MEDIUM~~ RESOLVED | spec FR-607 | Мёртвый механизм `?pii=full` (query-параметр, отсутствующий в контракте, с security-запахом) | **Закрыто**: FR-607 теперь «ПДн — всегда маскированы (`pii=masked`, без механизма размаскировки в 006)»; align с contracts/outbound-webhooks.md; упоминание `pii=full` осталось только в changelog-заметке rev 1.2 (легитимная историческая ссылка) |
-| X4 | Consistency (contract rows → TC) | ~~MEDIUM~~ RESOLVED | qa/test-cases.md | 3 строки контрактов без TC: token-refresh коллбэк (F6), DNS Rebinding на вызове (F4), детерминированный nextCursor (F10) | **Закрыто**: добавлены TC-GCAL-044 (refresh-коллбэк → `encryptedPayload` обновлён, формат `v1:` сохранён), TC-WHK-034 (TOCTOU DNS Rebinding → connect-hook abort, 0 байт наружу, `ssrf_blocked`), TC-API-039 (3 страницы 100/100/50, детерминизм compound-курсора `createdAt_id`, чужой курсор → 422); TC-API-034 уточнён под `{ data, nextCursor }`; счётчик хедера обновлён до 46 TC |
-| X5 | Traceability (spec revision) | ~~LOW~~ RESOLVED | spec.md header, plan.md header | Заголовок спеки остался rev 1.1 при материальных изменениях F1–F10 | **Закрыто**: spec поднят до **REVISION 1.2** с changelog-примечанием (F1–F10 + X1–X3); plan.md header и doc-tree обновлены на rev 1.2 |
-| X6 | Consistency (stale reference) | ~~LOW~~ RESOLVED | spec.md header, §1.2 | Ссылки на бизнес-план «v18.9» устарели | **Закрыто**: header и §1.2 → v19.0 (отсылка «ICP v18.9» в Q8 сохранена осознанно — перебалансировка ICP случилась именно в v18.9) |
-| X7 | Editorial | ~~LOW~~ RESOLVED | spec.md §3 (F5/F2 edge cases) | Опечатки «при сиSync» / «сиSync-воркером» | **Закрыто**: «при sync» / «sync-воркером» (grep-verified: 0 вхождений) |
-| X8 | Editorial | ~~LOW~~ RESOLVED | spec.md Key Entities | «`ShopSettings.remoteMeetingEnabled`-флаг на `Item`» — смесь имён сущностей | **Закрыто**: «флаг `Item.remoteMeetingEnabled Boolean @default(false)` (data-model §1.4)» |
+| --- | -------- | -------- | ----------- | ------- | ---------- |
+| Y1 | Consistency (terminology) | LOW | spec.md §1.1/§1.2, edge case «Часовой дрейф freeBusy» | Импорт занятости называется «freeBusy», но реализация (research D3, contract §4) — `events.list` с syncToken; `freeBusy.query` явно отвергнут (нет event-id для дедупа). Термин в нарративе неточен — читатель может ожидать другой endpoint | Косметика нарратива: «импорт занятости GC (инкрементальный `events.list`, syncToken)». Не блокирует — research D3 документирует расхождение |
+| Y2 | Consistency (doc arithmetic) | LOW | qa/test-cases.md header | Соотношение Positive/Negative+Boundary (10/38) — оценка: TC-GCAL-045 типизирован как Functional, но по содержанию (отмена экземпляра) — негативный; границы категории тут договорные, не машинные | Опционально: типизировать 045 как Negative. Не влияет на гейт ≥40/60 |
+
+Прочие проверки фиксов F1–F10 — **закрыты, без хвостов**:
+- **F1-rev**: contract §4 (full-sync с параметрами / чистый инкрементал, рекуррентные экземпляры) ↔ spec FR-603 ↔ edge cases ↔ T022 ↔ TC-GCAL-045/046 — согласовано; строка «syncToken+timeMin → 400» в §5 явно запрещает старое сочетание. Grep `xact_lock` вне ревью — 0.
+- **F2-rev**: NULLS NOT DISTINCT в data-model §1.1 + манифест §3 + T010 + TC-GCAL-048 — 4/4 файлов.
+- **F3-rev**: PATCH 404 → re-CREATE в contract §2 + spec FR-602 + T021 + TC-GCAL-047 — 4/4.
+- **F4-rev**: session-level lock — spec edge case + contract §4 + T022 — согласовано (справа и unlock в `finally`).
+- **F5-rev**: таймзона ICS — US2 acceptance теперь ссылается на `ShopSettings.timeZone`, противоречие с FR-605 устранено (grep «таймзоне брони» — только с канон-пометкой).
+- **F6-rev**: `Order.meetLink` — data-model §1.4a + §2 (Order исключён из «не модифицируются») + манифест §3 + spec FR-602/edge + T010/T021/T025 — согласовано; правило «письмо без Meet, если push не вернулся» зафиксировано.
+- **F7-rev**: timestamp от момента попытки — contract §2 + тест-строка §6 + T041 + TC-WHK-035 — согласовано.
+- **F8-rev**: ICP-нарратив v20.0 (сервисный бизнес 3–25, соло — Tertiary) в spec §1.1; ссылки v20.1 в spec header/§1.2/plan VII-B. Grep «частные специалисты и ИП» — 0 вне ревью. Q8 «ICP v18.9» — легитимная историческая отсылка (перебалансировка случилась в v18.9).
+- **F9/F10-rev**: runbook-пункты в T061 + edge case F10-rev (GC-сироты, delete-задача доигрывается при reconnect) — согласовано.
 
 ## Coverage Summary
 
 | Requirement Key | Has Task? | Task IDs | Notes |
 | --------------- | --------- | -------- | ----- |
-| FR-601 oauth-connect-owner-per-resource | ✅ | T010, T011, T020 | +F8 cascade, F6 refresh-handler (TC-GCAL-044) |
-| FR-602 push-fsm-matrix | ✅ | T012, T021, T025 | +F3 идемпотентный delete |
-| FR-603 busy-import-per-resource | ✅ | T010, T022, T023 | +F2 фильтр, F5 per-credential lock |
+| FR-601 oauth-connect-owner-per-resource | ✅ | T010, T011, T020 | +F2-rev NULLS NOT DISTINCT, F8 cascade, F6 refresh-handler |
+| FR-602 push-fsm-matrix | ✅ | T012, T021, T025 | +F3-rev PATCH 404→re-CREATE, F6-rev meetLink persist |
+| FR-603 busy-import-per-resource | ✅ | T010, T022, T023 | +F1-rev sync-механика/рекуррентность, F4-rev session lock |
 | FR-604 sync-health-fail-open | ✅ | T024 | |
-| FR-605 ics-attach | ✅ | T030, T031 | |
-| FR-606 webhook-registry | ✅ | T040, T041 | +F1 encryptedSecret, F4 socket-level (TC-WHK-034), F7 breaker с reset-on-success |
-| FR-607 webhook-events | ✅ | T041 | pii=masked always (X3) |
-| FR-608 read-only-api | ✅ | T042 | +F10 nextCursor (TC-API-039) |
+| FR-605 ics-attach | ✅ | T030, T031 | +F5-rev таймзона унифицирована |
+| FR-606 webhook-registry | ✅ | T040, T041 | +F7-rev timestamp попытки, F1 encryptedSecret, F4 SSRF, F7 breaker |
+| FR-607 webhook-events | ✅ | T041 | pii=masked always |
+| FR-608 read-only-api | ✅ | T042 | +F10 nextCursor |
 | FR-630/631/632 zod | ✅ | T051, T050, T052 | +F9 атомарный коммит |
-| NFR-601..605 | ✅ | T022/T062, T023, T011/T024, T041, T001 | NFR-604 семантика зафиксирована (X2) |
+| NFR-601..605 | ✅ | T022/T062, T023, T011/T024, T041, T001 | |
 
-Coverage % (requirements with ≥1 task): **16/16 = 100%** (+ подстрока NFR-602b = 17 traceable rows). Контрактные матрицы: gcal-adapter §5 — 16/16 строк покрыто TC; outbound-webhooks §6 — 14/14 строк покрыто TC (X4 закрыт).
+Coverage % (requirements with ≥1 task): **16/16 = 100%** (+ подстрока NFR-602b = 17 traceable rows). Контрактные матрицы: gcal-adapter §5 — 19/19 строк покрыто TC (16 + 3 новых F1/F3-rev); outbound-webhooks §6 — 15/15 строк (14 + 1 новая F7-rev).
 
 ## Constitution Alignment Issues
 
-- Принцип VI (cross-AI gate): antigravity PASS ✅ (1 из 2 внешних); analyze re-run #3 PASS ✅ — ожидается ≥1 ревьюер другого провайдера.
-- Принцип XII: audit PASS, RTM 16/16, test-design 46 TC + 2 charters; Critical FR-602/603 — DT+STM+Exploratory+UAT.
-- Принцип X: манифест консистентен. Остальные принципы: без нарушений; 6 стейдж-тегов на месте.
+- Принцип VI (cross-AI gate): analyze re-run #4 PASS ✅ + antigravity PASS ✅ + zcode PASS (re-run) ✅ — **гейт из двух внешних ревьюеров закрыт**.
+- Принцип XII: audit PASS, RTM 16/16, test-design 51 TC + 2 charters; Critical FR-602/603 — DT+STM+Exploratory+UAT.
+- Принцип X: манифест консистентен — оба новых поля (`remoteMeetingEnabled` NOT NULL DEFAULT, `meetLink` nullable) аддитивны; Contract-фаза не требуется. Остальные принципы: без нарушений; IX — тот же grandfathered lineage (в retro).
 
 ## Commercial / Business Plan Alignment
 
-- Plan loaded: v19.0 (spec-ссылки обновлены X6; отсылка ICP v18.9 в Q8 — корректная историческая).
-- Sprint B floor, Ladder Protection, лимит «≤1» (GC), riders = инфраструктура, Demand Gate, бренд-изоляция — сверено: **No commercial drift detected.**
+- Plan loaded: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` v20.1 (2026-10-31).
+- Focus laws / SKU floors: лимит «≤1» расходуется на GC (канон v19.0, не изменён в v20.0/20.1); floor Sprint B $4,900 и Ladder Protection не задеты; riders — инфраструктурный контур; Demand Gate соблюдён (US3 пост-гейт за флагом); бренд-изоляция соблюдена; ICP-нарратив спеки синхронизирован с v20.0 (F8-rev).
+- **No commercial drift detected.**
 
 ## Unmapped Tasks
 
@@ -62,12 +69,12 @@ Coverage % (requirements with ≥1 task): **16/16 = 100%** (+ подстрока
 
 - Total Requirements: 16 (11 FR + 5 NFR) + подстрока NFR-602b = 17 traceable rows
 - Total Tasks: 22 ✅
-- Coverage %: 100% FR/NFR; 100% contract-matrix rows (X4)
+- Coverage %: 100% FR/NFR; 100% contract-matrix rows
 - Ambiguity count: 0 · Duplication count: 0
 - CRITICAL count: 0
-- HIGH count: 0 (X1 закрыт)
-- MEDIUM count: 0 (X2–X4 закрыты)
-- LOW count: 0 (X5–X8 закрыты)
+- HIGH count: 0
+- MEDIUM count: 0
+- LOW count: 2 (Y1 терминология freeBusy в нарративе; Y2 типизация TC-GCAL-045)
 
 ## VERDICT
 
@@ -75,12 +82,12 @@ Coverage % (requirements with ≥1 task): **16/16 = 100%** (+ подстрока
 verdict: PASS
 override_reason:
 reviewer: analyze
-reviewed_at: 2026-10-26T00:00:00Z
-commit: ea2b1be98f8af880b1fdfb316c81ba4a3e526289
+reviewed_at: 2026-10-31T12:30:00Z
+commit: f8ea697c907116ae6714bebec2be2041174b8abc
 critical_count: 0
 high_count: 0
 medium_count: 0
-low_count: 0
+low_count: 2
 ```
 
-Re-run #3: все находки re-run #2 (1 HIGH + 3 MEDIUM + 4 LOW) закрыты и верифицированы grep-проверками по файлам. Спека rev 1.2 консистентна по ролям, семантике breaker'а, маскировке ПДн и ревизиям; контрактные матрицы полностью покрыты TC (46 + 2 charters). Статус гейта Principle VI: analyze PASS ✅ + antigravity PASS ✅ — ожидается ≥1 внешний ревьюер из другого провайдера до `/speckit.implement`.
+Re-run #4: ремедиация zcode F1–F10 верифицирована по всем артефактам (кросс-док согласованность 4/4 файлов на каждый фикс), хвостов не осталось. Спека rev 1.3 консистентна; остаточные 2 LOW — косметика нарратива, не блокируют. Гейт Principle VI закрыт полностью: analyze PASS + antigravity PASS + zcode PASS → `/speckit.implement` разрешён.

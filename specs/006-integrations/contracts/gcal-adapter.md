@@ -34,7 +34,7 @@ export function mapFsmToGcAction(transition: FsmTransitionInput): GcAction;
 | → `CANCELLED` (любая `CancellationReason`) | да | `DELETE` | |
 | reservation `RELEASED` при живом событии (коллизия `PAID_REQUIRES_RESOLUTION`, admin-отмена) | да | `DELETE` + audit `GCAL_PUSH` (kind=delete) | путь из аудиторского BLOCKER-2 |
 | `UNDERPAID` / `PAYMENT_PENDING` / `PAYMENT_EXPIRED` | — | `NOOP` | push только на `BOOKED` |
-| перенос (`scheduleVersion` ↑) | да | `PATCH` времени | |
+| перенос (`scheduleVersion` ↑) | да | `PATCH` времени; **если Google вернул 404 (событие удалено мастером в GC)** → re-`CREATE` события (upsert-семантика, F3b) | PATCH-on-missing не уходит в ретраи 5xx |
 | повтор любого перехода (реплей) | да | идемпотентно: upsert по `extendedProperties.undresellerOrderId` | ноль дублей |
 
 ## 3. Push-канал
@@ -46,11 +46,15 @@ export function mapFsmToGcAction(transition: FsmTransitionInput): GcAction;
 
 ## 4. Sync-канал (FR-603)
 
-- Цикл 15 мин per-подключение; **гранулярный advisory lock** `pg_try_advisory_xact_lock(hashtext('gcal_sync_' || credential.id))` — per-credential изоляция (F5: мастера не блокируют друг друга).
-- `events.list({ syncToken, timeMin: now })` → дельта:
+- Цикл 15 мин per-подключение; **гранулярный advisory lock** `pg_try_advisory_lock(hashtext('gcal_sync_' || credential.id))` на соединении сессии + `pg_advisory_unlock` в `finally` (F4-rev: **session-level, не xact-level** — сетевые вызовы к Google длятся минуты, транзакционно-скоупед лок либо снимается сразу, либо держит connection пула весь цикл; REPLICA_COUNT=1 делает session-level безопасным).
+- **Два режима sync (F1-rev — валидные сочетания параметров Google API):**
+  - **Initial full sync** (первое подключение / после `410 Gone`): `events.list({ timeMin: now, singleEvents: true, showDeleted: true })` с пагинацией → фиксируется `nextSyncToken` **вместе с исходными параметрами запроса** (syncToken привязан к ним).
+  - **Инкрементальный sync**: `events.list({ syncToken })` — **без** `timeMin`/`timeMax`/`q`/`singleEvents` (Google API запрещает фильтр-параметры вместе с syncToken — запрос вернёт 400). `showDeleted` при инкрементале держится `true` по умолчанию API.
+- **Рекуррентные события (F1-rev)**: full-sync импортирует расширенные экземпляры серий (`singleEvents: true`) как отдельные busy-блоки по их собственным `gcEventId` (instance-id); в инкрементальной дельте правка/отмена экземпляра приходит как отдельное событие с собственным `gcEventId` (и `status=cancelled` для отменённых) — обработка та же: upsert/delete по `(calendarId, gcEventId)`. Окно 30 дней вперёд ограничивает горизонт импортированных экземпляров; на границе окна серийные экземпляры добираются очередным full-sync после `410 Gone` (syncToken истекает, это штатный путь).
+- Дельта:
   - **Фильтрация собственных событий (F2)**: события, содержащие `extendedProperties.private.undresellerOrderId`, **строго игнорируются** и в `ExternalBusyBlock` не сохраняются (предотвращает ложную самоблокировку слотов при отменах и переносах).
   - Сторонние события: занятое (не `cancelled`, не `transparency:'transparent'`) → upsert `ExternalBusyBlock`; удалённое/освобождённое → delete по `(calendarId, gcEventId)`.
-- `410 Gone` (истёк syncToken) → полный sync окна 30 дней вперёд (drop+reload, upsert-дедуп, с той же фильтрацией собственных событий).
+- `410 Gone` (истёк syncToken) → initial full sync окна 30 дней вперёд (upsert-дедуп, с той же фильтрацией собственных событий).
 - Пачки ≤50 событий; нормализация в UTC до записи; запрет сравнения наивных дат.
 
 ## 5. Consumer-driven contract tests (T021/T022, stubbed SDK)
@@ -68,6 +72,10 @@ export function mapFsmToGcAction(transition: FsmTransitionInput): GcAction;
 | sync: событие с `undresellerOrderId` (своя бронь) | игнорируется, 0 записей в `ExternalBusyBlock` |
 | sync: `410 Gone` | полный sync, upsert-дедуп, `nextSyncToken` обновлён |
 | sync: N=0 изменений | 0 записей, `lastSyncAt` обновлён |
+| sync: рекуррентная серия (3 экземпляра в окне, full-sync) | 3 busy-блока по instance-`gcEventId` |
+| sync: отмена одного экземпляра серии (дельта, `status=cancelled`) | 1 busy-блок удалён, мастер серии не тронут |
+| sync: инкрементальный запрос с `timeMin` + syncToken | запрещено контрактом (400 от Google) — воркер не формирует такое сочетание |
+| sync: `PATCH`-push на внешне удалённое событие (404) | re-`CREATE` (upsert), ноль ретраев 5xx-ветки |
 | sync: событие `transparency:'transparent'` | не импортируется |
 | `invalid_grant` на push/sync | `NEEDS_REAUTH` + алерт, броня живёт |
 | token refresh event | коллбэк обновляет токены в `IntegrationCredential.encryptedPayload` |

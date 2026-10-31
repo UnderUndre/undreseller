@@ -1,16 +1,16 @@
 # Requirements & Risk Traceability Matrix (RTM)
 
-**Feature**: 006-google-calendar-and-integrations · **Spec**: rev 1.1 · **Generated**: 2026-10-26 (`/speckit.test-design`, ISO/IEC/IEEE 29119-3:2021)
+**Feature**: 006-google-calendar-and-integrations · **Spec**: rev 1.3 · **Generated**: 2026-10-26 (`/speckit.test-design`, ISO/IEC/IEEE 29119-3:2021; updated zcode review F1–F10, 2026-10-31)
 **Risk источник**: `qa/preliminary-rtm.md`. PR / Defect заполняются при реализации и прогоне.
 
 | Req ID | Суть | Impact | Prob | Risk Score | Test Tier | Test Cases | Task | Implementation PR | Defect IDs |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| FR-601 | OAuth2-connect OWNER-only, per-resource, AES-256-GCM | 4 | 3 | 12 | Sanity/Regression | TC-GCAL-001..004, TC-GCAL-020 | T010, T011, T020 | [PENDING] | [PENDING] |
-| FR-602 | Push: полная FSM→GC-матрица, идемпотентно, Meet ⇔ флаг | 5 | 4 | **20 Critical** | Regression | TC-GCAL-005..011, EXP-01 | T012, T021 | [PENDING] | [PENDING] |
-| FR-603 | Import: busy-импорт per-resource, syncToken/410 | 5 | 4 | **20 Critical** | Regression | TC-GCAL-012..016, EXP-02 | T010, T022, T023 | [PENDING] | [PENDING] |
+| FR-601 | OAuth2-connect OWNER-only, per-resource, AES-256-GCM | 4 | 3 | 12 | Sanity/Regression | TC-GCAL-001..004, TC-GCAL-020, TC-GCAL-048 | T010, T011, T020 | [PENDING] | [PENDING] |
+| FR-602 | Push: полная FSM→GC-матрица, идемпотентно, Meet ⇔ флаг | 5 | 4 | **20 Critical** | Regression | TC-GCAL-005..011, TC-GCAL-047, EXP-01 | T012, T021 | [PENDING] | [PENDING] |
+| FR-603 | Import: busy-импорт per-resource, syncToken/410, рекуррентные серии | 5 | 4 | **20 Critical** | Regression | TC-GCAL-012..016, TC-GCAL-045, TC-GCAL-046, EXP-02 | T010, T022, T023 | [PENDING] | [PENDING] |
 | FR-604 | Health: NEEDS_REAUTH, fail-open, audit | 4 | 3 | 12 | Regression | TC-GCAL-017, TC-GCAL-019, TC-GCAL-020 | T024 | [PENDING] | [PENDING] |
 | FR-605 | ICS-аттач RFC 5545, стабильный UID | 2 | 2 | 4 | Smoke/Sanity | TC-ICS-021..024 | T030, T031 | [PENDING] | [PENDING] |
-| FR-606 | Webhook registry: ≤5, HMAC, SSRF-гейт | 4 | 3 | 12 | Smoke/Regression | TC-WHK-025..027, TC-WHK-032 | T040 | [PENDING] | [PENDING] |
+| FR-606 | Webhook registry: ≤5, HMAC, SSRF-гейт | 4 | 3 | 12 | Smoke/Regression | TC-WHK-025..027, TC-WHK-032, TC-WHK-035 | T040 | [PENDING] | [PENDING] |
 | FR-607 | Webhook events: закрытый список, pii=masked | 3 | 2 | 6 | Sanity | TC-WHK-028, TC-WHK-030, TC-WHK-033 | T041 | [PENDING] | [PENDING] |
 | FR-608 | Read API: Bearer, 30 rpm, ≤100/стр | 3 | 3 | 9 | Smoke/Regression | TC-API-034..038 | T042 | [PENDING] | [PENDING] |
 | FR-630 | zod 4.x exact-pin, audit 0 H/C | 4 | 3 | 12 | Regression | TC-ZOD-039 | T051 | [PENDING] | [PENDING] |

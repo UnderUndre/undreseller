@@ -1,5 +1,5 @@
 ---
-description: Perform a forensic Workaround & Process-Friction Audit ($350–$490 Tripwire / Product 0). Quantifies annual manual bypass costs (TDABC Lite/Full), measures variance and pain patterns, enforces objective Political Risk tagging, and navigates the Hierarchy of Interventions (Do Nothing -> Process -> Buy -> Build).
+description: Perform a forensic Workaround & Process-Friction Audit ($350–$490 Tripwire / Product 0). Quantifies annual manual bypass costs (TDABC Lite with time-haircut), verifies Economic Buyer authority, measures pain variance and change capacity, tests for OUT_OF_SCOPE constraints, and traverses the Hierarchy of Interventions.
 handoffs:
   - label: Write Bypass Spec
     agent: speckit.specify
@@ -7,7 +7,7 @@ handoffs:
     send: true
   - label: Review Workaround Audit
     agent: speckit.workaround-audit-review
-    prompt: Independently verify the TDABC calculations, variance profiles, evidence classes, and Ladder of Intervention trade-offs
+    prompt: Independently verify the TDABC math, time evidence haircuts, buyer alignment, and Out-of-Scope triggers
 ---
 
 ## User Input
@@ -20,77 +20,61 @@ Optional flags:
 
 - `--client <slug>` — company/client directory (writes `clients/<slug>/workaround-audit.md`)
 - `--full-dso` — enable Full mode with DSO capital lock (requires client-provided receivables & cost of debt)
-- Free-form context: observed workarounds, tools, staff headcounts, wages, frequency of failures.
+- Free-form context: observed workarounds, tools, headcounts, reported times, stakeholder roles.
 
 ultrathink
-> "Худший сантехник — тот, кто на любую течь предлагает переварить весь стояк. Настоящий мастер сначала проверит прокладку (SOP), потом посмотрит на стандартный кран в магазине (SaaS), и только если труба нестандартная — достанет сварку (Build). Если аудит не попытался решить проблему регламентом за $0 — перед нами не аудит, а цыганский подкат." — Valera
+> "Худший аудитор — это тот, кто всегда находит повод продать свой софт, верит сотрудникам на слово про 'два часа рутины' и питчит проект менеджеру, у которого нет права подписать даже покупку канцтоваров. Настоящий цифровой сантехник сначала проверяет, есть ли вообще вода в трубе (Out-of-Scope), делит слова персонала на два, и прямо говорит собственнику: 'У вас проблема не в коде, а в регламенте за $0'." — Valera
 
 ## Goal
 
-Generate a client-facing 3–5 page Forensic Workaround Diagnostic Memo for an SMB client ($350–$490 Product 0 Tripwire [HYPOTHESIS]). Evaluate operational friction using the **Hierarchy of Interventions** and **Friction Pattern Variance**:
+Generate a client-facing 3–5 page Forensic Workaround Diagnostic Memo for an SMB client ($350–$490 Product 0 Tripwire [HYPOTHESIS]).
+Operate strictly as a solo practitioner wearing three explicit hats: **Diagnostic Auditor**, **Forensic Process Analyst**, and **Systems Architect**.
 
-1. **Level 0 (Do Nothing):** When is tolerating the leak economically optimal?
-2. **Level 1 (Process Change):** Can an operational SOP, checklist, or incentive shift kill the friction for $0 CAPEX?
-3. **Level 2 (Buy COTS SaaS):** Does an off-the-shelf tool solve it with lower Total Cost of Ownership?
-4. **Level 3 (Build Custom):** When and why is a sovereign productized monolith strictly justified?
+Key Mandates:
 
----
-
-## 1. Constitutional Audit Rules (The Zero-Trust Gasket)
-
-1. **EVIDENCE-BOUND EPISTEMOLOGY:**
-   Every metric and boundary MUST be tagged with its epistemic class:
-   - `[VERIFIED]`: Level 1/2 artifacts (signed rates, published API/SaaS pricing, legal acts).
-   - `[HEURISTIC]`: Engineering boundary rules (e.g., Simple Payback > 18–24 mo = High Risk).
-   - `[HYPOTHESIS]`: Unvalidated assumptions (Tripwire price, retainers, conversion rates).
-
-2. **PAIN VARIANCE & PROFILE PROBE:**
-   High annual CoW alone does NOT justify software. The audit MUST categorize the pain pattern:
-   - `CONTINUOUS`: High-frequency, low-variance routine (CV < 0.3) -> High automation viability.
-   - `SEASONAL`: Predictable wave (1–3 months/yr) -> High risk of software idle capacity.
-   - `EPISODIC / FAT-TAIL`: Rare, catastrophic manual errors -> Requires Process/SOP & legal checks, NOT bots.
-
-3. **MANDATORY LADDER TRAVERSAL:**
-   Recommending Level 3 (Build) without formally documenting the failure modes of Level 1 (Process) and Level 2 (Buy) is an automatic fatal audit defect.
-
-4. **POLITICAL RISK OBJECTIVITY:**
-   Defaults to `[POLITICAL_RISK: UNVERIFIED / UNKNOWN]`. Citing `HIGH` or `CRITICAL` requires Level 1/2 evidence (conflicting KPIs, budget loss, documented past rollout mutinies).
-
-5. **MANDATORY VIA NEGATIVA:**
-   The audit MUST contain an **Automation Prohibited List** with at least one observed friction point that is explicitly banned from software automation.
+1. **Stakeholder Triad:** Identify the **Economic Buyer** (budget authority), **Process Sponsor** (day-to-day pain), and **End User** before evaluating solutions.
+2. **Goldratt TOC Scope Gate:** If the primary business constraint is Market Demand / Sales Conversion (not Operational Plumbing), issue an official verdict: **`OUT_OF_SCOPE: COMMERCIAL_CONSTRAINT`**.
+3. **Anti-TDAGU Time Haircut:** Apply an automatic **50% haircut** to unverified verbal time claims. Strong evidence requires recorded shadowing or system timestamps.
+4. **Change Capacity:** Measure organizational change readiness based on the outcome of the last implemented process change.
+5. **Hierarchy of Interventions:** Exhaust Level 0 (Do Nothing) and Level 1 (Process/SOP) before considering software.
 
 ---
 
-## 2. Calculation Pipeline
+## 1. Constitutional Operational Rules
 
-### Step 1: Pain Pattern & Variance Characterization
+1. **SOLO DELIVERY REALITY:**
+   The bureau operates without corporate staffing theater. All roles (`Lead Diagnostic`, `Process Forensics`, `Technical Architecture`) are executed by the solo principal engineer. Deliverables reflect raw engineering truth, not billable-hour fluff.
 
-For each candidate friction point:
+2. **STAKEHOLDER TRIAD VERIFICATION:**
+   An audit cannot recommend Level 2 (Buy) or Level 3 (Build) without identifying the Economic Buyer.
+   - `Economic Buyer`: Has authority to sign $5,000+ checks without board approval.
+   - `Process Sponsor`: Suffers daily from the clog; acts as internal champion.
+   - `End User / Staff`: Operator whose daily routine is touched.
 
-- Record frequency: times/day, times/week, or annual episodes.
-- Assign `friction_pattern`: `CONTINUOUS` | `SEASONAL` | `EPISODIC`.
+3. **EVIDENCE DISCIPLINE & TIME HAIRCUT (Anti-TDAGU):**
+   - **Level 1 (Hard Telemetry):** Server logs, CSV exports, screen-recorded time logs -> 100% face value.
+   - **Level 2 (Observed Shadowing):** Direct 15-minute live screen observation -> 90% face value.
+   - **Level 3 (Verbal Interview Claim):** "Takes me 30 mins per case" -> **Apply mandatory 50% haircut** (counted as 15 mins) to account for recall bias and idle time.
 
-### Step 2: TDABC Lite Calculation (Annual Cost of Workaround)
+4. **THE OUT-OF-SCOPE EXIT VALVE:**
+   If the business bottleneck is lack of leads, low sales closing rates, or broken product-market fit, software automation is contraindicated. The audit MUST terminate with:
+   `VERDICT: OUT_OF_SCOPE (TOC: Demand / Revenue Bottleneck)`.
+
+5. **CHANGE CAPACITY RATING:**
+   Probe: *"What was the last process or tool change implemented in the past 12 months? Who resisted, and how long did full adoption take?"*
+   - Score $\le 2/5$: High organizational friction. Level 3 (Build) is STRICTLY PROHIBITED; recommend Level 1 (SOP) only.
+
+---
+
+## 2. Calculation Pipeline (TDABC Lite v2)
 
 $$\text{CoW}_{\text{Lite}} = C_{\text{FTE}} + C_{\text{SaaS}} + C_{\text{Scrap}}$$
 
-- $C_{\text{FTE}}$ `[VERIFIED / ESTIMATED]`: Weekly manual hours × loaded hourly rate × 52 weeks.
-- $C_{\text{SaaS}}$ `[VERIFIED]`: Direct subscription waste for duct-tape tools.
-- $C_{\text{Scrap}}$ `[VERIFIED / ESTIMATED]`: Direct documented financial loss from errors, cancellations, and rework.
+Where:
+$$C_{\text{FTE}} = \sum \left( \text{Reported Hours} \times \text{Evidence Haircut} \times \text{Loaded Hourly Rate} \times 52 \right)$$
 
-### Step 3: Traversal of the Intervention Ladder
-
-```text
-[Level 0: Do Nothing] ──(CoW > $5k & Friction Unacceptable)──► [Level 1: Process Change]
-                                                                      │
-        ┌─────────────────────────────────────────────────────────────┘
-        ▼
-(SOP Fails: Cognitive overload / Scale / Unenforceable) ──────► [Level 2: Buy SaaS]
-                                                                      │
-        ┌─────────────────────────────────────────────────────────────┘
-        ▼
-(SaaS Fails: Rigid FSM / High seat tax / Sovereignty breach) ──► [Level 3: Build Custom]
-```
+- Haircut: `1.0` for timestamped logs; `0.5` for verbal interview claims.
+- Loaded Hourly Rate: Base gross salary + 20–30% local taxes/benefits `[VERIFIED / ESTIMATED]`.
 
 ---
 
@@ -98,81 +82,94 @@ $$\text{CoW}_{\text{Lite}} = C_{\text{FTE}} + C_{\text{SaaS}} + C_{\text{Scrap}}
 
 ```markdown
 # Forensic Workaround & Process-Friction Audit
-**Client:** [Client Name / Legal Entity]
-**Auditor:** UnderUndre Productized Engineering Bureau
-**Date:** [ISO Timestamp]
-**Audit Tier:** TDABC Lite (Default) | TDABC Full
-**Recommended Level:** [Level 0: Do Nothing | Level 1: Process | Level 2: Buy | Level 3: Build]
+**Client:** [Client Name / Legal Entity]  
+**Delivery Model:** Solo Productized Engineering Bureau (UnderUndre)  
+**Date:** [ISO Timestamp]  
+**Primary Finding:** [Level 0: Do Nothing | Level 1: Process SOP | Level 2: Buy SaaS | Level 3: Build Custom | OUT_OF_SCOPE]
 
 ---
 
-## 1. Verified Workarounds & Friction Patterns
+## 1. Stakeholder & Organizational Alignment
+- **Economic Buyer (P&L Owner):** [Name, Title, Authority Verified: YES/NO]
+- **Process Sponsor:** [Name, Operational Title]
+- **Change Capacity Score (1–5):** [Score based on historical change friction]
+- **Primary Business Bottleneck (Goldratt TOC):** [Operations / Fulfillment OR Marketing / Sales Demand]
 
-| Process / Leak | Observed Tool | Weekly Volume | Pattern | Variance (CV) | Annual CoW | Class |
+*(If Primary Bottleneck is Marketing/Demand -> Jump directly to Section 5: OUT_OF_SCOPE Verdict)*
+
+---
+
+## 2. Cost of Workaround Ledger (TDABC Lite with Haircut)
+
+| Workaround / Leak | Reported Time | Evidence Quality | Discounted Time | Loaded Rate | Annual CoW | Class |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| [e.g. WhatsApp Booking] | WhatsApp + Excel | 30 hrs/wk | CONTINUOUS | Low (<0.2) | $31,200/yr | [VERIFIED] |
-| [e.g. Supplier Invoice Mismatch] | Email + Paper | 4 episodes/yr | EPISODIC | High (>1.5) | $12,000/yr | [ESTIMATED] |
+| [e.g. Manual Booking] | 20 hrs/wk | Verbal (Level 3) | 10 hrs/wk (-50%) | $20 / hr | **$10,400 / yr**| `[HEURISTIC]` |
+| [e.g. Broken Tool Dupl.]| Direct Cost | Invoice (Level 1) | N/A | Flat Fee | **$2,400 / yr** | `[VERIFIED]` |
 
 ---
 
-## 2. Friction & Political Risk Audit
-- **Technical Complexity:** [Low / Med / High]
-- **Political / Agency Risk:** [NONE IDENTIFIED | CRITICAL (Evidence: KPI conflict) | UNVERIFIED / UNKNOWN]
-- **Staff Switching Friction:** [Estimated ramp-up hours]
-
----
-
-## 3. The Hierarchy of Interventions (Step-by-Step Traversal)
+## 3. The Hierarchy of Interventions (Traversal Gate)
 
 ### Level 0: Do Nothing (Status Quo)
-- **Feasibility:** [Can the business survive this drag?]
 - **Verdict:** [ACCEPTED / REJECTED]
-- **Root Cause for Rejection:** [Why ignoring this burns core cash].
+- **Economic Reason:** [CoW threshold vs operational risk].
 
-### Level 1: Process / SOP Change (Zero-Software Fix)
-- **Proposed SOP:** [e.g., Mandatory 50% deposit link sent via manual template, 24h reminder protocol].
-- **Cost to Test:** $0 CAPEX, ~5 hours management training.
-- **Why it Solves / Why it Fails:** [e.g., Fails because coordinators forget to send links during peak hours (Operational Feasibility failure per TELOS)].
-- **Verdict:** [RECOMMENDED AS FIRST STEP / REJECTED (Unenforceable)]
+### Level 1: Process / SOP Change ($0 CAPEX)
+- **Zero-Software Solution:** [e.g. Delegation Matrix: staff approves up to 1,500 AED without Owner].
+- **Feasibility:** [Can management enforce this? If Change Capacity < 3, why will software be better?]
+- **Verdict:** [RECOMMENDED AS PRIMARY / REJECTED (Unenforceable)]
 
-### Level 2: Buy COTS SaaS (Off-the-Shelf)
-- **Candidate Tools Checked:** [Specific tools with published pricing at audit date, e.g. Yclients at $45/mo, Cal.com at $15/mo].
-- **Total Cost of Ownership (3-Year):** Setup + Monthly seat fees + Integration friction.
-- **Why it Solves / Why it Fails:** [e.g., Fails due to lack of localized payment gateways / rigid FSM constraints / data sovereignty requirements].
+### Level 2: Buy COTS SaaS
+- **Candidate Tools Checked:** [Tool A ($X/mo), Tool B ($Y/mo)].
+- **Why it Solves / Why it Fails:** [Data sovereignty, rigid FSM, seat taxes].
 - **Verdict:** [RECOMMENDED / REJECTED]
 
-### Level 3: Build / Deploy Sovereign Bypass (Sprint B)
-*(Evaluated ONLY if Levels 0–2 are documented as non-viable)*
-- **Proposed Scope:** Fixed single workflow, 3 roles, private VPS instance.
-- **Financial Profile:** $4,900 flat fee `[HYPOTHESIS]`, Simple Payback Period = [N] months `[HEURISTIC]`.
+### Level 3: Deploy Sovereign Bypass (Sprint B)
+*(Evaluated ONLY if Levels 0–2 are documented as non-viable and Economic Buyer is aligned)*
 - **Verdict:** [RECOMMENDED / REJECTED]
+- **Target Constraint:** [Single core bottleneck].
 
 ---
 
 ## 4. 🛑 AUTOMATION PROHIBITED LIST (VIA NEGATIVA)
-> *The following processes were audited and are EXPLICITLY BANNED from software automation:*
-- **[Process Name]:**
-  - **Identified Pattern:** `EPISODIC` (Fat-Tail event occurring 3 times/year).
-  - **Verdict:** **ENFORCE SOP ONLY (Level 1)**.
-  - **Reason:** Automating this edge case requires disproportionate FSM complexity ($8,000+ custom code) with zero daily labor reduction. A 1-page printed checklist completely mitigates 90% of the risk.
+> *Processes audited and explicitly banned from software implementation:*
+- **[Process Name]:** [Reason: Low frequency / High political sabotage risk / Solved by SOP].
 
 ---
 
-## 5. Execution Roadmap & Acceptance Gates
-- **Immediate Step (Days 1–7):** Deploy Level 1 SOP patch (Zero cost).
-- **Secondary Step (If SOP fails threshold):** Trigger Level 2 (Buy) or Level 3 (Sprint B).
-- **Acceptance Boundary:** Staging verification, zero production lock-in, data export guarantee.
+## 5. Final Diagnostic Verdict
+
+```yaml
+verdict: LEVEL_0_DO_NOTHING | LEVEL_1_PROCESS_SOP | LEVEL_2_BUY_SAAS | LEVEL_3_BUILD_SPRINT | OUT_OF_SCOPE
+primary_bottleneck: OPERATIONS | DEMAND_GENERATION | SALES_CLOSING
+change_capacity_score: 1-5
+economic_buyer_aligned: true | false
+recommended_immediate_action: "[Concrete step for Days 1-7]"
 ```
 
 ---
 
-## 4. Gatekeeper Checklist (Audit Rejection Criteria)
+### ЧАСТЬ 2: ОБНОВЛЕНИЕ РЕВЬЮ-КОМАНДЫ `speckit.workaround-audit-review.md`
 
-- [ ] Audit is REJECTED if any numeric claim lacks an `[EVIDENCE_CLASS]` tag (`VERIFIED`, `HEURISTIC`, `HYPOTHESIS`).
-- [ ] Audit is REJECTED if it recommends Level 3 (Build) for an `EPISODIC` or `SEASONAL` pain pattern without explicit payback proof.
-- [ ] Audit is REJECTED if Level 1 (Process / SOP) was not evaluated with a specific operational zero-cost countermeasure.
-- [ ] Audit is REJECTED if Level 2 (Buy) cites vague ranges instead of verified market SaaS tools and current published pricing.
-- [ ] Audit is REJECTED if Political Risk is marked High without citing documentary Level 1/2 evidence (otherwise must be `UNKNOWN`).
-- [ ] Audit is REJECTED if the Automation Prohibited List is empty.
+Добавляем в контрольный манометр новые линзы: проверку покупателя, проверку дисконта времени (Anti-TDAGU) и проверку Out-of-Scope:
+
+```markdown
+
+
+### ЧАСТЬ 3: ЧТО МЕНЯЕТСЯ В БИЗНЕС-ПЛАНЕ И КОНСТИТУЦИИ
+
+#### 1. В `undreseller-business-plan.md` (Бамп до v20.1):
+* **§2. Продукт 0 (Workaround TCO Audit):**
+  * Добавляется **Anti-TDAGU Haircut Law:** *«Все устные оценки времени сотрудников при расчёте CoW делятся на 2 (дисконт 50%). Расчёт по полной ставке допускается только при предоставлении серверных логов или видеозаписи процесса»*.
+  * Добавляется **Out-of-Scope Exit:** *«Если экспресс-диагностика показывает, что у клиента пустая воронка продаж или конверсия в сделку < 1%, аудит закрывается вердиктом OUT_OF_SCOPE. Мы не автоматизируем хаос и не строим букинг там, где некому записываться»*.
+  * Добавляется **Solo Delivery Reality:** *«UnderUndre позиционируется честно: Productized Solo Engineering Bureau. Один фаундер в трёх ролях (Diagnostic, Forensics, Systems Architecture). Никакого корпоративного надувания щёк»*.
+* **§0.1 Assumption Register:**
+  * Добавляется гипотеза: `Out-of-Scope Frequency: 15–20% аудитов завершаются без предложения софта [HYPOTHESIS]`.
+
+#### 2. В `constitution.md`:
+* Конституция **v1.9.0** в текущем виде держит оборону идеально. 
+* Принцип **VII-B (Business Plan Stage)** и Принцип **XIII (Sovereign Capacity & Productization)** уже запрещают брать задачи без проверки мощности и ассетов.
+* Единственное точечное микро-уточнение (v1.9.1): в **Принцип VII-B.3** зафиксировать норму Goldratt TOC:  
+  *«Product/agency work MUST NOT propose operational software automation if the primary constraint of the commercial unit is top-of-funnel demand generation (Out-of-Scope TOC Valve)»*.
 
 ---

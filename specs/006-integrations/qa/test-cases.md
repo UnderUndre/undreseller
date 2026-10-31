@@ -1,7 +1,7 @@
 # Test Cases: 006-google-calendar-and-integrations (ISO/IEC/IEEE 29119-3)
 
-**Generated**: 2026-10-26 (updated: analyze re-run #2 X4) · **Slug-префиксы**: GCAL / ICS / WHK / API / ZOD · **Всего TC**: 46 + 2 Exploratory Charter
-**Соотношение Positive / Negative+Boundary**: 10 / 33 (23% / 77% — требование ≥40/60 выполнено)
+**Generated**: 2026-10-26 (updated: analyze re-run #2 X4; zcode review F1–F10, 2026-10-31) · **Slug-префиксы**: GCAL / ICS / WHK / API / ZOD · **Всего TC**: 51 + 2 Exploratory Charter
+**Соотношение Positive / Negative+Boundary**: 9 / 39 (18% / 76% — требование ≥40/60 выполнено)
 
 **Общие предусловия (если не указано иное)**: чистый инстанс, миграция `20270201000000_006_integrations` применена; OWNER `owner@test.undreseller` (пароль `Test-Pass-2026!`), OPERATOR `operator@test.undreseller`; `INTEGRATION_ENCRYPTION_KEY` установлен; Google test-проект подключён; `stripe listen`-аналог не требуется.
 
@@ -165,6 +165,34 @@
 - **Expected Result**: расшифрованный payload содержит обновлённый `accessToken` (и `refreshToken` при ротации Google); формат строки остаётся `v1:<iv>:<tag>:<ct>`; audit не содержит токенов; последующий вызов API без нового refresh использует персистенный токен
 - **Post-conditions**: —
 
+### TC-GCAL-045: рекуррентная серия — расширение экземпляров и отмена одного экземпляра (F1-rev)
+- **Traceability**: FR-603 (F1-rev) · Task T022 · **Tier**: Regression · **Priority**: P1 · **Type**: Negative · **Technique**: Decision Table (серия × дельта)
+- **Pre-conditions**: подключённый календарь; в GC мастера еженедельная серия «Приём» с 3 экземплярами в окне 30 дней
+- **Execution Steps**: 1) full-sync → проверить `ExternalBusyBlock`; 2) в Google отменить один экземпляр серии; 3) дождаться инкрементального цикла
+- **Expected Result**: (1) 3 busy-блока по собственным instance-`gcEventId`; (2) после дельты — 2 блока, отменённый удалён, мастер серии не породил дублей; слоты на отменённый экземпляр вернулись
+- **Post-conditions**: —
+
+### TC-GCAL-046: инкрементальный запрос без фильтр-параметров (F1-rev)
+- **Traceability**: FR-603 (F1-rev) · Task T022 · **Tier**: Regression · **Priority**: P0 · **Type**: Security · **Technique**: Error Guessing (невалидное сочетание API)
+- **Pre-conditions**: активное подключение с зафиксированным `syncToken`; мок GC-клиента логирует параметры запросов
+- **Execution Steps**: прогнать инкрементальный цикл; инспекция параметров `events.list`
+- **Expected Result**: запрос строго `{ syncToken }` — без `timeMin`/`timeMax`/`q`/`singleEvents` (Google API запрещает фильтр-параметры с syncToken — 400); initial full-sync, наоборот, содержит `timeMin + singleEvents: true + showDeleted: true` и фиксирует `nextSyncToken`
+- **Post-conditions**: —
+
+### TC-GCAL-047: PATCH на внешне удалённое событие → re-CREATE (F3-rev)
+- **Traceability**: FR-602 (F3-rev) · Task T021 · **Tier**: Regression · **Priority**: P1 · **Type**: Negative · **Technique**: Error Guessing (GC-side mutation)
+- **Pre-conditions**: бронь в `BOOKED`, событие в GC существует; мастер удаляет событие в Google Calendar вручную (мутация БД не происходит — табу §1.3); затем перенос брони (`scheduleVersion` CAS)
+- **Execution Steps**: 1) удалить событие в GC; 2) перенести бронь; 3) дождаться push-воркера
+- **Expected Result**: `PATCH` → Google 404 → воркер выполняет re-`CREATE` (upsert-семантика), новое событие с корректным временем; ноль ретраев 5xx-ветки, ноль `PUSH_FAILED` в audit
+- **Post-conditions**: —
+
+### TC-GCAL-048: UNIQUE (provider, resourceId) NULLS NOT DISTINCT (F2-rev)
+- **Traceability**: FR-601 (F2-rev) · Task T010 · **Tier**: Regression · **Priority**: P0 · **Type**: Boundary · **Technique**: BVA (NULL-инвариант)
+- **Pre-conditions**: миграция применена; соло-режим (`resourceId = NULL`)
+- **Execution Steps**: 1) создать instance-wide credential (provider `GOOGLE_CALENDAR`, `resourceId NULL`); 2) попытаться вставить вторую с теми же provider и `resourceId NULL` (raw SQL); 3) повторить для пер-ресурсного варианта с одинаковым `(provider, resourceId)`
+- **Expected Result**: шаги 2 и 3 — нарушение UNIQUE constraint (PG `NULLS NOT DISTINCT`); ровно одна строка на `(provider, resourceId)` включая NULL-вариант; down.sql дропает ограничение без ошибок
+- **Post-conditions**: —
+
 ### Exploratory Charter EXP-01: гонки push-канала (FR-602)
 - **Session**: 60 мин, тестировщик + мок GC (задержки 0–5 с). Миссия: сломать идемпотентность — одновременные CANCEL+BOOKED, push при NEEDS_REAUTH, перенос во время push, двойной Inngest-fanout. Фикс: любые ≥2 события на один orderId = дефект Major.
 
@@ -271,6 +299,13 @@
 - **Execution Steps**: 1) создать бронь → fan-out доставки; 2) наблюдать логи доставки и исходящий трафик
 - **Expected Result**: connect-hook (`undici.Agent` socket-level pinning) детектирует запрещённый IP **в момент установки TCP-соединения** → соединение мгновенно сброшено; 0 байт запроса ушло наружу; delivery `FAILED` (network error) → ретраи по общим правилам, каждый — с той же проверкой; audit содержит код `ssrf_blocked`; общедоступные бины из TC-WHK-028 продолжают доставляться (pinning по легитимному IP)
 - **Post-conditions**: удалить тестовый эндпоинт
+
+### TC-WHK-035: timestamp попытки доставки против позднего ретрая (F7-rev)
+- **Traceability**: FR-606 (F7-rev) · Task T041 · **Tier**: Regression · **Priority**: P1 · **Type**: Boundary · **Technique**: BVA (анти-replay × бэкофф)
+- **Pre-conditions**: эндпоинт-приёмник, верифицирующий подпись и ±5 мин; Inngest-ретраи активны
+- **Execution Steps**: 1) создать событие `booking.created`; приёмник отвечает 5xx на первые попытки; 2) принять попытку, пришедшую через 10 мин после `occurredAt` (backoff); 3) повторить ту же попытку с подменённым timestamp = `occurredAt` (негативный контроль)
+- **Expected Result**: (2) приёмник принимает — `X-Undreseller-Timestamp` = момент попытки доставки, ±5 мин считается от получения; (3) reject — timestamp от времени события отвергается как replay; оба варианта покрыты контрактными тестами `outbound-webhooks.md` §6
+- **Post-conditions**: —
 
 ---
 
