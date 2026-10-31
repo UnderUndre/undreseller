@@ -35,7 +35,7 @@ export async function PATCH(
     const parsed = adminPortfolioItemUpdateSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Validation failed', details: parsed.error.flatten().fieldErrors },
+        { error: 'Validation failed', details: z.flattenError(parsed.error).fieldErrors },
         { status: 400 }
       );
     }

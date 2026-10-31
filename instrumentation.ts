@@ -11,6 +11,11 @@
 export async function register() {
   // Only run on server
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    // T051/FR-632: zod@4 message catalog → zod@3 forms (400-shape freeze),
+    // must run before any schema is parsed. No node:* chain — safe static import.
+    const { installZodCompatCatalog } = await import('@/lib/validation/zodErrorCatalog');
+    installZodCompatCatalog();
+
     const { initializeBots } = await import('@/lib/bot/botManager');
     const { startInboxPoller } = await import('@/lib/jobs/inboxPoller');
     const { logger } = await import('@/lib/telemetry/logger');

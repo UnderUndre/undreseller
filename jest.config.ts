@@ -7,6 +7,8 @@ process.env.DIRECT_URL ??= 'postgresql://postgres:postgres@localhost:5432/undres
 const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  // T051/FR-632: zod@3 message catalog over zod@4 — 400-shape freeze (T050/T052).
+  setupFiles: ['<rootDir>/tests/zod-compat.setup.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },

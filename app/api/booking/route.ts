@@ -26,21 +26,23 @@ const createBookingSchema = z
     customerNote: z.string().trim().max(500).optional(),
     idempotencyKey: z.string().trim().min(8).max(128).optional(),
     // US6 custom booking fields (FR-423/434): keyed by field id or key.
-    fieldAnswers: z.record(z.union([z.string().max(1000), z.number(), z.boolean()])).optional(),
+    fieldAnswers: z
+      .record(z.string(), z.union([z.string().max(1000), z.number(), z.boolean()]))
+      .optional(),
   })
   // FR-425 (T090): OUT_CALL bookings MUST carry a service address, enforced
   // at the boundary with a field-level error — not deep in the kernel.
   .superRefine((data, ctx) => {
     if (data.fulfillmentMode === 'OUT_CALL' && !data.serviceAddress) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ['serviceAddress'],
         message: 'serviceAddress is required for OUT_CALL bookings',
       });
     }
     if (data.fulfillmentMode === 'IN_CALL' && data.serviceAddress) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ['serviceAddress'],
         message: 'serviceAddress must not be provided for IN_CALL bookings',
       });
@@ -60,7 +62,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (!parsed.success) {
       // Field-level validation errors (FR-425): shape { serviceAddress: [...] }
       return NextResponse.json(
-        { error: parsed.error.flatten().fieldErrors },
+      { error: z.flattenError(parsed.error).fieldErrors },
         { status: 400 }
       );
     }

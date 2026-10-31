@@ -255,7 +255,7 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
     const foundationParsed = foundationSettingsSchema.safeParse(foundation);
     if (!foundationParsed.success) {
       return NextResponse.json(
-        { error: 'Invalid foundation settings', details: foundationParsed.error.flatten().fieldErrors },
+        { error: 'Invalid foundation settings', details: z.flattenError(foundationParsed.error).fieldErrors },
         { status: 400 }
       );
     }
@@ -263,7 +263,7 @@ export async function PATCH(req: NextRequest): Promise<NextResponse> {
     const operationalParsed = operationalSettingsSchema.safeParse(operational);
     if (!operationalParsed.success) {
       return NextResponse.json(
-        { error: 'Invalid operational settings', details: operationalParsed.error.flatten().fieldErrors },
+        { error: 'Invalid operational settings', details: z.flattenError(operationalParsed.error).fieldErrors },
         { status: 400 }
       );
     }

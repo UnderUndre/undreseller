@@ -5,6 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { authenticateStaff } from '@/lib/security/staffAuth';
 import { addPortfolioItem } from '@/lib/kernel/professionalProfileService';
 import { adminPortfolioItemCreateSchema } from '@/lib/validation/adminSchemas';
@@ -25,7 +26,7 @@ export async function POST(
     const parsed = adminPortfolioItemCreateSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Validation failed', details: parsed.error.flatten().fieldErrors },
+        { error: 'Validation failed', details: z.flattenError(parsed.error).fieldErrors },
         { status: 400 }
       );
     }

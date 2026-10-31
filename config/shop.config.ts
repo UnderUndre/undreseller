@@ -91,7 +91,7 @@ export function validateGreeting(greeting: string): { success: boolean; data?: s
   if (!result.success) {
     return {
       success: false,
-      error: result.error.errors[0]?.message || 'Invalid greeting',
+      error: result.error.issues[0]?.message || 'Invalid greeting',
     };
   }
   return {

@@ -55,7 +55,7 @@ export function validateCanonicalPayload(data: unknown): {
 } {
   const result = canonicalPayloadSchema.safeParse(data);
   if (!result.success) {
-    return { success: false, error: result.error.errors[0]?.message || 'Invalid payload schema' };
+    return { success: false, error: result.error.issues[0]?.message || 'Invalid payload schema' };
   }
 
   const jsonBytes = Buffer.byteLength(JSON.stringify(result.data), 'utf-8');
