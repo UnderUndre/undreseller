@@ -10,7 +10,7 @@ import { prisma } from '@/lib/db/prisma';
 import { logger } from '@/lib/telemetry/logger';
 import { sendWithRetry, bot } from '@/lib/bot/telegramBot';
 import { logDeliveryAttempt } from './deliveryLog';
-import { resolveEmailProvider, type EmailMessage } from '@/lib/email/emailProvider';
+import { resolveEmailProvider, type EmailMessage, type EmailAttachment } from '@/lib/email/emailProvider';
 import { getReleaseReadinessFlags } from '@/lib/config/integrationProfile';
 
 export type NotificationLifecycleEvent =
@@ -46,12 +46,14 @@ export async function dispatchEmailFallback(input: {
   email: { subject: string; html: string };
   orderId?: string | null;
   bookingRefId?: string | null;
+  attachments?: EmailAttachment[];
 }): Promise<'ACCEPTED' | 'FAILED' | 'NO_EMAIL_CHANNEL'> {
   const provider = resolveEmailProvider();
   const message: EmailMessage = {
     to: input.customerEmail,
     subject: input.email.subject,
     html: input.email.html,
+    attachments: input.attachments,
   };
 
   const startedAt = new Date();
@@ -135,6 +137,19 @@ export async function dispatchLifecycleNotification(
     email: input.email,
     orderId: input.orderId ?? null,
     bookingRefId: input.bookingRefId ?? null,
+    // 006 T031 (FR-605): ICS on booking confirmations / cancellations
+    attachments: await (async () => {
+      if (!input.orderId || !input.event) return undefined;
+      if (input.event !== 'BOOKING_CONFIRMED' && input.event !== 'BOOKING_CANCELLED') return undefined;
+      try {
+        const { buildBookingIcsAttachment } = await import('@/lib/email/icsAttachment');
+        const method = input.event === 'BOOKING_CANCELLED' ? 'CANCEL' : 'PUBLISH';
+        const attachment = await buildBookingIcsAttachment(input.orderId, method);
+        return attachment ? [attachment] : undefined;
+      } catch {
+        return undefined; // ICS must never break the email path (fail-open)
+      }
+    })(),
   });
   return { primary, fallback };
 }

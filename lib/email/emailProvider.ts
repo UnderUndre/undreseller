@@ -8,12 +8,21 @@
 
 import { logger } from '@/lib/telemetry/logger';
 
+export interface EmailAttachment {
+  filename: string;
+  /** base64-encoded content */
+  contentBase64: string;
+  contentType: string;
+}
+
 export interface EmailMessage {
   to: string;
   subject: string;
   html: string;
   text?: string;
   replyTo?: string;
+  /** 006 T031 (FR-605): RFC 5545 ICS attachments on booking confirmations. */
+  attachments?: EmailAttachment[];
 }
 
 export interface EmailSendResult {
@@ -65,6 +74,15 @@ export class ResendEmailProvider implements EmailProvider {
           html: message.html,
           ...(message.text ? { text: message.text } : {}),
           ...(message.replyTo ? { reply_to: message.replyTo } : {}),
+          ...(message.attachments?.length
+            ? {
+                attachments: message.attachments.map((a) => ({
+                  filename: a.filename,
+                  content: a.contentBase64,
+                  content_type: a.contentType,
+                })),
+              }
+            : {}),
         }),
       });
 
