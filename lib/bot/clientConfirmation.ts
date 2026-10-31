@@ -219,6 +219,13 @@ export async function handleClientConfirmationCallback(params: {
     }
   }
 
+  // 006 (FR-602): fire-and-forget GC push on client confirm (BOOKED) /
+  // decline (CANCELLED). Fail-open (SC-006).
+  if (txResult.outcome === 'CONFIRMED' || txResult.outcome === 'DECLINED_CANCELLED') {
+    const { notifyGcalPush } = await import('@/lib/integrations/gcalPush');
+    notifyGcalPush(orderId);
+  }
+
   logger.info('[CLIENT_CONFIRMATION_RESPONSE]', {
     orderId,
     decision,

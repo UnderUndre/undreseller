@@ -629,6 +629,14 @@ export async function executeStaffCallbackTransaction(params: {
     }
   }
 
+  // 006 (FR-602): fire-and-forget GC push on booking-relevant staff actions —
+  // approve/fulfill move the reservation to BOOKED, reject releases it.
+  // Fail-open (SC-006): a GC failure never affects the action outcome.
+  if (['approve', 'reject', 'fulfill'].includes(action)) {
+    const { notifyGcalPush } = await import('@/lib/integrations/gcalPush');
+    notifyGcalPush(order.id);
+  }
+
   return {
     outcome: 'APPLIED',
     emittedEvent: pureOutcome.emittedEvent,
