@@ -250,7 +250,80 @@ model Resource {
   active      Boolean                 @default(true)
   staffMember StaffMember?
   exceptions  AvailabilityException[]
+  // 006: per-resource Google Calendar credential + imported external busy
+  integrationCredentials IntegrationCredential[]
+  externalBusyBlocks     ExternalBusyBlock[]
   createdAt   DateTime                @default(now())
+}
+
+// ─── 006: Integrations (Google Calendar, Webhooks) ─────────────────────────
+
+enum IntegrationProvider {
+  GOOGLE_CALENDAR
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  NEEDS_REAUTH
+  DISABLED
+}
+
+// One active credential per (provider, resourceId). resourceId NULL =
+// instance-wide "default_master" (solo mode). UNIQUE is NULLS NOT DISTINCT
+// (raw-SQL migration): a plain Postgres UNIQUE treats NULLs as distinct and
+// would allow duplicate instance-wide credentials (zcode F2-rev).
+model IntegrationCredential {
+  id                 String             @id @default(uuid())
+  provider           IntegrationProvider
+  resourceId         String?
+  resource           Resource?          @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  // v1:<iv>:<tag>:<ct> AES-256-GCM via lib/integrations/secretVault.ts:
+  // { refreshToken, accessToken?, calendarId, syncToken? } — plaintext never in DB
+  encryptedPayload   String
+  status             IntegrationStatus  @default(CONNECTED)
+  connectedByStaffId String
+  lastSyncAt         DateTime?          @db.Timestamptz(3)
+  lastError          String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@unique([provider, resourceId])
+  @@index([resourceId])
+}
+
+// Imported third-party busy intervals. No PII — intervals only.
+model ExternalBusyBlock {
+  id         String   @id @default(uuid())
+  resourceId String?
+  resource   Resource? @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  calendarId String
+  gcEventId  String // stable instance-id (recurrence expansions use instance ids)
+  startUtc   DateTime @db.Timestamptz(3)
+  endUtc     DateTime @db.Timestamptz(3)
+  source     String   @default("GCAL")
+  expiresAt  DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now())
+
+  @@unique([calendarId, gcEventId])
+  @@index([resourceId, startUtc, endUtc])
+}
+
+model WebhookEndpoint {
+  id                 String   @id @default(uuid())
+  url                String
+  // AES-256-GCM via secretVault.ts (symmetric secret for HMAC computation)
+  encryptedSecret    String
+  // Open prefix for UI identification (whsec_ + first 6 hex)
+  secretPrefix       String
+  events             String[]
+  active             Boolean  @default(true)
+  // Consecutive exhausted-delivery counter; reset to 0 on 2xx (F7 breaker
+  // fires on 10 consecutive failures, not cumulative)
+  failureCount       Int      @default(0)
+  lastDeliveryAt     DateTime? @db.Timestamptz(3)
+  lastDeliveryStatus String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model AvailabilityException {
@@ -363,6 +436,8 @@ model Item {
   orderItems   OrderItem[]
   reservations SlotReservation[]
   hours        WeeklyHours[]
+  // 006: Google Meet conferencing on pushed GC events (FR-602, default off)
+  remoteMeetingEnabled Boolean @default(false)
 
   // 003.1 Additive service fields (FR-338, FR-339)
   // 004 US9/US1 additions (data-model 1.8)
@@ -477,6 +552,9 @@ model Order {
   fulfillmentPlan            FulfillmentPlan?
   paymentMethod              PaymentMethod?
   paymentRef                 String?
+  // 006 (zcode F6-rev): Google Meet link persisted by the push worker from
+  // the GC pushEvent response; null = push pending or conferencing disabled.
+  meetLink                   String?
   createdAt                  DateTime                @default(now())
   updatedAt                  DateTime                @updatedAt
 }

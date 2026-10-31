@@ -218,4 +218,45 @@ describe('PostgreSQL GiST Exclusion, 4-Stage Expand/Contract & Restored-v1 Backf
     expect(stage003aDown).not.toContain('DROP TABLE "SlotReservation"');
   });
 
+  it('enforces 006 additive Expand migration with NULLS NOT DISTINCT invariant and reversible down.sql (T010, Constitution X)', () => {
+    const stage006 = fs.readFileSync(
+      path.join(migrationsRoot, '20270201000000_006_integrations', 'migration.sql'),
+      'utf-8'
+    );
+    const stage006Down = fs.readFileSync(
+      path.join(migrationsRoot, '20270201000000_006_integrations', 'down.sql'),
+      'utf-8'
+    );
+
+    // Timeout guards (canon 003.1)
+    expect(stage006).toContain("SET statement_timeout = '5s'");
+    expect(stage006).toContain("SET lock_timeout = '2s'");
+
+    // Additive objects
+    expect(stage006).toContain('CREATE TABLE "IntegrationCredential"');
+    expect(stage006).toContain('CREATE TABLE "ExternalBusyBlock"');
+    expect(stage006).toContain('CREATE TABLE "WebhookEndpoint"');
+    expect(stage006).toContain('CREATE TYPE "IntegrationProvider"');
+    expect(stage006).toContain('CREATE TYPE "IntegrationStatus"');
+    expect(stage006).toContain('"remoteMeetingEnabled" BOOLEAN NOT NULL DEFAULT false');
+    expect(stage006).toContain('"meetLink" TEXT');
+
+    // F2-rev invariant: (provider, resourceId) unique INCLUDING NULL
+    // (plain UNIQUE would allow duplicate instance-wide credentials)
+    expect(stage006).toContain('NULLS NOT DISTINCT');
+
+    // Additive ALTERs only — no destructive DDL on pre-existing tables
+    expect(stage006).not.toMatch(/DROP (TABLE|COLUMN)/i);
+
+    // Down migration drops only new entities
+    expect(stage006Down).toContain('DROP TABLE IF EXISTS "WebhookEndpoint"');
+    expect(stage006Down).toContain('DROP TABLE IF EXISTS "ExternalBusyBlock"');
+    expect(stage006Down).toContain('DROP TABLE IF EXISTS "IntegrationCredential"');
+    expect(stage006Down).toContain('DROP TYPE IF EXISTS "IntegrationStatus"');
+    expect(stage006Down).toContain('DROP COLUMN IF EXISTS "remoteMeetingEnabled"');
+    expect(stage006Down).toContain('DROP COLUMN IF EXISTS "meetLink"');
+    // Column drops only — never whole-table drops of pre-existing entities
+    expect(stage006Down).not.toMatch(/DROP TABLE IF EXISTS "(Order|Item|Resource|SlotReservation)"/);
+  });
+
 });
