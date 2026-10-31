@@ -11,6 +11,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import AdminNav from '@/components/admin/AdminNav';
+import IntegrationsPanel from '@/components/admin/IntegrationsPanel';
 import { useTranslations } from 'next-intl';
 
 interface ShopSettings {
@@ -347,6 +348,9 @@ export default function AdminSettingsPage() {
           </button>
         </section>
       )}
+
+      {/* 006 T025: Google Calendar integrations (+ webhooks behind NEXT_PUBLIC_FEATURE_WEBHOOKS) */}
+      <IntegrationsPanel isOwner={isOwner} />
 
       <AdminNav />
     </div>

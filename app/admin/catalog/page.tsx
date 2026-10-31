@@ -49,6 +49,7 @@ export default function AdminCatalogPage() {
     bufferBeforeMin: 0,
     bufferAfterMin: 0,
     requiresFullPrepayment: false,
+    remoteMeetingEnabled: false,
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -129,6 +130,7 @@ export default function AdminCatalogPage() {
       bufferBeforeMin: form.bufferBeforeMin,
       bufferAfterMin: form.bufferAfterMin,
       requiresFullPrepayment: form.requiresFullPrepayment,
+          remoteMeetingEnabled: form.remoteMeetingEnabled,
     };
     const parsed = adminServiceCreateSchema.safeParse({
       ...candidate,
@@ -165,6 +167,7 @@ export default function AdminCatalogPage() {
           bufferBeforeMin: form.bufferBeforeMin,
           bufferAfterMin: form.bufferAfterMin,
           requiresFullPrepayment: form.requiresFullPrepayment,
+          remoteMeetingEnabled: form.remoteMeetingEnabled,
           isActive: true,
         }),
       });
@@ -183,6 +186,7 @@ export default function AdminCatalogPage() {
         bufferBeforeMin: 0,
         bufferAfterMin: 0,
         requiresFullPrepayment: false,
+    remoteMeetingEnabled: false,
       });
       setFormErrors({});
       await load();
@@ -404,6 +408,15 @@ export default function AdminCatalogPage() {
                     className="accent-purple-600"
                   />
                   {t('requiresPrepayment')}
+                </label>
+                <label className="flex items-center gap-2 text-sm text-base-content/80">
+                  <input
+                    type="checkbox"
+                    checked={form.remoteMeetingEnabled}
+                    onChange={(e) => setForm({ ...form, remoteMeetingEnabled: e.target.checked })}
+                    className="accent-purple-600"
+                  />
+                  {t('remoteMeeting')}
                 </label>
               </div>
             )}

@@ -1,9 +1,20 @@
 {
   "web": {
-    "nav": { "catalog": "Catalog", "book": "Book" },
-    "header": { "bookSlot": "Book Slot" },
-    "footer": { "poweredBy": "Powered by Sovereign Commerce Stack." },
-    "localeSwitcher": { "label": "Language", "ru": "RU", "en": "EN" },
+    "nav": {
+      "catalog": "Catalog",
+      "book": "Book"
+    },
+    "header": {
+      "bookSlot": "Book Slot"
+    },
+    "footer": {
+      "poweredBy": "Powered by Sovereign Commerce Stack."
+    },
+    "localeSwitcher": {
+      "label": "Language",
+      "ru": "RU",
+      "en": "EN"
+    },
     "home": {
       "studioAddress": "📍 Studio Address: {address}",
       "servicesHeading": "Services & Appointments",
@@ -148,14 +159,22 @@
       "expiredTitle": "Offer expired",
       "expiredDetail": "This offer expired silently after its window. You can still book the slot from the storefront if it is available."
     },
-    "errors": { "generic": "Something went wrong. Please try again." }
+    "errors": {
+      "generic": "Something went wrong. Please try again."
+    }
   },
   "clientBot": {
     "greeting": "Welcome! Pick a service to get started.",
-    "booking": { "confirmed": "Your appointment is confirmed.", "cancelled": "Your booking is cancelled." }
+    "booking": {
+      "confirmed": "Your appointment is confirmed.",
+      "cancelled": "Your booking is cancelled."
+    }
   },
   "staffBot": {
-    "actions": { "approved": "Approved", "rejected": "Rejected" }
+    "actions": {
+      "approved": "Approved",
+      "rejected": "Rejected"
+    }
   },
   "admin": {
     "nav": {
@@ -211,7 +230,8 @@
       "requiresPrepayment": "Requires full prepayment",
       "createService": "Create Service",
       "priceError": "Price must be a non-negative integer (minor units)",
-      "onlyServiceError": "Only SERVICE items are supported in the catalog quick-create"
+      "onlyServiceError": "Only SERVICE items are supported in the catalog quick-create",
+      "remoteMeeting": "Google Meet link for remote services"
     },
     "bookings": {
       "title": "Staff Booking Operations",
@@ -333,9 +353,30 @@
       "tooLarge": "File too large ({size}MB). Max {max}MB before compression.",
       "compressCeiling": "Compressed image still exceeds the 5MB upload ceiling",
       "uploadFailed": "Upload failed"
+    },
+    "integrations": {
+      "title": "Google Calendar Integration",
+      "notConnected": "No calendar connected",
+      "needsReauthBanner": "Google Calendar needs re-authentication — bookings keep working, calendar sync is paused.",
+      "lastSync": "Last sync",
+      "reconnect": "Reconnect",
+      "disconnect": "Disconnect",
+      "disconnectConfirm": "Disconnect Google Calendar? Token and sync state will be irrecoverably wiped.",
+      "connected": "Calendar connected.",
+      "disconnected": "Calendar disconnected.",
+      "disconnectFailed": "Disconnect failed.",
+      "connectInstanceWide": "Connect Google Calendar (instance-wide)",
+      "webhooksTitle": "Outbound Webhooks",
+      "noWebhooks": "No webhook endpoints registered",
+      "reactivate": "Reactivate",
+      "testPing": "Send test ping",
+      "testPingSent": "Test ping sent."
     }
   },
   "email": {
-    "booking": { "subject": "Your appointment at {businessName}", "confirmed": "Your appointment is confirmed." }
+    "booking": {
+      "subject": "Your appointment at {businessName}",
+      "confirmed": "Your appointment is confirmed."
+    }
   }
 }

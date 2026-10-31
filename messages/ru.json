@@ -1,9 +1,20 @@
 {
   "web": {
-    "nav": { "catalog": "Каталог", "book": "Запись" },
-    "header": { "bookSlot": "Записаться" },
-    "footer": { "poweredBy": "Работает на Sovereign Commerce Stack." },
-    "localeSwitcher": { "label": "Язык", "ru": "РУ", "en": "EN" },
+    "nav": {
+      "catalog": "Каталог",
+      "book": "Запись"
+    },
+    "header": {
+      "bookSlot": "Записаться"
+    },
+    "footer": {
+      "poweredBy": "Работает на Sovereign Commerce Stack."
+    },
+    "localeSwitcher": {
+      "label": "Язык",
+      "ru": "РУ",
+      "en": "EN"
+    },
     "home": {
       "studioAddress": "📍 Адрес студии: {address}",
       "servicesHeading": "Услуги и запись",
@@ -148,7 +159,9 @@
       "expiredTitle": "Предложение истекло",
       "expiredDetail": "Срок действия этого предложения истёк. Слот можно забронировать с витрины, если он ещё свободен."
     },
-    "errors": { "generic": "Что-то пошло не так. Попробуйте ещё раз." }
+    "errors": {
+      "generic": "Что-то пошло не так. Попробуйте ещё раз."
+    }
   },
   "clientBot": {
     "greeting": "Добро пожаловать! Выберите услугу, чтобы начать.",
@@ -217,7 +230,8 @@
       "requiresPrepayment": "Требует полной предоплаты",
       "createService": "Создать услугу",
       "priceError": "Цена должна быть неотрицательным целым (минорные единицы)",
-      "onlyServiceError": "В быстром создании каталога поддерживаются только услуги (SERVICE)"
+      "onlyServiceError": "В быстром создании каталога поддерживаются только услуги (SERVICE)",
+      "remoteMeeting": "Ссылка Google Meet для удалённых услуг"
     },
     "bookings": {
       "title": "Операции с записями",
@@ -339,6 +353,24 @@
       "tooLarge": "Файл слишком большой ({size}МБ). Максимум {max}МБ до сжатия.",
       "compressCeiling": "Сжатое изображение всё ещё превышает потолок загрузки 5МБ",
       "uploadFailed": "Не удалось загрузить"
+    },
+    "integrations": {
+      "title": "Интеграция Google Calendar",
+      "notConnected": "Календарь не подключён",
+      "needsReauthBanner": "Google Calendar требует повторной авторизации — брони работают, sync календаря приостановлен.",
+      "lastSync": "Последний sync",
+      "reconnect": "Переподключить",
+      "disconnect": "Отключить",
+      "disconnectConfirm": "Отключить Google Calendar? Токен и sync-состояние будут безвозвратно стёрты.",
+      "connected": "Календарь подключён.",
+      "disconnected": "Календарь отключён.",
+      "disconnectFailed": "Не удалось отключить.",
+      "connectInstanceWide": "Подключить Google Calendar (на инстанс)",
+      "webhooksTitle": "Исходящие Webhooks",
+      "noWebhooks": "Webhook-эндпоинты не зарегистрированы",
+      "reactivate": "Реактивировать",
+      "testPing": "Отправить test ping",
+      "testPingSent": "Test ping отправлен."
     }
   },
   "email": {

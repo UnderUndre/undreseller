@@ -57,6 +57,8 @@ export const adminServiceCreateSchema = z.object({
   cancellationCutoffHours: z.number().int().min(1).max(72).default(3),
   requiresFullPrepayment: z.boolean().default(false),
   isActive: z.boolean().default(true),
+  /** 006 FR-602: Google Meet conferencing on pushed GC events. */
+  remoteMeetingEnabled: z.boolean().default(false),
 });
 
 export const adminServiceUpdateSchema = z.object({
@@ -77,6 +79,8 @@ export const adminServiceUpdateSchema = z.object({
   isActive: z.boolean().optional(),
   /** Manual ordering (arrow reorder swaps this value between neighbours). */
   sortOrder: z.number().int().min(0).optional(),
+  /** 006 FR-602: Google Meet conferencing on pushed GC events. */
+  remoteMeetingEnabled: z.boolean().optional(),
 });
 
 export type AdminServiceCreateInput = z.infer<typeof adminServiceCreateSchema>;
