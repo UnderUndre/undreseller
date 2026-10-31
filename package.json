@@ -23,6 +23,7 @@
     "@underundre/undesign": "^0.1.0",
     "browser-image-compression": "^2.0.2",
     "date-fns-tz": "^3.2.0",
+    "googleapis": "144.0.0",
     "grammy": "1.35.0",
     "inngest": "^3.54.2",
     "js-tiktoken": "1.0.20",

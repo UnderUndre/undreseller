@@ -133,6 +133,15 @@
         "package.json"
       ],
       "complianceNote": "005 T001: Native Argon2id password hashing bindings. MIT allowlisted."
+    },
+    {
+      "component": "googleapis",
+      "license": "Apache-2.0",
+      "sourceRepo": "https://github.com/googleapis/google-api-nodejs-client",
+      "adaptedFiles": [
+        "package.json"
+      ],
+      "complianceNote": "006 T001: official Google Calendar API SDK (OAuth2 client, events.list syncToken incremental sync, freeBusy). Apache-2.0 allowlisted; consumed as exact-pinned dependency (144.0.0), no source vendored."
     }
   ]
 }
