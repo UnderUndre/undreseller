@@ -1,0 +1,72 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`T050: 400-shape characterization (pre zod@4) adminSchemas: service create invalid (empty body): admin-service-create-invalid 1`] = `
+{
+  "priceMinor": [
+    "Required",
+  ],
+  "title": [
+    "Required",
+  ],
+}
+`;
+
+exports[`T050: 400-shape characterization (pre zod@4) adminSchemas: settings patch invalid (bad operational payload): admin-settings-patch-invalid 1`] = `
+{
+  "slotGridStepMin": [
+    "Invalid input",
+  ],
+}
+`;
+
+exports[`T050: 400-shape characterization (pre zod@4) booking create: IN_CALL with serviceAddress: booking-incall-with-address 1`] = `
+{
+  "error": {
+    "serviceAddress": [
+      "serviceAddress must not be provided for IN_CALL bookings",
+    ],
+  },
+}
+`;
+
+exports[`T050: 400-shape characterization (pre zod@4) booking create: OUT_CALL without serviceAddress: booking-outcall-no-address 1`] = `
+{
+  "error": {
+    "serviceAddress": [
+      "serviceAddress is required for OUT_CALL bookings",
+    ],
+  },
+}
+`;
+
+exports[`T050: 400-shape characterization (pre zod@4) booking create: bad uuid: booking-bad-uuid 1`] = `
+{
+  "error": {
+    "serviceId": [
+      "Invalid uuid",
+    ],
+  },
+}
+`;
+
+exports[`T050: 400-shape characterization (pre zod@4) presign: bad mime (missing contentType): presign-bad-mime 1`] = `
+{
+  "details": {
+    "contentType": [
+      "Required",
+    ],
+  },
+  "error": "Validation failed",
+}
+`;
+
+exports[`T050: 400-shape characterization (pre zod@4) presign: oversized (negative contentLength): presign-oversized 1`] = `
+{
+  "details": {
+    "contentLength": [
+      "Number must be greater than 0",
+    ],
+  },
+  "error": "Validation failed",
+}
+`;
