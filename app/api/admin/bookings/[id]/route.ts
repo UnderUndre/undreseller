@@ -135,6 +135,13 @@ export async function PATCH(
       metadataJson: { action, orderId: reservation.orderId },
     });
 
+    // 006 (FR-602): fire-and-forget GC push on BOOKED/cancel transitions —
+    // fail-open, a GC failure never affects the booking (SC-006).
+    if (action === 'APPROVE_COVERAGE' || action === 'CANCEL' || action === 'REJECT_COVERAGE') {
+      const { notifyGcalPush } = await import('@/lib/integrations/gcalPush');
+      notifyGcalPush(reservation.orderId);
+    }
+
     return NextResponse.json({ booking: updated }, { status: 200 });
   } catch (err: unknown) {
     logger.error('Failed to update booking status', { error: String(err) });

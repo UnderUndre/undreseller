@@ -133,6 +133,7 @@ export async function fulfillPayment(
     }
 
     let requiresOperatorAction = false;
+    let bookedSlot = false;
     let operatorActionReason: string | null = null;
     let targetOrderStatus: 'PAID' | 'PAID_REQUIRES_RESOLUTION' = 'PAID';
     let targetRefundStatus: 'NONE' | 'REFUND_REQUESTED' = 'NONE';
@@ -203,6 +204,7 @@ export async function fulfillPayment(
             requiresOperatorAction: false,
           },
         });
+        bookedSlot = true;
       }
     }
 
@@ -278,6 +280,16 @@ export async function fulfillPayment(
       });
     }
 
-    return { status: targetOrderStatus, requiresOperatorAction };
+    const txResult = { status: targetOrderStatus, requiresOperatorAction };
+
+    // 006 (FR-602): fire-and-forget GC push when payment confirmed the
+    // booking (slot transitioned to BOOKED above — spec-level CONFIRMED maps
+    // to reservation BOOKED, канон 004).
+    if (bookedSlot) {
+      const { notifyGcalPush } = await import('@/lib/integrations/gcalPush');
+      notifyGcalPush(order.id);
+    }
+
+    return txResult;
   });
 }

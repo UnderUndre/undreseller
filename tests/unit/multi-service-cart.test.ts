@@ -10,6 +10,7 @@ jest.mock('@/lib/db/prisma', () => ({
     availabilityException: { findUnique: jest.fn().mockResolvedValue(null) },
     weeklyHours: { findFirst: jest.fn() },
     slotReservation: { findMany: jest.fn().mockResolvedValue([]) },
+    externalBusyBlock: { findMany: jest.fn().mockResolvedValue([]) },
   },
 }));
 

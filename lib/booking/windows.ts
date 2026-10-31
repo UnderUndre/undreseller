@@ -184,6 +184,19 @@ export async function computeAvailableSlots(
     endMs: r.endTime.getTime(),
   }));
 
+  // 006 (FR-603, T023): ExternalBusyBlock per-resource subtraction (SQL only).
+  const busyBlocks = await prisma.externalBusyBlock.findMany({
+    where: {
+      resourceId,
+      startUtc: { lt: dayEnd },
+      endUtc: { gt: dayStart },
+    },
+    select: { startUtc: true, endUtc: true },
+  });
+  for (const b of busyBlocks) {
+    reservationIntervals.push({ startMs: b.startUtc.getTime(), endMs: b.endUtc.getTime() });
+  }
+
   const minNoticeTimeMs = now.getTime() + minNoticeMin * 60 * 1000;
 
   return await computeSlotsInternal(params, {
@@ -310,6 +323,21 @@ export async function computeSlotsWithReasons(
     startMs: r.startTime.getTime(),
     endMs: r.endTime.getTime(),
   }));
+
+  // 006 (FR-603, T023): third-party busy imported from the resource's Google
+  // Calendar subtracts from available slots, on par with SlotReservation.
+  // SQL only (NFR-602: no network calls in slot computation).
+  const busyBlocks = await prisma.externalBusyBlock.findMany({
+    where: {
+      resourceId,
+      startUtc: { lt: dayEnd },
+      endUtc: { gt: dayStart },
+    },
+    select: { startUtc: true, endUtc: true },
+  });
+  for (const b of busyBlocks) {
+    reservationIntervals.push({ startMs: b.startUtc.getTime(), endMs: b.endUtc.getTime() });
+  }
 
   return await computeSlotsInternal(params, {
     durationMin,

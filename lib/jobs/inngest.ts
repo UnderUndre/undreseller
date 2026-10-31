@@ -707,3 +707,63 @@ export const invoiceExpiryJob = inngest.createFunction(
     });
   }
 );
+
+// ─── 006: Google Calendar push + sync (T021/T022, FR-602/603) ──────────────
+
+export const gcalPushJob = inngest.createFunction(
+  { id: 'gcal-push', concurrency: { limit: 5 }, retries: 3 },
+  { event: 'gcal/push' },
+  async ({ event, step }) => {
+    const { processGcalPushForOrder } = await import('@/lib/integrations/gcalPush');
+    const orderId = (event.data as { orderId?: string }).orderId;
+    if (!orderId) return { status: 'NO_ORDER_ID' };
+    return await step.run('push-order-to-gcal', async () => {
+      const outcome = await processGcalPushForOrder(orderId);
+      return { status: outcome.action, reason: outcome.reason };
+    });
+  }
+);
+
+export const gcalSyncSweepJob = inngest.createFunction(
+  { id: 'gcal-sync-sweep', concurrency: { limit: 1 } },
+  { cron: '*/15 * * * *' },
+  async ({ step }) => {
+    return await step.run('gcal-sync-sweep', async () => {
+      const { runSyncSweep } = await import('@/lib/integrations/gcalSync');
+      const results = await runSyncSweep();
+      return {
+        credentials: results.length,
+        upserted: results.reduce((acc, r) => acc + (r.upserted ?? 0), 0),
+        deleted: results.reduce((acc, r) => acc + (r.deleted ?? 0), 0),
+      };
+    });
+  }
+);
+
+export const gcalReconcileJob = inngest.createFunction(
+  { id: 'gcal-reconcile', concurrency: { limit: 1 } },
+  { cron: '*/15 * * * *' },
+  async ({ step }) => {
+    return await step.run('gcal-push-reconcile', async () => {
+      // Self-healing net (fail-open, SC-006): re-push BOOKED orders with
+      // future appointments; push is idempotent (upsert), so replays are safe.
+      const { prisma } = await import('@/lib/db/prisma');
+      const { processGcalPushForOrder } = await import('@/lib/integrations/gcalPush');
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const orders = await prisma.order.findMany({
+        where: {
+          updatedAt: { gte: since },
+          reservation: { status: 'BOOKED', appointmentStartTime: { gte: new Date() } },
+        },
+        select: { id: true },
+        take: 50,
+      });
+      let pushed = 0;
+      for (const { id } of orders) {
+        const outcome = await processGcalPushForOrder(id);
+        if (outcome.pushed) pushed += 1;
+      }
+      return { candidates: orders.length, pushed };
+    });
+  }
+);

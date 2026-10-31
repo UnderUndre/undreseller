@@ -8,6 +8,9 @@ import {
   appointmentReminderJob,
   autoCancelUnconfirmedJob,
   invoiceExpiryJob,
+  gcalPushJob,
+  gcalSyncSweepJob,
+  gcalReconcileJob,
 } from '@/lib/jobs/inngest';
 
 export const { GET, POST, PUT } = serve({
@@ -20,5 +23,8 @@ export const { GET, POST, PUT } = serve({
     appointmentReminderJob,
     autoCancelUnconfirmedJob,
     invoiceExpiryJob,
+    gcalPushJob,
+    gcalSyncSweepJob,
+    gcalReconcileJob,
   ],
 });

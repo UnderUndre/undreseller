@@ -19,6 +19,7 @@ jest.mock('@/lib/db/prisma', () => ({
       }),
     },
     slotReservation: { findMany: jest.fn().mockResolvedValue([]) },
+    externalBusyBlock: { findMany: jest.fn().mockResolvedValue([]) },
   },
 }));
 
