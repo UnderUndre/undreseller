@@ -271,3 +271,51 @@ PASS requires: actual `pg_restore` into a scratch DB + verified business rows + 
 
 1. Flip each feature flag to `false` → verify legacy read paths (no DDL involved).
 2. Down-migration: `prisma/migrations/20261025000000_004_release_readiness_expand/down.sql` drops only 004 objects; enum ADD VALUEs stay (inert).
+
+## 13. Google Calendar Integration (006) — Operator Runbook (T061)
+
+### 13.1 Google Cloud setup (test → prod)
+
+1. Google Cloud Console → new project (test) / production project.
+2. OAuth consent screen: **External**, test users list for test-project; production — publish.
+3. Credentials → OAuth Client ID → **Web application**:
+   - Authorized redirect URI: `https://<your-domain>/api/admin/integrations/gcal/callback`
+   - (local test: `http://localhost:3000/api/admin/integrations/gcal/callback`)
+4. Scopes requested by the app: `calendar.events`, `calendar.readonly` (read-only busy import + push).
+
+### 13.2 Instance environment
+
+```bash
+INTEGRATION_ENCRYPTION_KEY="<openssl rand -base64 32>"   # 32 bytes base64 — AES-256-GCM vault key
+GOOGLE_OAUTH_CLIENT_ID="<...>.apps.googleusercontent.com"
+GOOGLE_OAUTH_CLIENT_SECRET="<...>"
+```
+
+Key rotation (INTEGRATION_ENCRYPTION_KEY): secrets are versioned `v1:<iv>:<tag>:<ct>`. Rotate by: decrypt-reencrypt job (future `v2:` prefix) — до появления job'а ротация = disconnect + re-auth всех подключений.
+
+### 13.3 Connect flow (OWNER only)
+
+`/admin/settings` → Integrations → Connect (instance-wide для соло / per-resource для multi-staff) → consent → `CONNECTED`. OPERATOR/PERFORMER → 403 (canon Q7).
+
+### 13.4 NEEDS_REAUTH recovery
+
+Причины: `invalid_grant` (владелец отозвал доступ, пароль Google сменён, >6 мес. неактивности refresh-токена). Симптомы: баннер в админке, `status=NEEDS_REAUTH`, брони **продолжают работать** (fail-open). Recovery: OWNER → Reconnect → consent. Пуш-воркер разрулит пропущенные события (идемпотентный upsert).
+
+### 13.5 OAuth-restart edge (F9-rev)
+
+Рестарт процесса между `/connect` и callback теряет in-memory `state` (TTL 10 мин, single-instance канон) → callback отклоняется без диагностики. OWNER просто повторяет connect.
+
+### 13.6 Webhook troubleshooting
+
+- Приёмник не получает события: проверить `active=true`, подписанные типы, `secretPrefix` совпадает с секретом приёмника (full secret показывается **однократно** при создании).
+- 5xx/timeout: ≤5 ретраев Inngest; после исчерпания `failureCount += 1` + audit `WEBHOOK_DELIVERY_FAILED`.
+- Circuit breaker: 10 сбоев **подряд** (2xx сбрасывает счётчик) → `active=false` + алерт в `STAFF_CHAT_ID`; реактивация OWNER'ом в админке.
+- ⚠️ Webhooks/Public API — за флагом `NEXT_PUBLIC_FEATURE_WEBHOOKS` (post-Demand Gate).
+
+### 13.7 GC-сироты после disconnect (F10-rev)
+
+Disconnect wipe'ает токен + sync-состояние; **уже запушенные события остаются в GC мастера** (known limitation). Чистка: вручную в GC, либо при reconnect — отмена брони в период отключения доиграет delete (идемпотентный 404/410 NOOP для несуществующих).
+
+### 13.8 Down-migration (T010 rollback)
+
+`prisma/migrations/20270201000000_006_integrations/down.sql` дропает только новые объекты (3 таблицы, 2 enum'а, `Item.remoteMeetingEnabled`, `Order.meetLink`); FK из старых таблиц отсутствуют. Прогон на scratch: см. `specs/006-integrations/evidence/`.
