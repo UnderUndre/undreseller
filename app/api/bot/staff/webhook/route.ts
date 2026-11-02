@@ -264,6 +264,33 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { status: 200 }
     );
   } catch (err: unknown) {
+    const isSecretUnconfigured =
+      (err instanceof Error && err.name === 'RescheduleSecretUnconfiguredError') ||
+      (err instanceof Error && err.message.includes('STAFF_WEBHOOK_SECRET or ADMIN_TOKEN required'));
+
+    if (isSecretUnconfigured) {
+      logger.error('[RESCHEDULE_SECRET_UNCONFIGURED]', {
+        error: String(err),
+        orderId,
+        action,
+      });
+
+      try {
+        const { staffBot } = await import('@/lib/bot/staffBot');
+        await staffBot.api.answerCallbackQuery(callbackQueryId, {
+          text: 'Перенос временно недоступен: секрет не сконфигурирован',
+          show_alert: true,
+        });
+      } catch (cbErr: unknown) {
+        logger.warn('[STAFF_CALLBACK_ANSWER_FAILED]', { error: String(cbErr) });
+      }
+
+      return NextResponse.json(
+        { error: 'Service Unavailable: reschedule secret unconfigured' },
+        { status: 503 }
+      );
+    }
+
     logger.error('Failed to process staff webhook callback', {
       error: String(err),
       orderId,

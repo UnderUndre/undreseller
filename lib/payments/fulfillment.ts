@@ -139,108 +139,170 @@ export async function fulfillPayment(
     let targetRefundStatus: 'NONE' | 'REFUND_REQUESTED' = 'NONE';
     const now = new Date();
 
-    // 5. Service Reservation fulfillment (including late payment webhook after PAYMENT_EXPIRED)
-    if (order.reservation) {
-      const res = order.reservation;
-      const resourceId = res.resourceId || 'default_master';
+    // 4.5 Amount & Currency Invariant Check (FR-704)
+    let amountMatches = false;
+    if (provider === 'TELEGRAM_STARS') {
+      const expectedStars = Math.max(1, Math.round(order.totalMinor / 2));
+      amountMatches =
+        amountMinor === expectedStars && currency.toUpperCase() === 'XTR';
+    } else {
+      amountMatches =
+        amountMinor === order.totalMinor &&
+        currency.toUpperCase() === (order.currency || '').toUpperCase();
+    }
 
-      // Check for overlapping HELD or BOOKED reservation on the same resource (excluding self)
-      const collision = await tx.slotReservation.findFirst({
-        where: {
-          id: { not: res.id },
-          OR: [{ resourceId }, ...(res.itemId ? [{ itemId: res.itemId }] : [])],
-          status: { in: ['HELD', 'BOOKED'] },
-          startTime: { lt: res.endTime },
-          endTime: { gt: res.startTime },
-        },
-      });
+    if (!amountMatches) {
+      requiresOperatorAction = true;
+      operatorActionReason = 'AMOUNT_MISMATCH_MANUAL_RESOLUTION';
+      targetOrderStatus = 'PAID_REQUIRES_RESOLUTION';
+      targetRefundStatus = 'REFUND_REQUESTED';
 
-      if (collision) {
-        // Late webhook or concurrent slot collision: transition to PAID_REQUIRES_RESOLUTION with 24h SLA
-        requiresOperatorAction = true;
-        operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION';
-        targetOrderStatus = 'PAID_REQUIRES_RESOLUTION';
-        targetRefundStatus = 'REFUND_REQUESTED';
-
+      if (order.reservation) {
         await tx.slotReservation.update({
-          where: { id: res.id },
+          where: { id: order.reservation.id },
           data: {
             status: 'RELEASED',
             requiresOperatorAction: true,
             operatorActionReason,
           },
         });
-
-        await tx.refundOperation.create({
-          data: {
-            orderId: order.id,
-            kind:
-              provider === 'TELEGRAM_STARS'
-                ? 'TELEGRAM_STARS_REFUND'
-                : 'CRYPTO_REIMBURSEMENT',
-            status: 'REQUESTED',
-            idempotencyKey: `auto_refund_req_${order.id}_${providerRef}`,
-            providerRef,
-            amountMinor,
-            currency,
-            actor: 'SYSTEM_LATE_WEBHOOK_SLA',
-            reason: 'OVERBOOKED_MANUAL_RESOLUTION',
-            slaDueAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
-          },
-        });
-
-        logger.warn('[SLOT_OVERBOOK_COLLISION]', {
-          orderId: order.id,
-          slotId: res.id,
-          targetOrderStatus,
-        });
-      } else {
-        // Slot is free -> transition reservation to BOOKED
-        await tx.slotReservation.update({
-          where: { id: res.id },
-          data: {
-            status: 'BOOKED',
-            holdExpiresAt: null,
-            requiresOperatorAction: false,
-          },
-        });
-        bookedSlot = true;
       }
-    }
 
-    // 6. Product Stock decrement fulfillment
-    for (const orderItem of order.items) {
-      const updateResult = await tx.$executeRaw`
-        UPDATE "Item"
-        SET stock = stock - ${orderItem.quantity}
-        WHERE id = ${orderItem.itemId}
-          AND stock IS NOT NULL
-          AND stock >= ${orderItem.quantity}
-      `;
+      await tx.refundOperation.create({
+        data: {
+          orderId: order.id,
+          kind:
+            provider === 'TELEGRAM_STARS'
+              ? 'TELEGRAM_STARS_REFUND'
+              : provider === 'STRIPE'
+                ? 'STRIPE'
+                : 'CRYPTO_REIMBURSEMENT',
+          status: 'REQUESTED',
+          idempotencyKey: `amount_mismatch_${order.id}_${providerRef}`,
+          providerRef,
+          amountMinor,
+          currency,
+          actor: 'SYSTEM_AMOUNT_MISMATCH',
+          reason: 'AMOUNT_MISMATCH_MANUAL_RESOLUTION',
+          slaDueAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+        },
+      });
 
-      if (updateResult === 1) {
-        await tx.orderItem.update({
-          where: { id: orderItem.id },
-          data: { stockDecremented: orderItem.quantity },
+      logger.warn('[PAYMENT_AMOUNT_MISMATCH]', {
+        orderId: order.id,
+        provider,
+        providerRef,
+        amountMinor,
+        orderTotalMinor: order.totalMinor,
+        currency,
+        orderCurrency: order.currency,
+      });
+    } else {
+      // 5. Service Reservation fulfillment (including late payment webhook after PAYMENT_EXPIRED)
+      if (order.reservation) {
+        const res = order.reservation;
+        const resourceId = res.resourceId || 'default_master';
+
+        // Check for overlapping HELD or BOOKED reservation on the same resource (excluding self)
+        const collision = await tx.slotReservation.findFirst({
+          where: {
+            id: { not: res.id },
+            OR: [{ resourceId }, ...(res.itemId ? [{ itemId: res.itemId }] : [])],
+            status: { in: ['HELD', 'BOOKED'] },
+            startTime: { lt: res.endTime },
+            endTime: { gt: res.startTime },
+          },
         });
-      } else {
-        const itemObj = await tx.item.findUnique({
-          where: { id: orderItem.itemId },
-          select: { itemType: true },
-        });
 
-        if (itemObj?.itemType === 'PRODUCT') {
+        if (collision) {
+          // Late webhook or concurrent slot collision: transition to PAID_REQUIRES_RESOLUTION with 24h SLA
           requiresOperatorAction = true;
-          operatorActionReason = 'PAID_OUT_OF_STOCK';
+          operatorActionReason = 'OVERBOOKED_MANUAL_RESOLUTION';
+          targetOrderStatus = 'PAID_REQUIRES_RESOLUTION';
+          targetRefundStatus = 'REFUND_REQUESTED';
 
+          await tx.slotReservation.update({
+            where: { id: res.id },
+            data: {
+              status: 'RELEASED',
+              requiresOperatorAction: true,
+              operatorActionReason,
+            },
+          });
+
+          await tx.refundOperation.create({
+            data: {
+              orderId: order.id,
+              kind:
+                provider === 'TELEGRAM_STARS'
+                  ? 'TELEGRAM_STARS_REFUND'
+                  : provider === 'STRIPE'
+                    ? 'STRIPE'
+                    : 'CRYPTO_REIMBURSEMENT',
+              status: 'REQUESTED',
+              idempotencyKey: `auto_refund_req_${order.id}_${providerRef}`,
+              providerRef,
+              amountMinor,
+              currency,
+              actor: 'SYSTEM_LATE_WEBHOOK_SLA',
+              reason: 'OVERBOOKED_MANUAL_RESOLUTION',
+              slaDueAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+            },
+          });
+
+          logger.warn('[SLOT_OVERBOOK_COLLISION]', {
+            orderId: order.id,
+            slotId: res.id,
+            targetOrderStatus,
+          });
+        } else {
+          // Slot is free -> transition reservation to BOOKED
+          await tx.slotReservation.update({
+            where: { id: res.id },
+            data: {
+              status: 'BOOKED',
+              holdExpiresAt: null,
+              requiresOperatorAction: false,
+            },
+          });
+          bookedSlot = true;
+        }
+      }
+
+      // 6. Product Stock decrement fulfillment
+      for (const orderItem of order.items) {
+        const updateResult = await tx.$executeRaw`
+          UPDATE "Item"
+          SET stock = stock - ${orderItem.quantity}
+          WHERE id = ${orderItem.itemId}
+            AND stock IS NOT NULL
+            AND stock >= ${orderItem.quantity}
+        `;
+
+        if (updateResult === 1) {
           await tx.orderItem.update({
             where: { id: orderItem.id },
-            data: { stockDecremented: 0 },
+            data: { stockDecremented: orderItem.quantity },
           });
-          logger.warn('[PRODUCT_OUT_OF_STOCK_COLLISION]', {
-            orderId: order.id,
-            itemId: orderItem.itemId,
+        } else {
+          const itemObj = await tx.item.findUnique({
+            where: { id: orderItem.itemId },
+            select: { itemType: true },
           });
+
+          if (itemObj?.itemType === 'PRODUCT') {
+            requiresOperatorAction = true;
+            operatorActionReason = 'PAID_OUT_OF_STOCK';
+
+            await tx.orderItem.update({
+              where: { id: orderItem.id },
+              data: { stockDecremented: 0 },
+            });
+            logger.warn('[PRODUCT_OUT_OF_STOCK_COLLISION]', {
+              orderId: order.id,
+              itemId: orderItem.itemId,
+            });
+          }
         }
       }
     }

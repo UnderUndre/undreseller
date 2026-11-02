@@ -67,7 +67,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           provider: PaymentMethod.STRIPE,
           providerRef: parsed.providerPaymentId,
           amountMinor: parsed.paidMinor,
-          currency: 'USD',
+          currency: parsed.currency || 'USD',
         });
       }
 

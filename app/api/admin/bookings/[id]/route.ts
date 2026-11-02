@@ -67,6 +67,13 @@ export async function PATCH(
       }
     }
 
+    if (action === 'RESCHEDULE') {
+      return NextResponse.json(
+        { error: 'RESCHEDULE is not implemented (planned <=007)' },
+        { status: 501 }
+      );
+    }
+
     // Execute state transition under advisory lock
     const updated = await prisma.$transaction(async (tx) => {
       await acquireResourceSlotLock(tx, reservation.resourceId);

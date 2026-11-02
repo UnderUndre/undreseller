@@ -68,10 +68,20 @@
 - **Expected Result**: 14999 → `PAID_REQUIRES_RESOLUTION` + `AMOUNT_MISMATCH_MANUAL_RESOLUTION` + RefundOperation `idempotencyKey: amount_mismatch_<orderId>_<providerRef>`; 15000 и 15001 → `PAID` (переплата 15001 — тоже mismatch? нет: инвариант равенства, 15001 → mismatch-путь)
 - **Post-conditions**: очистить тестовые RefundOperation
 
-### TC-007-010: валюта mismatch → тот же путь
+### TC-007-010: валюта mismatch → тот же путь (Stripe EUR vs USD)
 - **Traceability**: FR-704 · Task T013 · **Tier**: Sanity · **Priority**: P1 · **Type**: Negative · **Technique**: EP
-- **Test Data**: заказ USD, webhook currency=EUR, суммы равны
+- **Test Data**: заказ USD, webhook Stripe currency=EUR, суммы равны
 - **Expected Result**: `PAID_REQUIRES_RESOLUTION` + `AMOUNT_MISMATCH_MANUAL_RESOLUTION`; PaymentEvent записан (ledger факта)
+
+### TC-007-010a: Telegram Stars XTR расчетная сумма совпадает → PAID
+- **Traceability**: FR-704 · Task T013 · **Tier**: Regression · **Priority**: P0 · **Type**: Functional · **Technique**: EP
+- **Test Data**: заказ `totalMinor: 10000, currency: USD`, webhook `provider: TELEGRAM_STARS, amountMinor: 5000, currency: XTR`
+- **Expected Result**: статус `PAID`, `requiresOperatorAction: false`, 0 ложных refund requests
+
+### TC-007-010b: Telegram Stars неверное количество звезд → PAID_REQUIRES_RESOLUTION
+- **Traceability**: FR-704 · Task T013 · **Tier**: Regression · **Priority**: P0 · **Type**: Boundary · **Technique**: BVA
+- **Test Data**: заказ `totalMinor: 10000, currency: USD`, webhook `provider: TELEGRAM_STARS, amountMinor: 4999, currency: XTR`
+- **Expected Result**: `PAID_REQUIRES_RESOLUTION` + `AMOUNT_MISMATCH_MANUAL_RESOLUTION`
 
 ### TC-007-011: ретрай того же providerRef после mismatch → ALREADY_PAID no-op
 - **Traceability**: FR-704 · Task T013 · **Tier**: Regression · **Priority**: P1 · **Type**: Error Guessing · **Technique**: State Transition
@@ -85,8 +95,8 @@
 ### TC-007-012: зависший upstream → FAILED ≤10.5 с
 - **Traceability**: FR-705 · Task T014 · **Tier**: Sanity · **Priority**: P1 · **Type**: Boundary · **Technique**: Error Guessing (network hang)
 - **Pre-conditions**: мок-сервер без ответа (или mock fetch без resolve); fake timers
-- **Execution Steps**: 1) отправка email через Resend-адаптер; 2) промотать время на 10.1 с
-- **Expected Result**: `AbortError` → статус `FAILED` + delivery-лог с errorCode; вызов не висит дольше 10.5 с; то же для NOWPayments invoice create и WhatsApp client (3 под-кейса)
+- **Execution Steps**: 1) отправка email через Resend-адаптер, NOWPayments invoice create, WhatsApp client; 2) промотать время на 10.1 с
+- **Expected Result**: `AbortError` → статус `FAILED` + delivery-лог с errorCode; вызов не висит дольше 10.5 с; в WhatsApp client retry-цикл прерывается немедленно (всего 1 попытка по таймауту, не 3×10 с)
 
 ### TC-007-013: grep-пруф сигнатуры таймаутов
 - **Traceability**: FR-705 · Task T014 · **Tier**: Smoke · **Priority**: P1 · **Type**: Security · **Technique**: EP
@@ -97,16 +107,16 @@
 
 ## US5: Lockout registry + WhatsApp verify (FR-706, FR-707)
 
-### TC-007-014: BVA размера реестра 999/1000/1001
+### TC-007-014: BVA размера реестра 999/1000/1001 + userExists guard
 - **Traceability**: FR-706 · Task T015 · **Tier**: Regression · **Priority**: P1 · **Type**: Boundary · **Technique**: BVA
-- **Execution Steps**: заполнить lockout-реестр 999 → 1000 → 1001 записями (разные email, все с истёкшими локами)
+- **Execution Steps**: 1) спрей по несуществующим email → Map.size остаётся 0 (userExists guard); 2) заполнить lockout-реестр существующими пользователями 999 → 1000 → 1001 записями
 - **Expected Result**: 999/1000 — все хранятся; 1001 — самая старая вытеснена, размер = 1000
 
-### TC-007-015: активный лок не вытесняется
+### TC-007-015: активный лок не вытесняется (при наличии неактивных) и аварийный спрей
 - **Traceability**: FR-706 · Task T015 · **Tier**: Regression · **Priority**: P0 · **Type**: Security · **Technique**: Error Guessing
 - **Pre-conditions**: email `victim@test` — 5 фейлов → `lockedUntil` в будущем; реестр заполнен до cap
-- **Execution Steps**: добавить новые записи до вытеснения
-- **Expected Result**: `victim@test` с активным `lockedUntil` остаётся в реестре (брутфорс-защита не ослаблена); вытесняются только expired-записи
+- **Execution Steps**: 1) добавить новые записи с неактивными слотами → `victim@test` остаётся в реестре; 2) если ВСЕ 1000 записей активны, вытесняется запись с `min(lockedUntil)` — кап 1000 не нарушается ни при каких условиях
+- **Expected Result**: брутфорс легитимных аккаунтов удерживается; кап 1000 строго непреодолим
 
 ### TC-007-016: спрей 5000 email → Map ≤1000 + RSS evidence
 - **Traceability**: FR-706, NFR-703 · Task T015, T021 · **Tier**: Extended · **Priority**: P1 · **Type**: Boundary · **Technique**: BVA (насыщение)
@@ -120,8 +130,8 @@
 
 ### TC-007-018: неверный/разной длины токен → 403, ноль RangeError
 - **Traceability**: FR-707 · Task T016 · **Tier**: Regression · **Priority**: P1 · **Type**: Security · **Technique**: BVA
-- **Test Data**: `vt-00` (короче), `vt-007-x` (длиннее), `vt-007` с модифицированным байтом, пустой
-- **Expected Result**: 403 на все; лог 0 RangeError/500; отсутствие timing- leakage не проверяем инструментально (length-guard документирован)
+- **Test Data**: `vt-00` (короче), `vt-007-x` (длиннее), multi-byte UTF-8 строка с совпадающей char length, пустой
+- **Expected Result**: 403 на все; лог 0 RangeError/500 (буферный byteLength guard гарантирует совпадение длин)
 
 ---
 

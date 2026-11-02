@@ -109,6 +109,7 @@ export function createStripeProvider(): PaymentProvider {
       let providerPaymentId = String(dataObj.id || '');
       let paidMinor = 0;
       const quotedMinor = Number(dataObj.amount_total || dataObj.amount || 0);
+      const currency = typeof dataObj.currency === 'string' ? dataObj.currency.toUpperCase() : 'USD';
 
       if (event.type === 'checkout.session.completed') {
         const session = event.data.object as Stripe.Checkout.Session;
@@ -143,6 +144,7 @@ export function createStripeProvider(): PaymentProvider {
         status,
         paidMinor,
         quotedMinor,
+        currency,
       };
     },
   };

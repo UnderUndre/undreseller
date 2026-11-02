@@ -12,9 +12,26 @@ import { logger } from '@/lib/telemetry/logger';
 export type DeliveryChannel = 'TELEGRAM' | 'EMAIL';
 export type DeliveryStatus = 'ACCEPTED' | 'FAILED';
 
+let hasWarnedMissingSalt = false;
+
+function getDeliveryLogSalt(): string | null {
+  const salt = process.env.DELIVERY_LOG_SALT || process.env.ADMIN_TOKEN;
+  if (!salt) {
+    if (!hasWarnedMissingSalt) {
+      logger.warn('[DELIVERY_LOG_SALT_UNCONFIGURED]');
+      hasWarnedMissingSalt = true;
+    }
+    return null;
+  }
+  return salt;
+}
+
 /** Salted hash of a delivery target (chat id / email). Salt from env, never logged. */
 export function hashDeliveryTarget(target: string): string {
-  const salt = process.env.DELIVERY_LOG_SALT || process.env.ADMIN_TOKEN || 'undreseller-dl-salt';
+  const salt = getDeliveryLogSalt();
+  if (!salt) {
+    return 'UNHASHED';
+  }
   return createHmac('sha256', salt).update(target).digest('hex');
 }
 

@@ -93,6 +93,7 @@ export function createNowPaymentsProvider(
           'x-api-key': apiKey,
           'Content-Type': 'application/json',
         },
+        signal: AbortSignal.timeout(10_000),
         body: JSON.stringify({
           order_id: input.orderId,
           price_amount: priceAmount,

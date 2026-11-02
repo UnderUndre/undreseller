@@ -3,12 +3,12 @@
 > "Правильный фикс — тот, который не тянет за собой рефактор." — Инженерное фольклóр
 > "Fail-closed — это не паранойя, это гигиена." — Валера
 
-**Branch**: `main` (single-branch lineage, grandfathered IX) | **Date**: 2026-10-31 | **Spec**: [spec.md](./spec.md) (rev 1.1, audit PASS R1/R2 integrated)
+**Branch**: `main` (single-branch lineage, grandfathered IX) | **Date**: 2026-11-02 | **Spec**: [spec.md](./spec.md) (rev 1.2, review remediation F1–F6 integrated)
 **Input**: `specs/007-code-review-fixes/spec.md` + `requirements-audit.md` (PASS) + `qa/preliminary-rtm.md` (11 reqs, 0 critical) + `research.md` (D1–D6)
 
 ## Summary
 
-Восемь точечных фиксов по находкам code review + security-audit чеклисту, поверх кодовой базы 003–006, без новой архитектуры: (1) fail-closed секреты (reschedule-HMAC throw + 503; delivery-log соль `UNHASHED` + boot-алерт); (2) честный 501 на RESCHEDULE admin-роута; (3) money-path инвариант `amountMinor == totalMinor` в `fulfillPayment` → `PAID_REQUIRES_RESOLUTION`; (4) `AbortSignal.timeout(10s)` на 3 исходящих fetch; (5) lockout registry bounded (TTL 15 мин + cap 1000, active-lock не вытесняется); (6) WhatsApp verify timing-safe; (7) reconcile-окно GC-push 7 дней asc. **0 миграций, 0 новых deps, 0 изменений API-контрактов** (кроме 501/503 на нереализованное/несконфигурированное).
+Восемь точечных фиксов по находкам code review + security-audit чеклисту с закрытием находок внешнего ревью F1–F6, поверх кодовой базы 003–006, без новой архитектуры: (1) fail-closed секреты (reschedule-HMAC throw + 503 с `answerCallbackQuery`; delivery-log соль `UNHASHED` + boot-алерт; `verifyMagicRescheduleToken` typings); (2) честный 501 на RESCHEDULE admin-роута; (3) provider-aware инвариант суммы в `fulfillPayment` (`TELEGRAM_STARS` XTR vs фиат; `STRIPE` динамическая валюта из сессии; `CRYPTO_GATEWAY`); (4) `AbortSignal.timeout(10s)` на 3 исходящих fetch с немедленным break retry-цикла в WhatsApp client; (5) lockout registry bounded (`userExists` guard, TTL 15 мин, hard-cap 1000 с вытеснением `min(lockedUntil)` при насыщении); (6) WhatsApp verify timing-safe со сравнением длины буферов `Buffer.byteLength`; (7) reconcile-окно GC-push 7 дней asc. **0 миграций, 0 новых deps, 0 изменений API-контрактов** (кроме 501/503 на нереализованное/несконфигурированное).
 
 ## Technical Context
 
@@ -64,18 +64,21 @@ specs/007-code-review-fixes/
 ### Source (изменения)
 
 ```text
-lib/bot/magicReschedule.ts        # MOD: getRescheduleSecret throw (FR-701)
-app/api/bot/staff/webhook/route.ts # MOD: конфиг-ошибка → 503 (FR-701)
+lib/bot/magicReschedule.ts        # MOD: getRescheduleSecret throw + verifyMagicRescheduleToken error typing (FR-701)
+app/api/bot/staff/webhook/route.ts # MOD: конфиг-ошибка → answerCallbackQuery + 503 (FR-701)
 lib/notifications/deliveryLog.ts  # MOD: соль fail-closed → UNHASHED + boot-алерт (FR-702)
 app/api/admin/bookings/[id]/route.ts # MOD: RESCHEDULE → 501 (FR-703)
-lib/payments/fulfillment.ts       # MOD: amount invariant → PAID_REQUIRES_RESOLUTION (FR-704)
+lib/payments/providerContract.ts  # MOD: ParsedCallback.currency? (FR-704)
+lib/payments/stripe.ts            # MOD: parseCallback извлечение currency (FR-704)
+app/api/payments/stripe/webhook/route.ts # MOD: передача parsed.currency (FR-704)
+lib/payments/fulfillment.ts       # MOD: provider-aware amount invariant (Stars XTR + Stripe/Crypto) → PAID_REQUIRES_RESOLUTION (FR-704)
 lib/email/emailProvider.ts        # MOD: AbortSignal.timeout(10s) (FR-705)
 lib/payments/nowpayments.ts       # MOD: AbortSignal.timeout(10s) (FR-705)
-lib/bot/whatsappClient.ts         # MOD: AbortSignal.timeout(10s) (FR-705)
-lib/security/staffSignIn.ts       # MOD: lockout registry bounded (FR-706)
-app/api/bot/whatsapp/webhook/route.ts # MOD: GET verify timing-safe (FR-707)
+lib/bot/whatsappClient.ts         # MOD: AbortSignal.timeout(10s) + abort retry on timeout (FR-705)
+lib/security/staffSignIn.ts       # MOD: lockout registry bounded (userExists, min(lockedUntil) eviction) (FR-706)
+app/api/bot/whatsapp/webhook/route.ts # MOD: GET verify timing-safe Buffer.byteLength (FR-707)
 lib/jobs/inngest.ts               # MOD: reconcile 7d asc take 50 (FR-708)
-tests/unit/*.test.ts              # NEW: ~15–18 тестов
+tests/unit/*.test.ts              # NEW: ~18–20 тестов
 ```
 
 Каждый файл пишет один агент (нет shared-file конфликтов).
@@ -93,8 +96,8 @@ Git-revert по коммитам (1 задача = 1 коммит); миграц
 | Риск | Вероятность | Митигация |
 |---|---|---|
 | 501/503 ломает существующих клиентов | низкая | RESCHEDULE в UI не отправляется (кнопки нет); unconfigured-secret раньше был fail-open — валидные деплои не заметят |
-| Amount invariant → ложные PAID_REQUIRES_RESOLUTION | низкая | поведение при совпадении сумм не меняется (нулевая ветка); контрактный тест на happy-path |
-| Eviction ослабляет брутфорс-защиту | нет | активный лок не вытесняется — тест-гейт |
+| Amount invariant → ложные PAID_REQUIRES_RESOLUTION | нет | Provider-aware проверка: Stars сопоставляет XTR с расчётным starsPrice, Stripe динамически передаёт валюту из сессии |
+| Eviction ослабляет брутфорс-защиту | нет | Неизвестные email отсекаются `userExists` guard; активный лок вытесняется только при аварийном переполнении 1000 записей по `min(lockedUntil)` |
 
 Нарушений конституции, требующих justification-таблицы, нет (IX — тот же grandfathered).
 

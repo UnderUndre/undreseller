@@ -67,6 +67,7 @@ export class ResendEmailProvider implements EmailProvider {
           Authorization: `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
         },
+        signal: AbortSignal.timeout(10_000),
         body: JSON.stringify({
           from: this.fromAddress,
           to: message.to,

@@ -749,12 +749,13 @@ export const gcalReconcileJob = inngest.createFunction(
       // future appointments; push is idempotent (upsert), so replays are safe.
       const { prisma } = await import('@/lib/db/prisma');
       const { processGcalPushForOrder } = await import('@/lib/integrations/gcalPush');
-      const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       const orders = await prisma.order.findMany({
         where: {
           updatedAt: { gte: since },
           reservation: { status: 'BOOKED', appointmentStartTime: { gte: new Date() } },
         },
+        orderBy: { updatedAt: 'asc' },
         select: { id: true },
         take: 50,
       });

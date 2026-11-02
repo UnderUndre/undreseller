@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { inngest } from '@/lib/jobs/inngest';
@@ -15,8 +16,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   const expectedToken = process.env.WHATSAPP_VERIFY_TOKEN || process.env.WHATSAPP_APP_SECRET;
 
-  if (mode === 'subscribe' && token === expectedToken && challenge) {
-    return new NextResponse(challenge, { status: 200 });
+  if (mode === 'subscribe' && challenge && token && expectedToken) {
+    const bufProvided = Buffer.from(token, 'utf-8');
+    const bufExpected = Buffer.from(expectedToken, 'utf-8');
+    if (bufProvided.length === bufExpected.length && timingSafeEqual(bufProvided, bufExpected)) {
+      return new NextResponse(challenge, { status: 200 });
+    }
   }
 
   return new NextResponse('Forbidden', { status: 403 });

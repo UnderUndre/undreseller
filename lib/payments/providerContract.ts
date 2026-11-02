@@ -34,6 +34,7 @@ export interface ParsedCallback {
   status: CallbackStatus;
   paidMinor: number;
   quotedMinor: number;
+  currency?: string;
 }
 
 export interface PaymentProvider {

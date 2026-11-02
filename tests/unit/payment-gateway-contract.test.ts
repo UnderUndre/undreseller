@@ -90,6 +90,8 @@ function makeTx(overrides: {
     order: {
       findUnique: jest.fn().mockResolvedValue({
         id: 'order-1',
+        totalMinor: 10000,
+        currency: 'USD',
         items: [],
         reservation: overrides.reservation ?? {
           id: 'res-1',

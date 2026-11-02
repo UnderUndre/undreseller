@@ -7,12 +7,19 @@
 import { randomUUID, createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { MAGIC_RESCHEDULE_TTL_MS } from './staffBot';
 
-function getRescheduleSecret(): string {
-  return (
-    process.env.STAFF_WEBHOOK_SECRET ||
-    process.env.ADMIN_TOKEN ||
-    'default-sovereign-reschedule-secret'
-  );
+export class RescheduleSecretUnconfiguredError extends Error {
+  constructor() {
+    super('STAFF_WEBHOOK_SECRET or ADMIN_TOKEN required for reschedule links');
+    this.name = 'RescheduleSecretUnconfiguredError';
+  }
+}
+
+export function getRescheduleSecret(): string {
+  const secret = process.env.STAFF_WEBHOOK_SECRET || process.env.ADMIN_TOKEN;
+  if (!secret) {
+    throw new RescheduleSecretUnconfiguredError();
+  }
+  return secret;
 }
 
 export function sha256Hex(input: string): string {
@@ -93,7 +100,17 @@ export function verifyMagicRescheduleToken(
     }
 
     const payloadStr = `${orderId}:${scheduleVersion}:${expiresAtMs}:${nonce}`;
-    const expectedSig = createHmac('sha256', getRescheduleSecret())
+    let secret: string;
+    try {
+      secret = getRescheduleSecret();
+    } catch (err) {
+      if (err instanceof RescheduleSecretUnconfiguredError) {
+        return { valid: false, reason: 'RESCHEDULE_SECRET_UNCONFIGURED' };
+      }
+      throw err;
+    }
+
+    const expectedSig = createHmac('sha256', secret)
       .update(payloadStr)
       .digest('hex');
 

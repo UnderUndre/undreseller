@@ -41,6 +41,7 @@ export async function sendWhatsAppTemplate(params: SendTemplateParams): Promise<
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
+        signal: AbortSignal.timeout(10_000),
         body: JSON.stringify(payload),
       });
 
@@ -66,6 +67,13 @@ export async function sendWhatsAppTemplate(params: SendTemplateParams): Promise<
       await new Promise((r) => setTimeout(r, waitMs));
       delay *= 2;
     } catch (err: unknown) {
+      const isTimeout =
+        err instanceof Error &&
+        (err.name === 'AbortError' || err.name === 'TimeoutError');
+      if (isTimeout) {
+        logger.error('[WHATSAPP_TIMEOUT_ERROR]', { error: String(err), attempt });
+        return { success: false };
+      }
       attempt++;
       logger.error('[WHATSAPP_NETWORK_ERROR]', { error: String(err), attempt });
       if (attempt >= maxRetries) {

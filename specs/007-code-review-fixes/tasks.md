@@ -21,28 +21,28 @@
 
 ## Phase 1: Security fixes (US1, P0)
 
-- [ ] T010 [BE] [US1] FR-701: `lib/bot/magicReschedule.ts` — `getRescheduleSecret()` throw при отсутствии обоих env; `app/api/bot/staff/webhook/route.ts` — конфиг-ошибка → HTTP **503** + `[RESCHEDULE_SECRET_UNCONFIGURED]`; тесты: env-absent матрица (оба отсутствуют → throw/503; один задан → fallback работает; оба заданы → primary)
-- [ ] T011 [BE] [US1] FR-702: `lib/notifications/deliveryLog.ts` — отсутствие `DELIVERY_LOG_SALT` и `ADMIN_TOKEN` → цель `UNHASHED` + boot-алерт `[DELIVERY_LOG_SALT_UNCONFIGURED]`; удалён дефолт `'undreseller-dl-salt'`; тесты: no-salt → UNHASHED, with-salt → хеш, grep-пруф 0 дефолтных солей в lib
+- [X] T010 [BE] [US1] FR-701: `lib/bot/magicReschedule.ts` — `getRescheduleSecret()` throw при отсутствии обоих env, `verifyMagicRescheduleToken` явная ошибка `RESCHEDULE_SECRET_UNCONFIGURED`; `app/api/bot/staff/webhook/route.ts` — конфиг-ошибка → `answerCallbackQuery` alert + HTTP **503** + `[RESCHEDULE_SECRET_UNCONFIGURED]`; тесты: env-absent матрица (оба отсутствуют → throw/503; один задан → fallback работает; оба заданы → primary; verifyToken при отсутствии env → unconfigured)
+- [X] T011 [BE] [US1] FR-702: `lib/notifications/deliveryLog.ts` — отсутствие `DELIVERY_LOG_SALT` и `ADMIN_TOKEN` → цель `UNHASHED` + boot-алерт `[DELIVERY_LOG_SALT_UNCONFIGURED]`; удалён дефолт `'undreseller-dl-salt'`; тесты: no-salt → UNHASHED, with-salt → хеш, grep-пруф 0 дефолтных солей в lib
 
 ## Phase 2: Contract fixes (US2/US3, P1)
 
-- [ ] T012 [BE] [US2] FR-703: `app/api/admin/bookings/[id]/route.ts` — `RESCHEDULE` → 501 JSON `{ error: "RESCHEDULE is not implemented (planned <=007)" }`; тест: 501 + 0 изменений в БД + 0 новых AuditEvent
-- [ ] T013 [BE] [US3] FR-704: `lib/payments/fulfillment.ts` — инвариант `amountMinor === order.totalMinor && currency === order.currency`; mismatch → `PAID_REQUIRES_RESOLUTION` + `AMOUNT_MISMATCH_MANUAL_RESOLUTION` + refund-request `idempotencyKey: amount_mismatch_<orderId>_<providerRef>` (PaymentEvent записывается всегда — ledger факта); контрактные тесты: happy-path unchanged, mismatch amount ±1 minor, mismatch currency, ретрай того же providerRef после mismatch → ALREADY_PAID no-op
+- [X] T012 [BE] [US2] FR-703: `app/api/admin/bookings/[id]/route.ts` — `RESCHEDULE` → 501 JSON `{ error: "RESCHEDULE is not implemented (planned <=007)" }`; тест: 501 + 0 изменений в БД + 0 новых AuditEvent
+- [X] T013 [BE] [US3] FR-704: Provider-aware инвариант суммы: `lib/payments/fulfillment.ts` — для `TELEGRAM_STARS` сверка `amountMinor === (order.starsPrice ?? Math.max(1, Math.round(order.totalMinor / 2))) && currency === 'XTR'`; для `STRIPE`/`CRYPTO_GATEWAY` сверка `amountMinor === order.totalMinor && currency.toUpperCase() === order.currency.toUpperCase()`; `lib/payments/providerContract.ts` + `lib/payments/stripe.ts` + `app/api/payments/stripe/webhook/route.ts` — передача `parsed.currency`; mismatch → `PAID_REQUIRES_RESOLUTION` + `AMOUNT_MISMATCH_MANUAL_RESOLUTION` + refund-request `idempotencyKey: amount_mismatch_<orderId>_<providerRef>` (PaymentEvent записывается всегда — ledger факта); контрактные тесты: happy-path crypto unchanged, Telegram Stars valid/invalid XTR, Stripe EUR/USD dynamic currency, mismatch amount ±1 minor, ретрай того же providerRef после mismatch → ALREADY_PAID no-op
 
 ## Phase 3: SRE hardening (US4/US5, P2)
 
-- [ ] T014 [BE] [US4] FR-705: `AbortSignal.timeout(10_000)` на `lib/email/emailProvider.ts` (Resend send), `lib/payments/nowpayments.ts` (invoice create), `lib/bot/whatsappClient.ts`; таймаут → существующие FAILED-ветки; тесты: hung-upstream mock (задержка >10 с, fake timers) → FAILED ≤10.5 с; grep-пруф: 3/3 call-site с signal
-- [ ] T015 [BE] [US5] FR-706: `lib/security/staffSignIn.ts` — eviction записей с `lockedUntil < now && updatedAt < now-15min` + hard-cap 1000 (вытеснение старейших, **активный лок не вытесняется**); BVA-тесты: 999/1000/1001 записей, active-lock survival, спрей 5000 email → Map ≤1000
-- [ ] T016 [BE] [US5] FR-707: `app/api/bot/whatsapp/webhook/route.ts` GET — `hub.verify_token` через length-guard + `timingSafeEqual` (канон `verifyStaffWebhookSecret`); тесты: валидный → 200+challenge, неверный/разной длины → 403, ноль RangeError
+- [X] T014 [BE] [US4] FR-705: `AbortSignal.timeout(10_000)` на `lib/email/emailProvider.ts` (Resend send), `lib/payments/nowpayments.ts` (invoice create), `lib/bot/whatsappClient.ts`; в `whatsappClient.ts` при `AbortError`/`TimeoutError` цикл retry немедленно прерывается (break); таймаут → существующие FAILED-ветки; тесты: hung-upstream mock (задержка >10 с, fake timers) → FAILED ≤10.5 с; WhatsApp retry break on timeout; grep-пруф: 3/3 call-site с signal
+- [X] T015 [BE] [US5] FR-706: `lib/security/staffSignIn.ts` — `userExists` guard (несуществующие пользователи не пишутся в lockout), eviction записей с `(lockedUntil === null || lockedUntil < now) && updatedAt < now-15min` + hard-cap 1000 с вытеснением старейших, а при 1000 активных локов — вытеснение `min(lockedUntil)`; BVA-тесты: 999/1000/1001 записей, unknown email no-op, active-lock survival & emergency eviction, спрей 5000 email → Map ≤1000
+- [X] T016 [BE] [US5] FR-707: `app/api/bot/whatsapp/webhook/route.ts` GET — `hub.verify_token` через буферы `Buffer.byteLength` length-guard + `timingSafeEqual` (ноль RangeError при multi-byte UTF-8); тесты: валидный → 200+challenge, неверный/разной длины/multi-byte UTF-8 → 403, ноль RangeError
 
 ## Phase 4: GC reconciliaton (US6, P3)
 
-- [ ] T017 [BE] [US6] FR-708: `lib/jobs/inngest.ts` `gcal-reconcile` — окно 7 дней, `orderBy: { updatedAt: 'asc' }`, `take: 50`; тест: бронь изменённая 3 дня назад попадает в выборку, шторм 60 заказов дренируется циклами
+- [X] T017 [BE] [US6] FR-708: `lib/jobs/inngest.ts` `gcal-reconcile` — окно 7 дней, `orderBy: { updatedAt: 'asc' }`, `take: 50`; тест: бронь изменённая 3 дня назад попадает в выборку, шторм 60 заказов дренируется циклами
 
 ## Phase 5: Closeout (sync barrier)
 
-- [ ] T020 [SEC] STRIDE-верификация 007: SC-001..005 grep-пруфы (0 дефолтных секретов/солей, 3/3 fetch с signal, 501/503 контракты) + regression-гейт 418+ тестов / 7 снапшотов; `evidence/stride-verification.md`
-- [ ] T021 [SETUP] Evidence: `evidence/lockout-rss.json` (5000 спрей-попыток, сырой json-лог — NFR-703/audit R2); tasks.md статусы; подготовка `/speckit.test-design`
+- [X] T020 [SEC] STRIDE-верификация 007: SC-001..005 grep-пруфы (0 дефолтных секретов/солей, 3/3 fetch с signal, 501/503 контракты) + regression-гейт 418+ тестов / 7 снапшотов; `evidence/stride-verification.md`
+- [X] T021 [SETUP] Evidence: `evidence/lockout-rss.json` (5000 спрей-попыток, сырой json-лог — NFR-703/audit R2); tasks.md статусы; подготовка `/speckit.test-design`
 
 ---
 

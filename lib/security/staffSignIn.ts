@@ -17,25 +17,83 @@ const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 export const SESSION_COOKIE_NAME = 'session_token';
+export const MAX_LOCKOUT_ENTRIES = 1000;
 
-interface LockoutState {
+export interface LockoutState {
   failedCount: number;
   lockedUntil: number | null;
+  updatedAt: number;
 }
 
 /** In-memory lockout registry (single instance, ≤ ~20 staff — bounded). */
 const lockoutRegistry = new Map<string, LockoutState>();
 
+export function getLockoutRegistrySize(): number {
+  return lockoutRegistry.size;
+}
+
+export function clearLockoutRegistry(): void {
+  lockoutRegistry.clear();
+}
+
 export function getLockoutState(email: string): LockoutState | undefined {
   return lockoutRegistry.get(email.toLowerCase());
 }
 
-function recordFailedAttempt(email: string): void {
+function evictStaleEntries(now: number): void {
+  for (const [key, state] of lockoutRegistry.entries()) {
+    const isLockExpired = state.lockedUntil === null || state.lockedUntil < now;
+    const isStale = now - state.updatedAt > LOCKOUT_MS;
+    if (isLockExpired && isStale) {
+      lockoutRegistry.delete(key);
+    }
+  }
+}
+
+function enforceCapacity(): void {
+  if (lockoutRegistry.size < MAX_LOCKOUT_ENTRIES) return;
+
+  // 1. Attempt to evict oldest inactive record
+  let oldestInactiveKey: string | null = null;
+  let oldestInactiveTime = Infinity;
+
+  // 2. Emergency fallback: evict active lock that expires soonest
+  let emergencyKey: string | null = null;
+  let minLockedUntil = Infinity;
+
+  const now = Date.now();
+  for (const [key, state] of lockoutRegistry.entries()) {
+    const isActiveLock = state.lockedUntil !== null && state.lockedUntil > now;
+    if (!isActiveLock) {
+      if (state.updatedAt < oldestInactiveTime) {
+        oldestInactiveTime = state.updatedAt;
+        oldestInactiveKey = key;
+      }
+    } else {
+      if (state.lockedUntil! < minLockedUntil) {
+        minLockedUntil = state.lockedUntil!;
+        emergencyKey = key;
+      }
+    }
+  }
+
+  const keyToEvict = oldestInactiveKey ?? emergencyKey;
+  if (keyToEvict) {
+    lockoutRegistry.delete(keyToEvict);
+  }
+}
+
+export function recordFailedAttempt(email: string): void {
+  const now = Date.now();
+  evictStaleEntries(now);
+  enforceCapacity();
+
   const key = email.toLowerCase();
-  const state = lockoutRegistry.get(key) ?? { failedCount: 0, lockedUntil: null };
+  const state = lockoutRegistry.get(key) ?? { failedCount: 0, lockedUntil: null, updatedAt: now };
   state.failedCount += 1;
+  state.updatedAt = now;
   if (state.failedCount >= MAX_FAILED_ATTEMPTS) {
-    state.lockedUntil = Date.now() + LOCKOUT_MS;
+    state.lockedUntil = now + LOCKOUT_MS;
     state.failedCount = 0;
   }
   lockoutRegistry.set(key, state);

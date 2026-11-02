@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-11-02T01:01:55.717Z",
+  "sprayAttempts": 5000,
+  "elapsedMs": 68,
+  "registrySize": 1000,
+  "maxEntriesLimit": 1000,
+  "rssBeforeBytes": 429326336,
+  "rssAfterBytes": 430030848,
+  "rssBeforeMb": 409.44,
+  "rssAfterMb": 410.11,
+  "budgetMb": 500,
+  "status": "PASS"
+}
