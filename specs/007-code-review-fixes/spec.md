@@ -3,7 +3,7 @@
 **Slug:** `007-code-review-fixes`
 **Ветка:** `main` (single-branch lineage — та же grandfathered IX-девиация, что 004/005/006)
 **Путь к спеке:** `undreseller/specs/007-code-review-fixes/spec.md`
-**Статус:** **DRAFT — REVISION 1.0 (2026-10-31)**
+**Статус:** **DRAFT — REVISION 1.1 (2026-10-31; audit R1/R2 интегрированы: единый 503 для unconfigured-secret, evidence-файл RSS)**
 **Архитектурный фундамент:** канон 004/005/006 (fail-closed секреты, timing-safe compare, minor units, дени-лист логгера)
 **Рантайм:** без изменений (Node 22, PG 16, Prisma)
 **Source of truth по бизнесу:** `undreplans/docs/projects/undreseller/undreseller-business-plan.md` v20.1 — коммерческой дельты нет (чистый tech-debt/security hardening, waiver приложен)
@@ -38,7 +38,7 @@ Full-codebase ревью (zcode, 2026-10-31) и доп. пробег по чек
 Магические reschedule-ссылки и delivery-логи перестают работать с дефолтными секретами из кода: без сконфигурированного env-секрета подпись **невозможна** (генерация бросает fail-closed ошибку, логируется алерт при старте), хеш-псевдонимизация delivery-лога не выдаёт псевдо-безопасность с фиксированной строкой.
 
 **Acceptance Scenarios**:
-1. **Given** env без `STAFF_WEBHOOK_SECRET`/`ADMIN_TOKEN`, **When** staff вызывает reschedule-оффер, **Then** генерация ссылки бросает явную ошибку конфигурации (500 с diagnose-логом), никакая ссылка с публично известным ключом не создаётся.
+1. **Given** env без `STAFF_WEBHOOK_SECRET`/`ADMIN_TOKEN`, **When** staff вызывает reschedule-оффер, **Then** генерация ссылки бросает явную ошибку конфигурации (HTTP 503 с diagnose-логом — канон unconfigured-dependency 006 OAuth), никакая ссылка с публично известным ключом не создаётся.
 2. **Given** env без `DELIVERY_LOG_SALT`/`ADMIN_TOKEN`, **When** пишется delivery-лог, **Then** цели не «хешируются» фиксированной солью из кода — запись помечается `UNHASHED` и стартовый алерт warns при буте.
 
 **Why P0**: единственные fail-open секреты в кодовой базе; контраст с каноном fail-closed.
@@ -97,7 +97,7 @@ Full-codebase ревью (zcode, 2026-10-31) и доп. пробег по чек
 ## 4. Requirements
 
 ### Functional Requirements
-- **FR-701 (Fail-closed reschedule secret)**: `getRescheduleSecret()` бросает при отсутствии обоих env-секретов; формат ошибки логируется `[RESCHEDULE_SECRET_UNCONFIGURED]`; тест «секрет отсутствует → генерация бросает, 0 ссылок создано».
+- **FR-701 (Fail-closed reschedule secret)**: `getRescheduleSecret()` бросает при отсутствии обоих env-секретов; формат ошибки логируется `[RESCHEDULE_SECRET_UNCONFIGURED]`; HTTP-слой отвечает **503** (единый канон unconfigured-dependency — как OAuth-роуты 006: `Google OAuth is not configured`); тест «секрет отсутствует → 503, 0 ссылок создано».
 - **FR-702 (Delivery-log salt fail-closed)**: отсутствие `DELIVERY_LOG_SALT` и `ADMIN_TOKEN` → записи с целью `UNHASHED` + boot-алерт; **не** используется `'undreseller-dl-salt'`.
 - **FR-703 (RESCHEDULE 501)**: admin bookings `[id]` → `501` + JSON error; 0 мутаций БД; 0 audit-записей действия.
 - **FR-704 (Amount invariant)**: `fulfillPayment` при `amountMinor !== order.totalMinor` или `currency !== order.currency` → `PAID_REQUIRES_RESOLUTION` + `AMOUNT_MISMATCH_MANUAL_RESOLUTION` + refund-request `idempotencyKey: amount_mismatch_<orderId>_<providerRef>`; совпадение — поведение без изменений.
@@ -109,7 +109,7 @@ Full-codebase ревью (zcode, 2026-10-31) и доп. пробег по чек
 ### Non-Functional Requirements
 - **NFR-701 (Zero regression)**: 418+ тестов зелёные; 7 снапшотов 400-форм идентичны; `npm audit` 0 H/C; `tsc` чист.
 - **NFR-702 (No new deps)**: `package.json` dependencies без изменений.
-- **NFR-703 (Budget)**: замер RSS при 5000 спрей-попыток ≤500 MB (evidence).
+- **NFR-703 (Budget)**: замер RSS при 5000 спрей-попыток ≤500 MB; сырой json-лог замера — `specs/007-code-review-fixes/evidence/lockout-rss.json` (Level 1 Evidence, Constitution XII).
 
 ## 5. Success Criteria
 
