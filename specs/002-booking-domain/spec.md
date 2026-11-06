@@ -20,7 +20,7 @@
 
 ### 1.3. Границы и Via Negativa (Strict Taboos)
 
-* ❌ **NO TELEGRAM BOTS / NOTIFICATIONS:** staff pager, client confirmation — 003 (оператор видит брони в админке/API).
+* ❌ **NO TELEGRAM BOTS:** staff pager, client confirmation — 004 (roadmap reorder 2026-11-07); reminders/notifications — 003. Оператор видит брони в админке/API.
 * ❌ **NO PAYMENT GATEWAY WIRING:** Stars/NOWPayments адаптеры и Stripe-webhook-хендлеры — 004; PREPAID-входы FSM гейтятся (FREE track полный).
 * ❌ **NO GOOGLE CALENDAR / WAITLIST / AI:** 005/006+.
 * ❌ **NO MULTI-SERVICE CART (дефолт):** 002 = single-service booking (одна услуга = одна бронь); мульти-сервисная корзина (contiguous interval search) — 003+ (Clarification Q1).
