@@ -8,13 +8,13 @@
 - **Priority**: P0 · **Technique**: EP
 - **Expected**: роли `['OWNER']`; AuditEvent `bootstrap.owner`
 
-### TC-002-002: без токена на пустой БД → customer (takeover=0)
+### TC-002-002: без токена на пустой БД → 403 (fail-closed, регистрация заблокирована до бутстрапа OWNER; takeover=0)
 - **Priority**: P0 · **Type**: Negative
 
 ### TC-002-003: повторный бутстрап при существующем OWNER → 403/отказ
 - **Priority**: P0 · **Type**: Boundary
 
-### TC-002-004: гонка двух первых create → ровно один OWNER
+### TC-002-004: гонка двух первых create → ровно один OWNER (advisory lock)
 - **Priority**: P0 · **Technique**: Error Guessing (advisory-lock)
 
 ## US2/US3: Double-booking defense (FR-202/203)
@@ -53,7 +53,7 @@
 
 ## US5: Booking service (FR-206)
 
-### TC-002-014: happy-path IN_CALL → CONFIRMED/BOOKED + AuditEvent + cancel-token hash
+### TC-002-014: happy-path IN_CALL → CONFIRMED/BOOKED + AuditEvent + cancel-token hash; POST /api/booking/[id]/cancel по валидному токену → RELEASED
 - **Priority**: P0 · **STM**
 
 ### TC-002-015: OUT_CALL → PENDING_APPROVAL

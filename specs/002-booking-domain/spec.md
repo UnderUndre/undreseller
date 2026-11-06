@@ -2,8 +2,8 @@
 
 **Slug:** `002-booking-domain`
 **Репозиторий:** `UnderUndre/undreseller` · **Базовая линия:** 001 (коммит `980bc32`, Payload-фундамент)
-**Статус:** **DRAFT — REVISION 1.1 (2026-11-07; audit-интеграция: FR-210 минимальный AuditEvents append-only, pure-availability канон (вычисления без DB — урок легаси async- окон), Resources groundwork; scheduler решён на план-фазе: Payload Jobs — research D1)**
-**Source of truth по бизнесу:** `undreplans/docs/projects/undreseller/undreseller-business-plan.md` v2.5.0 — дельты нет (ядро существующего процесса; waiver VII-B.5 приложится при plan)
+**Статус:** **ACCEPTED — REVISION 1.2 (2026-11-07; review-интеграция: закрытие F1–F12, fail-closed bootstrap policy, клиентский cancel endpoint, глобал ShopSettings, явный буферный инвариант, waiver VII-B.5 оформлен)**
+**Source of truth по бизнесу:** `undreplans/docs/projects/undreseller/undreseller-business-plan.md` v2.5.0 — дельты нет (ядро существующего процесса; waiver `business-plan-waiver.md` оформлен по VII-B.5)
 **Источники находок:** `specs/001-.../legacy-port-map.md` (домены 1/2/4/5/7), `reviews/{code,security}-zcode.md` (SEC-1/F-02/F-04, F-01 domain service), легаси-эталоны `bookingFsm.ts`/`windows.ts`/`advisoryLock.ts`
 
 ---
@@ -16,12 +16,12 @@
 
 ### 1.2. Решение
 
-Порт booking domain из легаси как **design-reimplementation на Payload-рельсах**: слотная доступность + публичный booking API + FSM-проводка (pure-kernel 001 получает IO-слой) + GiST/advisory броня + setup-token bootstrap (закрытие SEC-1) + rate limiting + витрина записи. FREE track (PAY_ON_SITE) — полный путь до FULFILLED; PREPAID track — FSM готов, входы гейтятся до 004.
+Порт booking domain из легаси как **design-reimplementation на Payload-рельсах**: слотная доступность + публичный booking API + FSM-проводка (pure-kernel 001 получает IO-слой) + GiST/advisory броня + setup-token bootstrap (закрытие SEC-1) + rate limiting + витрина записи. FREE track (PAY_ON_SITE) — полный путь до FULFILLED; PREPAID track — FSM готов, входы гейтятся до 003-no-show-protection (Clarification Q2).
 
 ### 1.3. Границы и Via Negativa (Strict Taboos)
 
 * ❌ **NO TELEGRAM BOTS:** staff pager, client confirmation — 004 (roadmap reorder 2026-11-07); reminders/notifications — 003. Оператор видит брони в админке/API.
-* ❌ **NO PAYMENT GATEWAY WIRING:** Stars/NOWPayments адаптеры и Stripe-webhook-хендлеры — 004; PREPAID-входы FSM гейтятся (FREE track полный).
+* ❌ **NO PAYMENT GATEWAY WIRING:** Stars/NOWPayments адаптеры — 006+; Stripe-webhook-хендлеры — 003-no-show-protection; PREPAID-входы FSM гейтятся (FREE track полный).
 * ❌ **NO GOOGLE CALENDAR / WAITLIST / AI:** 005/006+.
 * ❌ **NO MULTI-SERVICE CART (дефолт):** 002 = single-service booking (одна услуга = одна бронь); мульти-сервисная корзина (contiguous interval search) — 003+ (Clarification Q1).
 * ❌ **NO LEGACY COPY-PASTE:** окна/локи/домен — пере-реализация канонов; Prisma-обвязка не переносится.
@@ -39,9 +39,9 @@ Chore-дельты нет (ядро процесса §2.2), но цены/ICP �
 Первый OWNER создаётся **только** с одноразовым bootstrap-токеном: `OWNER_BOOTSTRAP_TOKEN` (env/лог первичного запуска); публичный `Users.create` остаётся customer-регистрацией; гонка первых регистраций исключена (токен = единственный путь к OWNER; повторный бутстрап невозможен).
 
 **Acceptance Scenarios**:
-1. **Given** чистая БД + токен, **When** регистрация с токеном, **Then** роль OWNER; второй вызов с тем же токеном → отказ (одноразовость).
-2. **Given** чистая БД без токена, **When** публичная регистрация, **Then** роль `customer` (никогда OWNER); takeover-окно = 0.
-3. **Given** существующий OWNER, **When** регистрация с токеном, **Then** токен больше не выдаёт OWNER (один бутстрап на инстанс).
+1. **Given** чистая БД + токен, **When** регистрация с токеном `X-Bootstrap-Token`, **Then** создаётся первый пользователь с ролью `OWNER`; второй вызов с тем же токеном → отказ (одноразовость).
+2. **Given** чистая БД без токена, **When** публичная регистрация, **Then** отказ HTTP 403 (регистрация закрыта до первичного бутстрапа первого OWNER; fail-closed канон, takeover-окно = 0). После бутстрапа OWNER публичная регистрация открыта и даёт строго роль `customer`.
+3. **Given** существующий OWNER (`where: { roles: { contains: 'OWNER' } }` count > 0), **When** регистрация с токеном, **Then** токен игнорируется/отклоняется и больше не выдаёт OWNER (строго один бутстрап на инстанс).
 4. Runbook §4.1 обновлён (ingress может открываться сразу).
 
 ### US2 — Double-booking броня на уровне БД (P0 — port-map #4/#5)
@@ -55,11 +55,12 @@ GiST EXCLUDE по `resourceId + tstzrange(startTime, endTime)` на активн
 
 ### US3 — Каталог услуг и часы работы (P0 — port-map: каталог/окна)
 
-`Products` выступают услугами через флаг `bookable` + поля (`durationMin`, `bufferBeforeMin/AfterMin` — пере-использование variant/inventory семантики не требуется); коллекция `WeeklyHours` (resourceId, weekday, startMin/endMin, break) — порт дизайна легаси; TZ строго из `ShopSettings.timeZone` (урок легаси «inert timezone» — часы хранятся/считаются в TZ инстанса, детерминированно).
+`Products` выступают услугами через флаг `bookable` + поля (`durationMin`, `bufferBeforeMin/AfterMin` — пере-использование variant/inventory семантики не требуется); глобал `ShopSettings` (timeZone, quantumMin=30, fallback='UTC'); коллекция `WeeklyHours` (resourceId, weekday, startMin/endMin, break) — порт дизайна легаси; TZ строго из `ShopSettings.timeZone` (урок легаси «inert timezone» — часы хранятся/считаются в TZ инстанса, детерминированно). Инвариант буферов: `bufferBeforeMin` и `bufferAfterMin` обязаны целиком укладываться в рамки рабочих часов `WeeklyHours` (подготовка до открытия или уборка после закрытия запрещены без явного исключения).
 
 **Acceptance Scenarios**:
 1. Услуга 45 мин с квантом 30 мин даёт слоты на сетке (10:00/10:30/…) — легаси-урок duration-quantum.
 2. Пересечение с `WeeklyHours`-перерывом режет слот; UTC-смещение инстанса не сдвигает сетку.
+3. Буфер услуги, выходящий за границы рабочего дня (например, буфер до 10:00 при открытии в 10:00), делает слот недоступным.
 
 ### US4 — Availability engine (P0 — port-map: окна)
 
@@ -71,13 +72,14 @@ GiST EXCLUDE по `resourceId + tstzrange(startTime, endTime)` на активн
 
 ### US5 — Booking domain service + публичный API (P0 — money-adjacent)
 
-Доменный сервис (Local API, `overrideAccess` — единственный писатель статусов, закрытие code F-01 полностью) + `POST /api/booking`: валидация → advisory lock → доступность → atomic create `SlotReservation(HELD-free-track: сразу CONFIRMED-маппинг BOOKED для IN_CALL / PENDING_APPROVAL для OUT_CALL)` + `Order` (FSM `transitionBookingFsm` — pure-kernel 001), `scheduleVersion` CAS; `GET /api/booking/[id]` по accessToken; отмена клиентом (cancel-token hash, порт канона).
+Доменный сервис (Local API, `overrideAccess` — единственный писатель статусов, закрытие code F-01 полностью) + `POST /api/booking`: валидация → advisory lock → доступность → atomic create `SlotReservation(HELD-free-track: сразу CONFIRMED-маппинг BOOKED для IN_CALL / PENDING_APPROVAL для OUT_CALL)` + `Order` (FSM `transitionBookingFsm` — pure-kernel 001), `scheduleVersion` CAS; `GET /api/booking/[id]` по accessToken; `POST /api/booking/[id]/cancel` по cancelToken (timing-safe hash compare) → FSM `CUSTOMER_CANCEL` (перевод в RELEASED, слот освобождается, событие `booking.cancel`).
 
 **Acceptance Scenarios**:
 1. Успешная бронь → FSM `AVAILABLE→CONFIRMED` (IN_CALL, флаг off) с эффектами `transitionBookingFsm` 1:1; 0 прямых записей статуса вне сервиса.
 2. OUT_CALL → `PENDING_APPROVAL` (US6).
 3. Невалидный слот/занятый → 409/422 с каталог-кодами ошибок (error-shape snapshot расширяем).
 4. Идемпотентность: повторный POST с тем же idempotencyKey → та же бронь, без дублей.
+5. Отмена клиентом: валидный cancelToken переводит статус в RELEASED, повторный вызов идемпотентен, невалидный токен → 403.
 
 ### US6 — Staff approval surface (P1 — роль OPERATOR заработает)
 
@@ -112,22 +114,22 @@ In-memory фиксированное окно (канон легаси: 10 req/6
 - **CLAUDE-канон `pnpm ii`**: новая миграция не трогает lockfile.
 - **Первый OWNER + токен**: bootstrap до/после открытия ingress — оба сценария в тестах.
 - **payload generate:types drift**: новые коллекции → регенерация, 0 ручных правок.
-- **Mongo-фантомов нет**: raw-SQL миграция — единственный DDL, Expand-only (Principle X: контракт фазы — 004+).
+- **Mongo-фантомов нет**: raw-SQL миграция — единственный DDL, Expand-only (Principle X: контракт-фаза — в последующих спеках по мере деградации схемы).
 
 ## 4. Requirements
 
 ### Functional Requirements
 
-- **FR-201 (Bootstrap token)**: одноразовый `OWNER_BOOTSTRAP_TOKEN` → первый OWNER; без токена публичная регистрация = только `customer`; пер-инстанс однократность; runbook обновлён.
-- **FR-202 (GiST EXCLUDE)**: `slot_reservations_no_overlap` по `(resourceId, tstzrange) WHERE status IN ('HELD','BOOKED','PENDING_APPROVAL')`; 23P01 → 409; Expand-only миграция + down.
-- **FR-203 (Advisory lock)**: `pg_advisory_xact_lock(hashtext('resource_slot_lock_'||resourceId))` в транзакции бронирования (L1).
-- **FR-204 (Catalog + hours)**: `bookable`-услуги (durationMin, buffers), `WeeklyHours`-коллекция; TZ = `ShopSettings.timeZone`, quantum 30 мин.
+- **FR-201 (Bootstrap token)**: одноразовый `OWNER_BOOTSTRAP_TOKEN` → первый OWNER; на пустой БД публичная регистрация закрыта (403) до инициализации OWNER; после бутстрапа публичная регистрация = `customer`; повторный токен отклоняется; runbook обновлён.
+- **FR-202 (GiST EXCLUDE + B-Tree)**: `slot_reservations_no_overlap` по `(resourceId, tstzrange) WHERE status IN ('HELD','BOOKED','PENDING_APPROVAL')`; 23P01 → 409; Expand-only миграция + down; B-tree индекс `(resourceId, startTime)` для ускорения ORM-запросов доступности.
+- **FR-203 (Advisory lock)**: блокирующий `pg_advisory_xact_lock(hashtext('resource_slot_lock_'||resourceId))` с таймаутом в транзакции бронирования (L1).
+- **FR-204 (Catalog + hours + settings)**: `bookable`-услуги (durationMin, buffers), глобал `ShopSettings` (timeZone, fallback='UTC'), `WeeklyHours`-коллекция; буферы строго внутри рабочих часов; quantum 30 мин.
 - **FR-205 (Availability API)**: публичный GET с вычитанием занятости и буферов; p95 < 50 ms при ≤2k бронях/мес.
-- **FR-206 (Booking API + domain service)**: POST /api/booking (idempotencyKey), FSM через pure-kernel + доменный сервис (единственный писатель статусов), atomic SlotReservation+Order, cancel-token hash.
-- **FR-207 (Rate limit)**: 10/60s на IP+route, 429+Retry-After, REPLICA_COUNT-assertion.
+- **FR-206 (Booking API + cancel endpoint + domain service)**: POST /api/booking (idempotencyKey), POST /api/booking/[id]/cancel (cancelToken), FSM через pure-kernel + доменный сервис (единственный писатель статусов), atomic SlotReservation+Order+AuditEvent.
+- **FR-207 (Rate limit)**: 10/60s на IP+route (с доверенным парсингом `x-forwarded-for`), 429+Retry-After, REPLICA_COUNT-assertion.
 - **FR-208 (Approval API)**: OPERATOR+ approve/reject через FSM CAS; 403 для прочих.
-- **FR-209 (Storefront flow)**: /book энд-ту-энд + e2e; error-catalog человекочитаем.
-- **FR-210 (AuditEvents)**: минимальная append-only коллекция (`action, actorId, aggregateType/Id, metadataJson` — PII-redacted); события: booking.create/cancel, approval.approve/reject, bootstrap.owner; репудиация (STRIDE-R) закрыта частично.
+- **FR-209 (Storefront flow)**: /book энд-ту-энд + e2e; рабочий cancel-флоу на странице подтверждения; error-catalog человекочитаем.
+- **FR-210 (AuditEvents)**: минимальная append-only коллекция (`action, actorId, aggregateType/Id, metadataJson` — PII-redacted), индекс `(aggregateType, aggregateId, createdAt)`; события: booking.create/cancel, approval.approve/reject, bootstrap.owner; репудиация (STRIDE-R) закрыта частично.
 
 ### Non-Functional Requirements
 

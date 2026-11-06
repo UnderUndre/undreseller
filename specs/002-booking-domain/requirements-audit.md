@@ -44,3 +44,15 @@ high_count: 0
 medium_count: 0
 low_count: 0
 ```
+
+
+---
+
+## Re-audit Addendum: spec rev 1.2 (2026-11-07, после antigravity F1–F12)
+
+- **Scope**: FR-206 расширен cancel-endpoint'ом (`POST /api/booking/[id]/cancel`, timing-safe token); FR-202 + B-tree `(resourceId, startTime)`; FR-203 — блокирующий advisory lock с таймаутом (замена try_lock, antigravity F8); FR-204 + глобал `ShopSettings` + буферный инвариант; FR-207 + доверенный парсинг `x-forwarded-for`; FR-210 + составной индекс; US1 — fail-closed bootstrap (403 до OWNER).
+- **Gate 1**: ✅ все новые клозы детерминированы (403/409/422 коды, таймаут 5s, p95 < 50 ms, индексы поимённо).
+- **Gate 2**: ✅ cancel-endpoint не конфликтует с 003 US4 (002 = endpoint + FSM RELEASED; 003 = email-доставка токенов + refund-политика).
+- **Gate 3**: ✅ cancel-flow покрыт (TC-002-014 расширен, TC-002-021 e2e); буферный инвариант — US3 AC3.
+- **Gate 4**: ✅ unambiguous.
+- **Re-audit verdict**: **PASS (rev 1.2)** — 14 reqs, 0 critical, Risk без изменений (max 15).
