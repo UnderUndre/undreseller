@@ -149,7 +149,8 @@ In-memory фиксированное окно (канон легаси: 10 req/6
 | Вопрос | Решение | Обоснование |
 | :--- | :--- | :--- |
 | Q1: Мульти-сервисная корзина | **Single-service booking в 002**; мульти-корзина — 003+ | Contiguous-interval search — отдельная сложность (легаси 002-урок); ядро ценности — слоты и бронь |
-| Q2: PREPAID track | **FSM-проводка полная, входы гейтятся** до 004 | HELD/PAYMENT_PENDING без гейтвея мертвы; FREE track даёт полный сквозной путь |
+| Q2: PREPAID track | **FSM-проводка полная, входы гейтятся** до 003-no-show-protection (roadmap reorder 2026-11-07) | HELD/PAYMENT_PENDING без гейтвея мертвы; FREE track даёт полный сквозной путь |
 | Q3: Планировщик TTL/approval-дедлайнов | **Plan-phase D**: Inngest vs Payload jobs | Inngest — канон легаси; Payload jobs — ноль новых зависимостей; решается на плане с бенчем |
 | Q4: OUT_CALL approval surface | **App-API для OPERATOR** (не /admin) | Канон 001: OPERATOR без Payload-админки; UI — минимальный |
+| Q4b: Планировщик sweeps | **Перенесено в 003** (roadmap reorder) | Reminders/hold-sweep живут там |
 | Q5: Услуга = Product? | **Product + bookable-флаг + duration-поля** | Переиспользование variants/цены/SEO шаблона; отдельная коллекция — дубль каталога |
