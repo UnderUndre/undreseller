@@ -2,7 +2,7 @@
 
 **Slug:** `002-booking-domain`
 **Репозиторий:** `UnderUndre/undreseller` · **Базовая линия:** 001 (коммит `980bc32`, Payload-фундамент)
-**Статус:** **DRAFT — REVISION 1.0 (2026-11-07; grounded в port-map 001, code/security review 001, бизнес-план v2.5.0 §2.2)**
+**Статус:** **DRAFT — REVISION 1.1 (2026-11-07; audit-интеграция: FR-210 минимальный AuditEvents append-only, pure-availability канон (вычисления без DB — урок легаси async- окон), Resources groundwork; scheduler решён на план-фазе: Payload Jobs — research D1)**
 **Source of truth по бизнесу:** `undreplans/docs/projects/undreseller/undreseller-business-plan.md` v2.5.0 — дельты нет (ядро существующего процесса; waiver VII-B.5 приложится при plan)
 **Источники находок:** `specs/001-.../legacy-port-map.md` (домены 1/2/4/5/7), `reviews/{code,security}-zcode.md` (SEC-1/F-02/F-04, F-01 domain service), легаси-эталоны `bookingFsm.ts`/`windows.ts`/`advisoryLock.ts`
 
@@ -127,10 +127,12 @@ In-memory фиксированное окно (канон легаси: 10 req/6
 - **FR-207 (Rate limit)**: 10/60s на IP+route, 429+Retry-After, REPLICA_COUNT-assertion.
 - **FR-208 (Approval API)**: OPERATOR+ approve/reject через FSM CAS; 403 для прочих.
 - **FR-209 (Storefront flow)**: /book энд-ту-энд + e2e; error-catalog человекочитаем.
+- **FR-210 (AuditEvents)**: минимальная append-only коллекция (`action, actorId, aggregateType/Id, metadataJson` — PII-redacted); события: booking.create/cancel, approval.approve/reject, bootstrap.owner; репудиация (STRIDE-R) закрыта частично.
 
 ### Non-Functional Requirements
 
 - **NFR-201 (Regression)**: все 72 теста 001 зелёные; новые ≥30 (FSM-проводка, гонки GiST, availability BVA, rate-limit границы, bootstrap матрица).
+- **NFR-205 (Pure-availability)**: вычисление слотов — чистая функция (hours/busy/service/date → slots), DB-выборка отдельно (урок легаси: async DB-bound окна = непроверяемые тесты).
 - **NFR-202 (Memory)**: ≤500 MB (fencing-инвариант; замер в evidence).
 - **NFR-203 (No new deps)**: Inngest/либы планировщика — только по решению plan (D-вопрос); иначе 0.
 - **NFR-204 (Migration safety)**: Expand-only raw SQL, statement/lock_timeout, down.sql, preflight collision check (канон легаси F3/F15).
