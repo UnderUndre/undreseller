@@ -1,0 +1,16 @@
+diff --git a/api.js b/api.js
+index dff423b2e4b5d8d0446771151563e1679db99e98..6553b18b64f82d39ff3cd699444859a98e86d839 100644
+--- a/api.js
++++ b/api.js
+@@ -44743,9 +44743,8 @@ WHERE
+                   `SELECT conname AS primary_key
+             FROM   pg_constraint join pg_class on (pg_class.oid = conrelid)
+             WHERE  contype = 'p' 
+-            AND    connamespace = $1::regnamespace  
+-            AND    pg_class.relname = $2;`,
+-                  [tableSchema, tableName]
++            AND    connamespace = ${tableSchema ? `'${tableSchema}'` : "'public'"}::regnamespace  
++            AND    pg_class.relname = '${tableName}';`
+                 );
+                 primaryKeys[tableCompositePkName[0].primary_key] = {
+                   name: tableCompositePkName[0].primary_key,

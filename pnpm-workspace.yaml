@@ -1,10 +1,17 @@
 allowBuilds:
-  '@parcel/watcher': false
-  '@prisma/client': false
-  '@prisma/engines': false
-  '@swc/core': false
-  esbuild: false
-  prisma: false
-  protobufjs: false
-  sharp: false
-  unrs-resolver: false
+  '@vercel/git-hooks': true
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
+  workerd: true
+patchedDependencies:
+  drizzle-kit@0.31.7: patches/drizzle-kit@0.31.7.patch
+# Security hotfix (2026-11-07): audit 11 H/C — force ALL copies (root + nested
+# under @payloadcms/*) to patched versions. Root next@16.3.3 was hit by 3
+# CRITICAL (2× unauthenticated RCE in the public storefront runtime).
+overrides:
+  next: 16.4.1
+  sharp: 0.35.5
+  dompurify: 3.4.17
+  happy-dom: 21.0.4
+  vitest: 4.1.0

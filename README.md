@@ -1,316 +1,386 @@
-# 🛍️ UnderUndre Modular Commerce & Service Engine (Track 1)
+# Payload Ecommerce Template
 
-> "Без бумажки — ты какашка, а без воспроизводимого ранбука — твой релиз просто русская рулетка." — Валера  
-> "Гладко было на бумаге, да забыли про овраги." — Народная мудрость  
-> "Какое ТЗ — такое и ХЗ." — Requirements define outcome quality  
-> "Пока не доказано — не ебёт, что сказано." — Презумпция в L1-аудите
+This template is in **BETA**.
 
-**Repository**: `UnderUndre/undreseller`  
-**Version**: 2.4.0 (Production Architecture — Track 1 Mono-Engine, Features 004/005 Shipped, 006 Integration Ready)  
-**Methodology**: **Diátaxis Framework** (Tutorials, How-To Guides, Reference, Explanation)  
-**Standard Compliance**: ISO/IEC/IEEE 29148:2018 (Requirements Engineering), ISO/IEC/IEEE 12207:2017 & NIST SP 800-218 SSDF  
+This is the official [Payload Ecommerce Template](https://github.com/payloadcms/payload/blob/3.x/templates/ecommerce). This repo includes a fully-working backend, enterprise-grade admin panel, and a beautifully designed, production-ready ecommerce website.
 
----
+This template is right for you if you are working on building an ecommerce project or shop with Payload.
 
-## 🧭 Навигационная матрица Diátaxis
+Core features:
 
-```text
-                       ПРАКТИКА                         ТЕОРИЯ
-            ┌──────────────────────────────┬──────────────────────────────┐
-            │ 1. TUTORIALS (Обучение)      │ 4. EXPLANATION (Концепции)   │
-            │                              │                              │
-ДЕЙСТВИЕ    │ • Быстрый старт за 15 минут  │ • Системная архитектура      │
-            │ • Кастомизация витрины и TMA │ • Двухуровневый барьер слотов│
-            │ • docs/whitelabel-           │ • Docker Memory Fencing      │
-            │   quickstart.md              │ • Scope Knife и Demand Gate  │
-            ├──────────────────────────────┼──────────────────────────────┤
-            │ 2. HOW-TO GUIDES (Ранбуки)   │ 3. REFERENCE (Справочники)   │
-            │                              │                              │
-ЗНАНИЕ      │ • Day-14 Onboarding Runbook  │ • API-эндпоинты и коды (409) │
-            │ • Аварийный дренаж инбокса   │ • Спецификация .env.example  │
-            │ • Беспростойная ротация токена│ • Матрица интеграций         │
-            │ • 4-фазные safe-миграции     │ • Схема БД Prisma & GiST     │
-            │ • Честный DR-дрилл бэкапа    │ • GDPR & STRIDE периметр     │
-            └──────────────────────────────┴──────────────────────────────┘
-```
+- [Pre-configured Payload Config](#how-it-works)
+- [Authentication](#users-authentication)
+- [Access Control](#access-control)
+- [Layout Builder](#layout-builder)
+- [Draft Preview](#draft-preview)
+- [Live Preview](#live-preview)
+- [On-demand Revalidation](#on-demand-revalidation)
+- [SEO](#seo)
+- [Search & Filters](#search)
+- [Jobs and Scheduled Publishing](#jobs-and-scheduled-publish)
+- [Website](#website)
+- [Products & Variants](#products-and-variants)
+- [User accounts](#user-accounts)
+- [Carts](#carts)
+- [Guest checkout](#guests)
+- [Orders & Transactions](#orders-and-transactions)
+- [Stripe Payments](#stripe)
+- [Currencies](#currencies)
+- [Automated Tests](#tests)
 
----
+## Quick Start
 
-## 1. Коммерческие границы и разделение сервисов
+To spin up this example locally, follow these steps:
 
-### 💼 Параметры коммерческого предложения (Sprint B HERO)
-- **Стоимость и таймлайн**: **$4,900 flat fee**, срок выполнения — строго **14 календарных дней** (50% аванс через эскроу Upwork / DocuSeal, 50% финальный релиз в День 14).
-- **Продукт 0 (Tripwire / Workaround TCO Audit)**: TDABC-аудит костылей и проектирование системного байпаса (**$350–$490 flat**, SLA 24–48 часов).
-- **Demand Gate**: продажа больших форков заблокирована до закрытия **10 оплаченных Workaround TCO Audit**.
-- **Scope Knife (Границы поставки)**:
-  - Ровно **3 роли**: `OWNER`, `OPERATOR`, `PERFORMER`.
-  - Ровно **1 бизнес-процесс**: витрина каталога $\to$ мульти-сервисная корзина с шагом 30 минут $\to$ бронь слота $\to$ согласование/оплата.
-  - **Первая бизнес-интеграция**: Google Calendar (двусторонняя sync push/freeBusy, расходует лимит «≤1» бизнес-интеграции). Riders (zod 4, ICS, outbound webhooks, read-only API) — инфраструктурный контур, лимит не расходуют.
-- **Гарантии**: 7-дневный Bugfix SLA (устранение блокеров P1/P2 за $< 24$ч) с последующим переходом на поддержку Care Standard ($349/мес).
-- **Внимание**: Все легаси-версии признаны устаревшими. Коммерческим источником правды является исключительно **v20.0**.
+### Clone
 
----
+If you have not done so already, you need to have standalone copy of this repo on your machine. If you've already cloned this repo, skip to [Development](#development).
 
-## 2. Системная архитектура и технологический стек
+Use the `create-payload-app` CLI to clone this template directly to your machine:
 
-```text
-                                ИНТЕРНЕТ (Порты 80 / 443)
-                                            │
-                                            ▼
-                  ┌──────────────────────────────────────────────────┐
-                  │                   TRAEFIK v3                     │
-                  │       (Reverse Proxy + Let's Encrypt SSL)        │
-                  └──────────────────────────────────────────────────┘
-                                            │
-                    Docker Network: "web_gateway" (bridge)
-                                            │
-         ┌──────────────────────────────────┴──────────────────────────────────┐
-         │                                                                     │
-         ▼                                                                     ▼
-┌───────────────────────────────┐                     ┌───────────────────────────────┐
-│     undrllanding        │                     │      repos/undreseller        │
-│   (Marketing Lander, :3000)   │                     │  (Transactional Engine, :3000)│
-│                               │  HTTP Links / TMA   │                               │
-│  Host:                        │────────────────────►│  Host:                        │
-│   • underundre.com            │  (/book, /catalog)  │   • demo.undreseller.com      │
-│   • undreseller.com           │                     │   • shop.underundre.com       │
-└───────────────────────────────┘                     └───────────────────────────────┘
-                                                                       │
-                                                        Docker Network: "backend_network"
-                                                                       │
-                                                                       ▼
-                                                      ┌───────────────────────────────┐
-                                                      │           postgres            │
-                                                      │     (PostgreSQL 16, :5432)    │
-                                                      │  GiST slot_resource_no_overlap│
-                                                      └───────────────────────────────┘
-```
-
-| Компонент | Технология | Версия / Стандарт | Назначение в архитектуре |
-|---|---|---|---|
-| **Web Framework** | Next.js 15 (App Router, no `src/`) | `15.2.1` | Серверный рендеринг, API-маршруты, zero-client bundle |
-| **Runtime & Language** | Node.js 22 LTS / TypeScript | `5.8.2` | Строгая статическая типизация, ES Modules |
-| **Database & Storage** | PostgreSQL 16 + Prisma ORM | `6.4.1` | Реляционная СУБД, расширение `btree_gist`, пул PgBouncer |
-| **Job Queue & Timers** | Inngest Cloud + PG Deadline Sweeper | `3.40.1` | Фоновые жизненные циклы с CAS, свиперы, ночной purge |
-| **Telegram Bot API** | grammY (Client Bot + Staff Bot) | `1.35.0` | Витрина магазина и пейджер мастера с маскированием ПДн |
-| **Telegram Mini App** | @twa-dev/sdk | `8.0.2` | Нативная интеграция TMA: тема, HapticFeedback, MainButton |
-| **In-Memory Cache & Limits**| lru-cache | `11.1.0` | Рейт-лимитер 10 req/60s со startup assertion `REPLICA_COUNT=1` |
-| **Tokenization & RAG** | js-tiktoken | `1.0.20` | Токенизация `cl100k_base` и локальный полнотекстовый поиск FTS |
-| **Schema Validation** | Zod | `3.24.2` | Валидация входных тел запросов и дискриминированных схем |
-
-### Ключевые архитектурные инварианты
-1. **Docker Memory Fencing (v18.3)**: лимит памяти контейнера приложения зафиксирован на уровне **$\le 500\text{ MB RAM}$** (`deploy.resources.limits.memory: 500M`). Тяжелые локальные ML-модели, headless-браузеры и внешние микросервисы запрещены.
-2. **Двухуровневый барьер слотов (Zero Overbooking)**:
-   - *Уровень 1*: транзакционный замок `acquireResourceSlotLock(tx, resourceId)` через `pg_advisory_xact_lock`.
-   - *Уровень 2*: аппаратный GiST exclusion constraint `slot_resource_no_overlap` по `("resourceId" WITH =, tstzrange("startTime", "endTime") WITH &&) WHERE status IN ('HELD', 'BOOKED')`. Ошибка PostgreSQL `23P01` маппится в чистый HTTP 409 Conflict.
-3. **Защита спящих воркеров Inngest (CAS + `cancelOn`)**:
-   - Декларативные матрицы `cancelOn` содержат строго $\le 4$ событий (лимит Inngest).
-   - При пробуждении воркер сверяет версию `order.scheduleVersion === event.data.scheduleVersion`. При переносе или отмене заказа воркер мгновенно выходит как no-op.
-   - Независимый `deadlineSweeper.ts` сканирует базу PostgreSQL и страхует исполнение дедлайнов при сетевых сбоях Inngest Cloud.
-4. **Durable Telegram Dispatcher (`lib/bot/telegramOutbox.ts`)**:
-   - Шейпинг частоты (~1 сообщ./с в ЛС, ~20 сообщ./мин в группу `-100...`).
-   - Автоматический кулдаун при HTTP 429 по заголовку `retry_after`.
-   - Приоритетная очередь с защитой от голодания (`CRITICAL=100` для GDPR-редакции и снятия клавиатуры).
-   - Постоянные ошибки Telegram API (`message to edit not found`, `chat not found`, 400/403) обрабатываются как терминальный no-op (`TERMINAL_NO_OP`), предотвращая заклинивание очереди.
-5. **Неизменяемость `PaymentEvent` и таблица `RefundOperation`**:
-   - Таблица `PaymentEvent` остаётся неизменяемым append-only реестром поступлений. Отрицательные записи запрещены.
-   - Возвраты фиксируются только в таблице `RefundOperation` (`TELEGRAM_STARS_REFUND` через `refundStarPayment` и `CRYPTO_REIMBURSEMENT` с 24-часовым регламентным SLA).
-6. **Запрет n8n**: внутри клиентских SaaS категорически запрещён n8n во избежание коммерческих лицензионных претензий Sustainable Use License (SUL) на $50,000/год.
-
----
-
-## 3. Руководство быстрого запуска (Tutorials: 15-Minute Setup)
-
-### Требования к окружению
-- **Node.js**: `22.x LTS`
-- **PostgreSQL**: `16.x` с поддержкой расширения `btree_gist`
-- **Docker & Docker Compose**: для продакшен-развертывания с Traefik v3
-
-### Пошаговая инициализация
 ```bash
-# 1. Клонирование репозитория
-git clone https://github.com/UnderUndre/undreseller.git app
-cd app
-
-# 2. Подготовка переменных окружения
-cp .env.example .env
-# Заполните безопасные плейсхолдеры в .env своими учетными данными
-
-# 3. Установка зафиксированных зависимостей
-npm install
-
-# 4. Безопасный 4-фазный накат миграций базы данных (через DIRECT_URL)
-npm run db:migrate
-
-# 5. Первоначальное наполнение демо-магазина
-npm run db:seed
-
-# 6. Запуск статической проверки типов и полного пакета тестов
-npm run validate
-npm test
-
-# 7. Сборка оптимизированного продакшен-бандла Next.js
-npm run build
-
-# 8. Запуск сервера приложения
-npm run start
+pnpx create-payload-app my-project -t ecommerce
 ```
 
----
+### Development
 
-## 4. Эксплуатационные регламенты оператора (How-To Guides / Runbooks)
+1. First [clone the repo](#clone) if you have not done so already
+1. `cd my-project && cp .env.example .env` to copy the example environment variables
+1. `pnpm install && pnpm dev` to install dependencies and start the dev server
+1. open `http://localhost:3000` to open the app in your browser
 
-### 📋 Протокол сдачи проекта (Day-14 Onboarding Checklist)
-Проводится в формате 60-минутного живого созвона с клиентом перед закрытием эскроу Upwork / подписанием акта DocuSeal:
-- [ ] **1. Изоляция ключей и проверка интеграционного профиля**: Клиент в присутствии инженера вставляет боевые ключи в хостовый `.env`:
-  `TELEGRAM_BOT_TOKEN`, `STAFF_BOT_TOKEN`, `STAFF_WEBHOOK_SECRET`, `ADMIN_TOKEN`, `ADMIN_CHAT_ID`, `AI_API_KEY`. Фаундер не сохраняет ключи локально. Fail-closed чекер блокирует запуск при смешении ключей.
-- [ ] **2. Тестовая бронь корзины и Staff-бот**: Оформление комплексной записи из 2 услуг с шагом 30 минут, проверка доставки карточки заказа в `staffDestinationChatId` с маскированным телефоном (`+7 *** *** 4567`) и согласование в 1 клик.
-- [ ] **3. Тестовая транзакция**: Проведение боевого платежа минимального номинала (1 Star или $1 в крипте) либо проверка `PAY_ON_SITE`. Подтверждение создания записи `PaymentEvent` и перевода заказа в статус `PAID`.
-- [ ] **4. Проверка DR-восстановления**: Демонстрация успешного лога тестового наката дампа в изолированный тестовый контейнер PostgreSQL.
-- [ ] **5. Фиксация RPO/RTO**: Клиент под роспись уведомлен, что RPO равен 6 часам (интервал хостового Restic/pg_dump), восстановление — из дампа (не PITR).
-- [ ] **6. Подписание приемки**: Релиз эскроу-платежа (остаток 50% = $2,450).
+That's it! Changes made in `./src` will be reflected in your app. Follow the on-screen instructions to login and create your first admin user. Then check out [Production](#production) once you're ready to build and serve your app, and [Deployment](#deployment) when you're ready to go live.
 
----
+## How it works
 
-### 🚨 Аварийный дренаж очередей при сбое Inngest Cloud (`scripts/drain-inbox.ts`)
-**Симптомы**: Зависание событий в статусе `PENDING` в таблице `InboxEvent`, отсутствие ответа на внешние вебхуки или недоступность серверов Inngest Cloud.
+The Payload config is tailored specifically to the needs of most websites. It is pre-configured in the following ways:
 
-1. Подключиться по SSH к хосту приложения.
-2. Перейти в корень проекта:
-   ```bash
-   cd /opt/undreseller
-   ```
-3. Запустить автономный обработчик в обход Inngest:
-   ```bash
-   npm run inbox:drain
-   ```
-4. Скрипт использует атомарный захват лиза в PostgreSQL (`status = 'PROCESSING', lockedAt = now(), lockedBy = workerId`), восстанавливает сайд-эффекты исключительно из сохранённого `payloadJson` и переводит обработанные строки в `SENT` (или `FAILED` при 10 ошибках).
-5. Проверить отсутствие зависших строк:
-   ```sql
-   SELECT count(*) FROM "InboxEvent" WHERE status = 'PENDING';
-   ```
+### Collections
 
----
+See the [Collections](https://payloadcms.com/docs/configuration/collections) docs for details on how to extend this functionality.
 
-### 🔑 Беспростойная ротация токена администратора (`ADMIN_TOKEN`)
-1. Сгенерировать новый криптостойкий токен: `openssl rand -hex 32`.
-2. В файле `.env` на хосте выставить двойной токен через запятую и задать 24-часовой срок грации:
-   ```env
-   ADMIN_TOKEN="<NEW_TOKEN>,<OLD_TOKEN>"
-   ADMIN_OLD_TOKEN_EXPIRES_AT="<NOW + 24 HOURS ISO TIMESTAMP>"
-   ```
-3. Перезапустить контейнер приложения: `docker compose restart app`. Запросы по старому токену продолжают приниматься с записью предупреждения `[OLD_ADMIN_TOKEN_USED]`.
-4. Обновить токен во внешних дашбордах и мониторинге.
-5. Через 24 часа оставить в `.env` только новый токен:
-   ```env
-   ADMIN_TOKEN="<NEW_TOKEN>"
-   ADMIN_OLD_TOKEN_EXPIRES_AT=""
-   ```
-6. Финальный перезапуск: `docker compose restart app`. Старый токен отклоняется с HTTP 401.
+- #### Users (Authentication)
 
----
+  Users are auth-enabled collections that have access to the admin panel and unpublished content. See [Access Control](#access-control) for more details.
 
-### 🗄️ Безопасный 4-фазный накат миграций БД (`.specify/scripts/bash/migrate-safe.sh`)
-Миграции схемы разделены на 4 изолированных развёртывания (Principle X):
-1. **Expand**: добавление nullable колонок и таблиц, снятие NOT NULL с `itemId` без блокировок.
-2. **Backfill**: батчевое заполнение `totalDurationMin` и `resourceId` (`LIMIT 500`) с помещением аномальных строк в `SlotReservationQuarantine` без `SET NOT NULL`.
-3. **Validate & Cutover**: префлайт-проверка пересечений (`r1.id < r2.id`), добавление `CHECK ... NOT VALID`, валидация отдельной транзакцией и навешивание GiST `slot_resource_no_overlap`.
-4. **Contract**: мгновенный метадата-переход `SET NOT NULL` (по валидированному `CHECK`), удаление временных проверок и старого `slot_no_overlap`.
+  For additional help, see the official [Auth Example](https://github.com/payloadcms/payload/tree/3.x/examples/auth) or the [Authentication](https://payloadcms.com/docs/authentication/overview#authentication-overview) docs.
 
-Каждая стадия использует жесткие таймауты `lock_timeout='2s'` и `statement_timeout='5s'`. Запуск выполняется скриптом с 5 экспоненциальными попытками:
+- #### Pages
+
+  All pages are layout builder enabled so you can generate unique layouts for each page using layout-building blocks, see [Layout Builder](#layout-builder) for more details. Pages are also draft-enabled so you can preview them before publishing them to your website, see [Draft Preview](#draft-preview) for more details.
+
+- #### Media
+
+  This is the uploads enabled collection used by pages, posts, and projects to contain media like images, videos, downloads, and other assets. It features pre-configured sizes, focal point and manual resizing to help you manage your pictures.
+
+- #### Categories
+
+  A taxonomy used to group products together.
+
+- ### Carts
+
+  Used to track user and guest carts within Payload. Added by the [ecommerce plugin](https://payloadcms.com/docs/ecommerce/plugin#carts).
+
+- ### Addresses
+
+  Saves user's addresses for easier checkout. Added by the [ecommerce plugin](https://payloadcms.com/docs/ecommerce/plugin#addresses).
+
+- ### Orders
+
+  Tracks orders once a transaction successfully completes. Added by the [ecommerce plugin](https://payloadcms.com/docs/ecommerce/plugin#orders).
+
+- ### Transactions
+
+  Tracks transactions from initiation to completion, once completed they will have a related Order item. Added by the [ecommerce plugin](https://payloadcms.com/docs/ecommerce/plugin#transactions).
+
+- ### Products and Variants
+
+  Primary collections for product details such as pricing per currency and optionally supports variants per product. Added by the [ecommerce plugin](https://payloadcms.com/docs/ecommerce/plugin#products).
+
+### Globals
+
+See the [Globals](https://payloadcms.com/docs/configuration/globals) docs for details on how to extend this functionality.
+
+- `Header`
+
+  The data required by the header on your front-end like nav links.
+
+- `Footer`
+
+  Same as above but for the footer of your site.
+
+## Access control
+
+Basic access control is setup to limit access to various content based based on publishing status.
+
+- `users`: Users with the `admin` role can access the admin panel and create or edit content, users with the `customer` role can only access the frontend and the relevant collection items to themselves.
+- `pages`: Everyone can access published pages, but only admin users can create, update, or delete them.
+- `products` `variants`: Everyone can access published products, but only admin users can create, update, or delete them.
+- `carts`: Customers can access their own saved cart, guest users can access any unclaimed cart by ID.
+- `addresses`: Customers can access their own addresses for record keeping.
+- `transactions`: Only admins can access these as they're meant for internal tracking.
+- `orders`: Only admins and users who own the orders can access these. Guests require a valid `accessToken` (sent via email) along with the order's email to view order details.
+
+For more details on how to extend this functionality, see the [Payload Access Control](https://payloadcms.com/docs/access-control/overview#access-control) docs.
+
+## User accounts
+
+Registered users can log in to view their order history, manage saved addresses, and track ongoing orders directly from their account dashboard.
+
+## Guests
+
+Guest checkout allows users to complete purchases without creating an account. When a guest places an order:
+
+1. The order is associated with their email address
+2. A unique `accessToken` is generated for secure order lookup
+3. An order confirmation email is sent containing a secure link to view the order
+
+To look up an order as a guest, users visit `/find-order`, enter their email and order ID, and receive an email with a secure access link. This prevents order enumeration attacks where malicious users could iterate through sequential order IDs to access other customers' order information.
+
+## Layout Builder
+
+Create unique page layouts for any type of content using a powerful layout builder. This template comes pre-configured with the following layout building blocks:
+
+- Hero
+- Content
+- Media
+- Call To Action
+- Archive
+
+Each block is fully designed and built into the front-end website that comes with this template. See [Website](#website) for more details.
+
+## Lexical editor
+
+A deep editorial experience that allows complete freedom to focus just on writing content without breaking out of the flow with support for Payload blocks, media, links and other features provided out of the box. See [Lexical](https://payloadcms.com/docs/rich-text/overview) docs.
+
+## Draft Preview
+
+All products and pages are draft-enabled so you can preview them before publishing them to your website. To do this, these collections use [Versions](https://payloadcms.com/docs/configuration/collections#versions) with `drafts` set to `true`. This means that when you create a new product or page, it will be saved as a draft and will not be visible on your website until you publish it. This also means that you can preview your draft before publishing it to your website. To do this, we automatically format a custom URL which redirects to your front-end to securely fetch the draft version of your content.
+
+Since the front-end of this template is statically generated, this also means that pages, products, and projects will need to be regenerated as changes are made to published documents. To do this, we use an `afterChange` hook to regenerate the front-end when a document has changed and its `_status` is `published`.
+
+For more details on how to extend this functionality, see the official [Draft Preview Example](https://github.com/payloadcms/payload/tree/3.x/examples/draft-preview).
+
+## Live preview
+
+In addition to draft previews you can also enable live preview to view your end resulting page as you're editing content with full support for SSR rendering. See [Live preview docs](https://payloadcms.com/docs/live-preview/overview) for more details.
+
+## On-demand Revalidation
+
+We've added hooks to collections and globals so that all of your pages, products, footer, or header changes will automatically be updated in the frontend via on-demand revalidation supported by Nextjs.
+
+> Note: if an image has been changed, for example it's been cropped, you will need to republish the page it's used on in order to be able to revalidate the Nextjs image cache.
+
+## SEO
+
+This template comes pre-configured with the official [Payload SEO Plugin](https://payloadcms.com/docs/plugins/seo) for complete SEO control from the admin panel. All SEO data is fully integrated into the front-end website that comes with this template. See [Website](#website) for more details.
+
+## Search
+
+This template comes with SSR search features can easily be implemented into Next.js with Payload. See [Website](#website) for more details.
+
+## Orders and Transactions
+
+Transactions are intended for keeping a record of any payment made, as such it will contain information regarding an order or billing address used or the payment method used and amount. Only admins can access transactions.
+
+An order is created only once a transaction is successfully completed. This is a record that the user who completed the transaction has access so they can keep track of their history.
+
+### Guest Order Access
+
+Guest users can securely access their orders through the `/find-order` page:
+
+1. Guest enters their email address and order ID
+2. If the order exists and matches the email, an access link is sent to their email
+3. The link contains a secure `accessToken` that grants temporary access to view the order
+
+This email verification flow prevents unauthorized access to order details. The `accessToken` is a unique UUID generated when the order is created and is required (along with the email) to view order details as a guest.
+
+**Security note:** Order confirmation emails should include the order ID so guests can use the "Find Order" feature. The access token is only sent via the verification email to prevent enumeration attacks.
+
+## Currencies
+
+By default the template ships with support only for USD however you can change the supported currencies via the [plugin configuration](https://payloadcms.com/docs/ecommerce/plugin#currencies). You will need to ensure that the supported currencies in Payload are also configured in your Payment platforms.
+
+## Stripe
+
+By default we ship with the Stripe adapter configured, so you'll need to setup the `secretKey`, `publishableKey` and `webhookSecret` from your Stripe dashboard. Follow [Stripe's guide](https://docs.stripe.com/get-started/api-request?locale=en-GB) on how to set this up.
+
+## Tests
+
+We provide automated tests out of the box for both E2E and Int tests along with this template. They are being run in our CI to ensure the stability of this template over time. You can integrate them into your CI or run them locally as well via:
+
+To run Int tests with Vitest:
+
 ```bash
-DIRECT_URL="<YOUR_DIRECT_POSTGRES_URL>" .specify/scripts/bash/migrate-safe.sh
+pnpm test:int
 ```
-*При исчерпании 5 попыток деплой безопасно прерывается до смены схемы и требует перевода в регламентное окно.*
 
----
+To run E2Es with Playwright:
 
-### 🛡️ Честный Disaster Recovery: RPO, RTO и тестовый дрилл (Zero-Bullshit SLA)
-- **Запрет спекуляций о PITR**: В кодовой базе **нет и не заявляется Continuous Point-in-Time Recovery**. Называть 6-часовые дампы термином PITR строго запрещено.
-- **Честный RPO**: строго равен интервалу хостового задания Restic / `pg_dump` на сервере Hetzner CPX42 (номинально **6 часов**).
-- **Честный RTO**: $\le 30$ минут на развертывание свежего контейнера PostgreSQL и накат дампа.
-- **Обязательный DR-дрилл до сдачи проекта**:
-  ```bash
-  # Запуск бенчмарка памяти и DR-проверки наката дампа:
-  ./docker/bench-memory.sh
-  ```
-  Оператор восстанавливает контрольный дамп в изолированный временный контейнер базы данных и проверяет соответствие количества строк и индексов.
-
----
-
-### 🔓 Аудируемый разбан клиентов и проведение возвратов
-- **Разблокировка клиента**:
-  ```bash
-  curl -X POST https://shop.client.com/api/admin/users/unblock \
-    -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
-    -H "Content-Type: application/json" \
-    -d '{"customerTgId": "12345678", "actor": "admin_ivan", "reason": "Клиент подтвердил согласие с фикс-прайсом"}'
-  ```
-- **Проведение возврата (Stars или Crypto)**:
-  ```bash
-  curl -X POST https://shop.client.com/api/admin/orders/<ORDER_ID>/refund \
-    -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
-    -H "Content-Type: application/json" \
-    -d '{"kind": "TELEGRAM_STARS_REFUND", "idempotencyKey": "refund_ord1_v1", "amountMinor": 1000, "currency": "XTR", "actor": "operator_anna"}'
-  ```
-
----
-
-## 5. Технический справочник (Reference)
-
-### Реестр ключевых API-маршрутов
-
-| Маршрут | Метод | Авторизация | Описание и статус-коды |
-|---|---|---|---|
-| `/api/catalog` | `GET` | Публичный | Список активных товаров и услуг витрины. `200 OK`. |
-| `/api/booking/slots` | `GET` | Публичный | Расчет доступных непрерывных окон с шагом 30 мин (`?itemIds=id1,id2`). `200 OK`, `400 Bad Request`. |
-| `/api/booking/lock` | `POST` | `initData` / RateLimit | Мульти-сервисный холд слота на 15 минут. `201 Created`, `400 Bad Request`, `403 Forbidden` (Blacklist), `409 Conflict` (`23P01`). |
-| `/api/checkout` | `POST` | `initData` / RateLimit | Оформление `PAY_ON_SITE`, генерация инвойса Stars или NOWPayments. `200/201 OK`, `400 Bad Request`. |
-| `/api/bot/telegram/webhook` | `POST` | `X-Telegram-Secret` | Вебхук клиентского бота (синхронный Stars `pre_checkout_query` и `successful_payment`). |
-| `/api/bot/staff/webhook` | `POST` | `X-Telegram-Secret` | Вебхук Staff-бота мастера (`approve`, `reject`, `reschedule`, `blacklist`, `fulfill`). `403` при несовпадении прав. |
-| `/api/bot/whatsapp/webhook` | `POST` | `X-Hub-Signature` | Вебхук Meta WhatsApp Cloud API с верификацией подписи. |
-| `/api/admin/settings` | `PUT` | Bearer `ADMIN_TOKEN` | Обновление `ShopSettings`, таймингов и профиля интеграций. `200 OK`, `401 Unauthorized`. |
-| `/api/admin/users/unblock` | `POST` | Bearer `ADMIN_TOKEN` | Аудируемый разбан Telegram ID или телефона. `200 OK`, `401 Unauthorized`. |
-| `/api/admin/users/purge` | `POST` | Bearer `ADMIN_TOKEN` | GDPR-зачистка ПДн клиента + замена сообщений в Telegram на `[ДАННЫЕ_КЛИЕНТА_УДАЛЕНЫ_ПО_GDPR]`. |
-| `/api/admin/orders/[id]/refund` | `POST` | Bearer `ADMIN_TOKEN` | Создание и проведение `RefundOperation` без изменения `PaymentEvent`. |
-| `/api/health` | `GET` | Публичный | Healthcheck базы данных (`SELECT 1`). `200 OK`, `503 Service Unavailable`. |
-
-### Матрица профилей внешней интеграции (`ENABLED_EXTERNAL_INTEGRATION`)
-
-| Профиль | Разрешённые токены и переменные | Запрещённые переменные | Поведение при нарушении |
-|---|---|---|---|
-| **`TELEGRAM_BUNDLE`** | `BOT_TOKEN` / `TELEGRAM_BOT_TOKEN`, `STAFF_BOT_TOKEN`, `STAFF_WEBHOOK_SECRET`, `STAFF_CHAT_ID` | `WHATSAPP_*`, `NOWPAYMENTS_*`, любой третий бот-токен | Блокировка запуска (Fail-Closed) |
-| **`WHATSAPP`** | `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET` | `BOT_TOKEN`, `STAFF_BOT_TOKEN`, `NOWPAYMENTS_*` | Блокировка запуска (Fail-Closed) |
-| **`NOWPAYMENTS`** | `NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET` | `BOT_TOKEN`, `STAFF_BOT_TOKEN`, `WHATSAPP_*` | Блокировка запуска (Fail-Closed) |
-| **`NONE`** | Только локальные функции витрины и `PAY_ON_SITE` | Все внешние API-токены мессенджеров и крипты | Блокировка запуска при наличии ключей |
-
-### Политика конфиденциальности и Data Hygiene (GDPR Art. 6)
-- **Бухгалтерский реестр (`PaymentEvent`)**: неизменяемый журнал платежей хранится в течение установленного законом срока (по умолчанию 5 лет).
-- **30-дневная нуллификация ПДн**: фоновый ночной джоб `nightlyPurge` стирает `customerName`, `customerPhone`, `customerEmail`, `customerNotes` для закрытых и отменённых заказов старше 30 дней.
-- **Редакция сообщений в Telegram**: при закрытии заказа или GDPR-запросе бот заменяет текст карточки в чате мастера на `[ДАННЫЕ_КЛИЕНТА_УДАЛЕНЫ_ПО_GDPR]`.
-- **90-дневное истечение риск-маркеров**: маркеры риска телефона (`phoneRiskExpiresAt`) автоматически сгорают через 90 дней, исключая вечную блокировку нового владельца рециклированного номера.
-
----
-
-## 6. Контроль качества и проверка перед релизом (Quality Gates)
-
-Перед отправкой коммита или передачей релиза клиенту обязателен запуск валидационного контура:
 ```bash
-# 1. Проверка типов TypeScript (без эмиссии артефактов)
-npm run validate
-
-# 2. Запуск полного набора юнит- и интеграционных тестов
-npm test
-
-# 3. Аудит цепочки поставок (проверка на отсутствие несовместимых AGPL/GPL лицензий)
-node -e '
-const fs = require("fs");
-const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf-8"));
-const pkgs = lock.packages || {};
-for (const [name, meta] of Object.entries(pkgs)) {
-  const lic = String(meta.license || "");
-  if (/(^|[^L])GPL-3|AGPL/i.test(lic)) throw new Error(`Copyleft license violation: ${name} (${lic})`);
-}
-console.log("✓ License audit: 0 AGPL/GPL copyleft violations");
-'
+pnpm test:e2e
 ```
+
+or
+
+```bash
+pnpm test
+```
+
+To run both.
+
+## Jobs and Scheduled Publish
+
+We have configured [Scheduled Publish](https://payloadcms.com/docs/versions/drafts#scheduled-publish) which uses the [jobs queue](https://payloadcms.com/docs/jobs-queue/jobs) in order to publish or unpublish your content on a scheduled time. The tasks are run on a cron schedule and can also be run as a separate instance if needed.
+
+> Note: When deployed on Vercel, depending on the plan tier, you may be limited to daily cron only.
+
+## Website
+
+This template includes a beautifully designed, production-ready front-end built with the [Next.js App Router](https://nextjs.org), served right alongside your Payload app in a instance. This makes it so that you can deploy both your backend and website where you need it.
+
+Core features:
+
+- [Next.js App Router](https://nextjs.org)
+- [TypeScript](https://www.typescriptlang.org)
+- [React Hook Form](https://react-hook-form.com)
+- [Payload Admin Bar](https://github.com/payloadcms/payload/tree/3.x/packages/admin-bar)
+- [TailwindCSS styling](https://tailwindcss.com/)
+- [shadcn/ui components](https://ui.shadcn.com/)
+- User Accounts and Authentication
+- Fully featured blog
+- Publication workflow
+- Dark mode
+- Pre-made layout building blocks
+- SEO
+- Search
+- Live preview
+- Stripe payments
+
+### Cache
+
+Although Next.js includes a robust set of caching strategies out of the box, Payload Cloud proxies and caches all files through Cloudflare using the [Official Cloud Plugin](https://www.npmjs.com/package/@payloadcms/payload-cloud). This means that Next.js caching is not needed and is disabled by default. If you are hosting your app outside of Payload Cloud, you can easily reenable the Next.js caching mechanisms by removing the `no-store` directive from all fetch requests in `./src/app/_api` and then removing all instances of `export const dynamic = 'force-dynamic'` from pages files, such as `./src/app/(pages)/[slug]/page.tsx`. For more details, see the official [Next.js Caching Docs](https://nextjs.org/docs/app/building-your-application/caching).
+
+## Development
+
+To spin up this example locally, follow the [Quick Start](#quick-start). Then [Seed](#seed) the database with a few pages, posts, and projects.
+
+### Working with Postgres
+
+Postgres and other SQL-based databases follow a strict schema for managing your data. In comparison to our MongoDB adapter, this means that there's a few extra steps to working with Postgres.
+
+Note that often times when making big schema changes you can run the risk of losing data if you're not manually migrating it.
+
+#### Local development
+
+Ideally we recommend running a local copy of your database so that schema updates are as fast as possible. By default the Postgres adapter has `push: true` for development environments. This will let you add, modify and remove fields and collections without needing to run any data migrations.
+
+If your database is pointed to production you will want to set `push: false` otherwise you will risk losing data or having your migrations out of sync.
+
+#### Migrations
+
+[Migrations](https://payloadcms.com/docs/database/migrations) are essentially SQL code versions that keeps track of your schema. When deploy with Postgres you will need to make sure you create and then run your migrations.
+
+Locally create a migration
+
+```bash
+pnpm payload migrate:create
+```
+
+This creates the migration files you will need to push alongside with your new configuration.
+
+On the server after building and before running `pnpm start` you will want to run your migrations
+
+```bash
+pnpm payload migrate
+```
+
+This command will check for any migrations that have not yet been run and try to run them and it will keep a record of migrations that have been run in the database.
+
+### Docker
+
+Alternatively, you can use [Docker](https://www.docker.com) to spin up this template locally. To do so, follow these steps:
+
+1. Follow [steps 1 and 2 from above](#development), the docker-compose file will automatically use the `.env` file in your project root
+1. Next run `docker-compose up`
+1. Follow [steps 4 and 5 from above](#development) to login and create your first admin user
+
+That's it! The Docker instance will help you get up and running quickly while also standardizing the development environment across your teams.
+
+### Seed
+
+To seed the database with a few pages, products, and orders you can click the 'seed database' link from the admin panel.
+
+The seed script will also create a demo user for demonstration purposes only:
+
+- Demo Customer
+  - Email: `customer@example.com`
+  - Password: `password`
+
+> NOTICE: seeding the database is destructive because it drops your current database to populate a fresh one from the seed template. Only run this command if you are starting a new project or can afford to lose your current data.
+
+## Production
+
+To run Payload in production, you need to build and start the Admin panel. To do so, follow these steps:
+
+1. Invoke the `next build` script by running `pnpm build` or `npm run build` in your project root. This creates a `.next` directory with a production-ready admin bundle.
+1. Finally run `pnpm start` or `npm run start` to run Node in production and serve Payload from the `.build` directory.
+1. When you're ready to go live, see Deployment below for more details.
+
+### Deploying to Vercel
+
+This template can also be deployed to Vercel for free. You can get started by choosing the Vercel DB adapter during the setup of the template or by manually installing and configuring it:
+
+```bash
+pnpm add @payloadcms/db-vercel-postgres
+```
+
+```ts
+// payload.config.ts
+import { vercelPostgresAdapter } from '@payloadcms/db-vercel-postgres'
+
+export default buildConfig({
+  // ...
+  db: vercelPostgresAdapter({
+    pool: {
+      connectionString: process.env.POSTGRES_URL || '',
+    },
+  }),
+  // ...
+```
+
+We also support Vercel's blob storage:
+
+```bash
+pnpm add @payloadcms/storage-vercel-blob
+```
+
+```ts
+// payload.config.ts
+import { vercelBlobStorage } from '@payloadcms/storage-vercel-blob'
+
+export default buildConfig({
+  // ...
+  plugins: [
+    vercelBlobStorage({
+      collections: {
+        [Media.slug]: true,
+      },
+      token: process.env.BLOB_READ_WRITE_TOKEN || '',
+    }),
+  ],
+  // ...
+```
+
+### Self-hosting
+
+Before deploying your app, you need to:
+
+1. Ensure your app builds and serves in production. See [Production](#production) for more details.
+2. You can then deploy Payload as you would any other Node.js or Next.js application either directly on a VPS, DigitalOcean's Apps Platform, via Coolify or more. More guides coming soon.
+
+You can also deploy your app manually, check out the [deployment documentation](https://payloadcms.com/docs/production/deployment) for full details.
+
+## Questions
+
+If you have any issues or questions, reach out to us on [Discord](https://discord.com/invite/payload) or start a [GitHub discussion](https://github.com/payloadcms/payload/discussions).

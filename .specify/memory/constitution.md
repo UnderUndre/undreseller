@@ -177,6 +177,26 @@ Production capacity in productized engineering is strictly constrained by physic
 2. **The Intake Gate (Zero-Start on Unsanitized Input):** The delivery timebox clock (e.g. 14 days) CANNOT start upon financial receipt alone. It is strictly gated by the completion of the formal Intake Checklist (domain parameters, access tokens, entity schemas). An incomplete intake locks the project in `ON_HOLD_PENDING_ASSETS` without burning production capacity.
 3. **Mandatory Productization Extraction (Cycle 6):** Every completed commercial delivery MUST execute a 1-day Knowledge Capture phase before initiating the next major build. Reusable FSM models, API connectors, and diagnostic rules MUST be extracted into internal SpecKit templates or packages (`/learn` and `/improve` loop). Re-inventing solved operational logic in subsequent client engagements is classified as architectural waste.
 
+### XIV. Signal-Based GTM & Reality Over Speculation (NON-NEGOTIABLE)
+
+All client acquisition MUST run on observed market signals (trigger-based outbound), not on ICP demographics or desk research. The GTM loop is: **Signal → Trigger Playbook → Touch → Raw Log → Revision**.
+
+1. **Touch Log is the only Level 1 conversion source.** Every outreach touch is logged in `outreach-touch-log.md` (Date, Company, Trigger, Channel, checkpoints, Reason code). Verdicts on any trigger require a sample of **30–50 touches**; below that, no conclusions are permitted. Aggregates are derived from the log — never maintained as a separate source.
+2. **External benchmarks are priors, never truth.** Industry statistics (reply rates, conversion curves) enter the funnel math tagged `[HEURISTIC]` with an explicit `[UNRELIABLE: LEVEL 3]` vendor-blog claim where applicable. L1 status is reserved exclusively for the touch log and delivered audits.
+3. **Signal ≠ Diagnosis (Trigger Playbook Writing Rules).** First-touch notes present 2–4 competing hypotheses (including Null / Healthy Growth), never asserted causes or magnitude claims. OSINT ceiling: Direction ≤ 60%, Magnitude ≤ 20%.
+4. **No early solution selling.** First contact sells only the willingness to check which scenario applies; the Build/Don't-Build verdict belongs to SpecKit Discovery.
+5. **Tool Ladder gates (no subscriptions ahead of evidence):** Stage 0 = Sales Navigator + flat log; upgrade to Clay at 20–30 logged leads with ≥30% reply on 1–2 triggers; CRM/Apollo automation only after 3–5 paid clients. Any tool purchase is one month with a keep/kill decision based on log deltas.
+6. **Kanban principle for GTM:** the market, not the founder's taste, decides which triggers are gold or garbage. Revision of the trigger pack happens at most monthly, by log data only.
+
+### XV. Two-Layer Client Artifacts (Narrative Layer)
+
+Every client-facing artifact (Discovery memo, proposal, audit) MUST be two-layered. Decision-makers scan before they read; the forensic body is dead weight if the front layer fails.
+
+1. **Front layer (≤250 words, mandatory):** `§0 «Почему вы получили этот аудит»` — produced by `/speckit.narrative`, adversarially reviewed by `/speckit.red-team-narrative` (PASS required before send). Structure: why-this-memo → observed signals (with identifiers) → leading hypothesis marked "preliminary" → competing alternatives (incl. Null) → 5-day verification step → 60-second BLUF block (risk / confidence / data needed / first step / probability that new software is needed).
+2. **Forbidden in the front layer:** asserted diagnoses, magnitude numbers without L1/L2 evidence, internal jargon (TOC, TDABC, Goldratt, Bayes, Level 0–3, Change Capacity), solution selling, hidden uncertainty.
+3. **The block MUST NOT be named "Executive Summary"** — it is skipped by design. Naming canon: "Почему вы получили этот аудит" / "What attracted our attention".
+4. Chain of custody: `Signal → Trigger Playbook → SpecKit Discovery → speckit.narrative → speckit.red-team-narrative → Final Memo`.
+
 ## Technical Constraints
 
 > Moved to [`../../specs/main/requirements.md`](../../specs/main/requirements.md) §2.1 (single source of truth). Constitution governs **principles**; concrete tech-stack constraints live alongside requirements where they belong.
@@ -201,16 +221,21 @@ This file (the constitution) is loaded at the Constitution Check gate of `/speck
 
 ### Quality gates before `done`
 
-- `npm run validate` (tsc --noEmit) — clean.
-- `npm test` — all pass.
-- `npm run build` — produces `dist/`.
-- `npx clai-helpers status --strict` — no drift between `.claude/` source and generated targets.
-- Dependency supply-chain audit: zero High/Critical unmitigated CVEs (`npm audit`) and zero copyleft AGPL-3.0/GPL contamination.
+> App-repo adaptation (undreseller Payload reinit, 2026-11-06): this repo is a
+> Next.js+Payload application, not the clai-helpers CLI — gates below are the
+> pnpm/vitest/playwright equivalents; clai-helpers drift and npm-publish gates
+> do not apply here.
+
+- `pnpm validate` (tsc --noEmit) — clean.
+- `pnpm test:int` (vitest) — all pass; `pnpm test:e2e` (playwright) — green on release gates.
+- `pnpm build` — production Next build clean.
+- `pnpm generate:types` — `src/payload-types.ts` drift-free (hand edits prohibited).
+- Dependency supply-chain audit: zero High/Critical unmitigated CVEs (`pnpm audit`) and zero copyleft AGPL-3.0/GPL contamination.
 - Security & log hygiene: zero unmasked PII, credentials, or session tokens in structured telemetry (PCI DSS Req 10 / ISO 27001).
 
 ### Release gate
 
-`/bump` → confirmation → `npm version` → `git push --follow-tags` → `npm publish` (which triggers `prepublishOnly` = validate + test + build). No manual version edits. No publish from dirty tree.
+N/A for this app repo (no npm publish): releases are docker image builds from tagged commits on the customer VPS (deploy spec 002+). Version bumps follow the pinned-dependency policy (spec 001-reinit NFR-104): template/framework upgrades go through a dedicated feature spec.
 
 ## Governance
 
@@ -220,9 +245,12 @@ This file (the constitution) is loaded at the Constitution Check gate of `/speck
 4. **Complexity must be justified.** Every new agent, transformer, target, or skill adds load to every downstream session. A change that doesn't earn its weight is rejected.
 5. **Anti-sycophancy applies to review of this file too.** If a principle above is wrong for the project, say so and propose an amendment. Don't quietly ignore it.
 
-**Version**: 1.9.0 | **Ratified**: 2026-04-17 | **Last Amended**: 2026-10-26
+**Version**: 1.10.1 | **Ratified**: 2026-04-17 | **Last Amended**: 2026-11-06
 
 ### Changelog
+
+- **1.10.1** (2026-11-06) — App-repo adaptation for the `undreseller` Payload reinit (spec 001-reinit FR-102): Quality gates → pnpm validate / vitest int / playwright e2e / pnpm build / payload-types drift; clai-helpers drift + npm-publish release gates marked N/A for the application repo (docker-image releases via deploy spec 002+). Principles unchanged.
+- **1.10.0** (2026-11-05) — Added Principle **XIV: Signal-Based GTM & Reality Over Speculation (NON-NEGOTIABLE)** (trigger-based outbound only; `outreach-touch-log.md` as sole Level 1 conversion source; 30–50 touch sample before verdicts; external benchmarks as `[HEURISTIC]` priors only; Tool Ladder subscription gates) and Principle **XV: Two-Layer Client Artifacts (Narrative Layer)** (mandatory ≤250-word front layer `§0 «Почему вы получили этот аудит»` + 60-second BLUF; `speckit.narrative` → `speckit.red-team-narrative` chain; "Executive Summary" naming banned). New commands: `speckit.speckit-discovery` (renamed from workaround-audit), `speckit.narrative`, `speckit.red-team-narrative`, `speckit.sales-plan`, `speckit.outreach-sdr`.
 
 - **1.9.0** (2026-10-26) — Added Principle **XIII: Sovereign Capacity & Productization Discipline** (Little's Law, ISO/IEC 29110 VSE basic profile, WIP limit $\le 2$ parallel sprints, 48h Zero-Call Intake Gate, mandatory 24h Productization Extraction loop). Prevents solo-engineer hydraulic overload and asset waste.
 
