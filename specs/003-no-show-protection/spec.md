@@ -2,7 +2,7 @@
 
 **Slug:** `003-no-show-protection`
 **Репозиторий:** `UnderUndre/undreseller` · **База:** 001 (`980bc32`) + 002-booking-domain as-built (`c5f3bf1`)
-**Статус:** **DRAFT — REVISION 1.1 (2026-11-07; clarify: C1 webhook ACK-матрица, FR-308 email-политика, словарь acknowledgement; ревизия по requirements-audit run #1)**
+**Статус:** **DRAFT — REVISION 1.2 (2026-11-08; review fixes: F1–F14 прочистка — устранено противоречие §1.3 vs FR-304 по возвратам, атомарный reschedule без потери слота/депозита, защита HMAC-токенов от почтовых сканеров, Postgres 23505 вместо Prisma P2002, строгий server-side paymentMode, cutoff BVA)**
 **Source of truth по бизнесу:** план v2.5.0 §2.2 (холд/оплата — часть сквозного процесса) · **prior research:** legacy 004 research (deposit-решение владельца FR-407), competitors-research.md
 **Grounding (002 as-built):** FSM PREPAID-трек в kernel (`bookingFsm.ts`), `invariants.ts` в репо, Payload Jobs framework включён (`jobs.tasks: []`), плагин монтирует `/api/payments/stripe/webhooks` (SDK-верификация есть, хендлеров нет), `customerEmail` на Order — nullable
 
@@ -23,7 +23,7 @@ No-Show 10–25% без защит — прямая кассовая дыра IC
 * ❌ **NO SMS-CHANNEL:** email-first; SMS (Twilio/провайдер) — отдельное решение+бюджет (Clarification Q2).
 * ❌ **NO PARTIAL/PERCENT DEPOSITS:** только `none` (default) | `full prepayment` per-service — legacy FR-407 канон владельца; проценты/пакеты — отвергнутый 003.2-хвост.
 * ❌ **NO BOTS:** Telegram — 004.
-* ❌ **NO AUTO-REFUND AUTOMATION:** refund-request черезstaff SLA (канон 24h), ручное разрешение.
+* ❌ **NO UNBOUNDED AUTO-REFUND:** авто-возврат разрешён строго до cutoff через Stripe Refund API (FR-304); после cutoff или при сбоях — только через staff SLA (24h), без самовольных списаний.
 * ❌ **NO CARD-ON-FILE по дефолту:** SetupIntent-режим — Clarification Q3 (рынок Booksy/Square так делает, но это off-session-сложность).
 
 ### 1.4. Бизнес-план hook
@@ -36,13 +36,14 @@ No-Show 10–25% без защит — прямая кассовая дыра IC
 
 ### US1 — Депозит-политика и PREPAID-бронирование (P0 — money path)
 
-Per-service переключатель `paymentMode: NONE | FULL_PREPAYMENT` (default NONE — конверсия-first, канон владельца). FULL_PREPAYMENT: бронь создаёт Stripe PaymentIntent (amountMinor из инварианта-модуля) → клиент платит на hosted-этапе → FSM `AVAILABLE → HELD (TTL 15m) → PAYMENT_PENDING → CONFIRMED`; истечение холда → release (lease sweep); вебхук-подтверждение → fulfillment.
+Per-service переключатель `paymentMode: NONE | FULL_PREPAYMENT` (default NONE — конверсия-first, канон владельца; извлекается строго из сущности `Product` на сервере в `bookingService`, клиентский ввод paymentMode игнорируется). FULL_PREPAYMENT: бронь создаёт Stripe PaymentIntent (amountMinor из инварианта-модуля) → клиент платит на hosted-этапе → FSM `AVAILABLE → HELD (TTL 15m) → PAYMENT_PENDING → CONFIRMED`; истечение холда → release (lease sweep); вебхук-подтверждение → fulfillment.
 
 **Acceptance Scenarios**:
 1. NONE-услуга — путь 002 без изменений (0 регрессий).
 2. FULL_PREPAYMENT: успешная оплата → CONFIRMED (BOOKED); неоплаченный холд через 15 мин → RELEASED + отмена Order.
 3. Поздний вебхук после release + re-book → `PAID_REQUIRES_RESOLUTION` + refund-request (канон FR-432), никогда тихое PAID.
 4. Replay ×100 одного события → один PaymentEvent (идемпотентность `@@unique(provider, providerRef)`).
+5. Попытка клиента передать `paymentMode: NONE` в теле запроса для FULL_PREPAYMENT услуги пресекается серверной проверкой (требуется оплата).
 
 ### US2 — Серверные Stripe webhooks (P0 — закрытие 001-пробела)
 
@@ -60,11 +61,14 @@ Per-service переключатель `paymentMode: NONE | FULL_PREPAYMENT` (de
 
 ### US4 — Самоотмена и перенос клиентом (P0 — crown jewel #3)
 
-HMAC cancel-token (одноразовый, TTL, hash в БД) в письме-подтверждении; отмена до `cancellationCutoffHours` (per-item, default 3h) → RELEASED + возврат по политике (REFUND_REQUESTED, SLA 24h staff); перенос → magic-reschedule link (одноразовый, nonce-hash, bump scheduleVersion) → /book с сохранённой корзиной.
+HMAC cancel-токен и reschedule-токен (одноразовые, TTL, hash в БД) в письме-подтверждении. Ссылки из писем ведут на страницы подтверждения `/booking/cancel` и `/booking/reschedule` (защита от почтовых антивирусов и prefetch-сканеров, сжигающих одноразовые токены на GET-запросах: GET — просмотр/валидация, POST — осознанное подтверждение действия).
+Отмена до `cancellationCutoffHours` (per-item, default 3h; строго exclusive: `now < startTime - cancellationCutoffHours`) → RELEASED + автоматический возврат через Stripe Refund API (Order `refunded`); отмена после cutoff (`now >= ...`) → RELEASED + `refund_requested` со staff SLA 24h (ручное подтверждение staff).
+Перенос (reschedule) → переход на `/book` с предзаполненными параметрами услуги; **атомарный обмен слотами**: старый слот переходит в `RELEASED` строго в момент успешной брони нового слота в рамках одной транзакции (если клиент закрыл вкладку или не выбрал слот — старая бронь сохраняется); для услуг `FULL_PREPAYMENT` существующий `Order` перепривязывается к новому слоту без повторного списания денег.
 
 **Acceptance Scenarios**:
-1. Отмена после cutoff → отказ с политикой (деньги не возвращаются автоматом — staff resolution).
-2. Replay cancel-token → `TOKEN_ALREADY_CONSUMED`; reschedule-токен инвалидируется при новом переносе.
+1. Отмена до cutoff → авто-возврат Stripe Refund API; отмена после cutoff → отказ в авто-возврате, заявка `refund_requested` со staff SLA 24h.
+2. Почтовый сканер (GET) → просмотр страницы отмены без сжигания токена; POST с формы → одноразовое потребление токена. Повторный POST (replay) → `TOKEN_ALREADY_CONSUMED`.
+3. Перенос брони клиентом → старый слот освобождается атомарно только при успешном выборе нового; закрытие вкладки не уничтожает исходную запись; для PREPAID повторная оплата не взимается.
 
 ### US5 — Планировщик (P0 — решение D из 002 переносится сюда)
 
@@ -78,24 +82,26 @@ HMAC cancel-token (одноразовый, TTL, hash в БД) в письме-п
 
 - **Поздний вебхук** после истечения холда: slot free → re-confirm atomic; slot re-booked → `PAID_REQUIRES_RESOLUTION` + refund-request (легаси FSM-тесты уже это покрывают).
 - **Недоплата/переплата**: инвариант 001 отфильтрует (mismatch → operator-resolution).
-- **Отмена в окне cutoff ±1 минута** (BVA): cutoff по `startTime - cancellationCutoffHours`, граница — inclusive/exclusive зафиксировать в плане.
+- **Отмена в окне cutoff ±1 минута** (BVA): cutoff по `startTime - cancellationCutoffHours`, граница строго **exclusive**: `now < (startTime - cancellationCutoffHours)` — авто-возврат Stripe; `now >= ...` — отказ в авто-возврате, заявка staff resolution SLA 24h.
 - **Reminder при отменённой брони**: cancel до reminder → reminder не уходит (cancelOn-матрица).
-- **Stripe retry storm**: dedupe по eventId + P2002 — 200 на дубли; сбой БД → 5xx → ретрай → до-обработка (идемпотентно).
-- **PaymentIntent creation failure** (Stripe 5xx/timeout при старте оплаты): бронь остаётся в HELD, клиенту 502 с каталог-кодом; холд истекает штатным sweep'ом (TTL 15m) → RELEASED.
-- **Resend недоступен**: job ретраится встроенным механизмом Payload Jobs (backoff, ≤5 попыток); после исчерпания — delivery-log с ошибкой, алерт в AuditEvent (повторная отправка не дублируется благодаря CAS `reminderSentAt`).
+- **Stripe retry storm**: dedupe по eventId + Postgres `23505` (уникальный индекс `InboxEvent`) — 200 на дубли; сбой БД → 5xx → ретрай → до-обработка (идемпотентно).
+- **PaymentIntent creation failure** (Stripe 5xx/timeout при старте оплаты): при сбое создания PI транзакция откатывается либо бронь немедленно сбрасывается в RELEASED (не маринуем слот на 15 минут впустую), клиенту возвращается 502 `PAYMENT_INIT_FAILED`.
+- **Email-сканеры и SafeLinks**: автоматические GET-запросы от антивирусов не сжигают токен; токен потребляется строго при POST с формы подтверждения.
+- **Прерывание перебронирования (Reschedule Abort)**: если клиент не завершил выбор нового слота, старая бронь остается нетронутой (атомарный обмен слотами).
+- **Resend недоступен**: job ретраится встроенным механизмом Payload Jobs (backoff, ≤5 попыток); после исчерпания — delivery-log с ошибкой, алерт в AuditEvent (повторная отправка не дублируется благодаря CAS `reminderSentAt`). `RESEND_API_KEY` проверяется лениво при отправке, не ломая сборку и тесты.
 - **Бронь без email**: NONE-бронь без email — без reminders/писем; cancel — on-page ссылкой; FULL_PREPAYMENT без email невозможен (FR-308, 422).
 - **Часовые пояса**: cutoff и reminders в TZ инстанса (канон 002 US3).
 
 ## 4. Requirements
 
 ### Functional Requirements
-- **FR-301 (Deposit policy)**: `paymentMode: NONE | FULL_PREPAYMENT` per-service; NONE — дефолт инстанса.
+- **FR-301 (Deposit policy)**: `paymentMode: NONE | FULL_PREPAYMENT` per-service (извлекается строго из `Product` на сервере; клиентский ввод игнорируется); NONE — дефолт инстанса.
 - **FR-302 (PREPAID FSM)**: `AVAILABLE→HELD→PAYMENT_PENDING→CONFIRMED/UNDERPAID` через доменный сервис; TTL 15m sweep; late-payment → `PAID_REQUIRES_RESOLUTION`.
-- **FR-303 (Stripe webhooks)**: хендлеры в штатном endpoint плагина (проп `webhooks`); inbox-dedupe; ACK-матрица 200/5xx/400; `PaymentEvent` ledger + `invariants.ts` в живом пути; сбой обработки → 5xx → идемпотентный ретрай Stripe.
-- **FR-304 (Refund policy)**: refund-request SLA 24h; отмена до cutoff → авто-возврат Stripe (Refund API); после — staff resolution.
-- **FR-305 (Email reminders)**: Resend-адаптер (HTTP, 0 deps), CAS-отправка, delivery-log (salted hash), confirmation-письмо с cancel/reschedule-токенами; retry-политика недоставки — встроенные ретраи Payload Jobs (экспоненциальный backoff, ≤5 попыток).
-- **FR-306 (Cancel/Reschedule tokens)**: HMAC, одноразовость, nonce-hash, cutoff per-item (default 3h), scheduleVersion bump.
-- **FR-307 (Scheduler)**: единый планировщик sweeps/jobs — решение plan-фазы (Inngest vs Payload Jobs), idempotent + lease-канон.
+- **FR-303 (Stripe webhooks)**: хендлеры в штатном endpoint плагина (проп `webhooks`); inbox-dedupe (Postgres `23505`); ACK-матрица 200/5xx/400; `PaymentEvent` ledger + `invariants.ts` в живом пути; сбой обработки → 5xx → идемпотентный ретрай Stripe.
+- **FR-304 (Refund policy)**: отмена до cutoff (`now < startTime - cancellationCutoffHours`) → авто-возврат Stripe (Refund API); отмена после cutoff → `refund_requested` со staff SLA 24h (ручное подтверждение/отклонение через staff API).
+- **FR-305 (Email reminders)**: Resend-адаптер (HTTP, 0 deps, `RESEND_FROM_EMAIL` адрес), CAS-отправка, delivery-log (salted hash), confirmation-письмо с cancel/reschedule-ссылками; retry-политика недоставки — встроенные ретраи Payload Jobs (экспоненциальный backoff, ≤5 попыток).
+- **FR-306 (Cancel/Reschedule tokens)**: HMAC, одноразовость, nonce-hash, cutoff per-item (default 3h, exclusive BVA), scheduleVersion bump; защита от сканеров (GET просмотр / POST потребление); атомарный обмен слотами при переносе с переносом Order для PREPAID.
+- **FR-307 (Scheduler)**: единый планировщик sweeps/jobs на базе Payload Jobs с обязательной конфигурацией `autoRun` и `schedule` в `payload.config.ts`, idempotent + lease-канон.
 - **FR-308 (Email capture policy)**: `customerEmail` **обязателен** при бронировании услуги `FULL_PREPAYMENT` (422 без него); для `NONE` — опционален; reminders/cancel-reschedule-письма — только броням с email; email-less брони самообслуживаются on-page cancel-ссылкой (002-канон), reschedule им недоступен (повторное бронирование вручную).
 
 ### Non-Functional Requirements
@@ -120,6 +126,6 @@ HMAC cancel-token (одноразовый, TTL, hash в БД) в письме-п
 | Q1: Депозит-модель | `NONE` (default) \| `FULL_PREPAYMENT`; card-on-file (SetupIntent) — опция Q3 | Legacy FR-407 канон: конверсия-first, без процентных депозитов |
 | Q2: SMS-канал | **Нет в 003** (email-first); SMS — отдельное решение с бюджетом | Провайдер+стоимость; email уже в каноне |
 | Q3: Card-on-file | Открыт (рынок Booksy/Square так делает; off-session-сложность) | Решается на plan с оценкой |
-| Q4: Планировщик | Inngest vs Payload Jobs — план-фаза, бенч ≤500 MB | Наследует Q3 из 002 |
+| Q4: Планировщик | **Payload Jobs** (решено rev 1.2, research D1: `autoRun` + `schedule`); Inngest отвергнут — 0 deps | NFR-302 + white-label автономность; бенч ≤500 MB — NFR-304 evidence |
 | Q5: Underpaid-ветка | Канон легаси (UNDERPAID + staff alert) без авто-подтверждения | Money-path fail-closed |
 | Q6: Email-политика | Email обязателен для FULL_PREPAYMENT; опционален для NONE; reminders только при email | Аудит run#1 B1: 002 собирает имя/телефон, email nullable; канон 007 fail-closed для money-писем |

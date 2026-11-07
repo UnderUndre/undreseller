@@ -54,11 +54,11 @@
 
 ## US4: Токены (FR-306)
 
-### TC-003-015: token-матрица valid/expired/replayed (TOKEN_ALREADY_CONSUMED ×100)/after-cutoff (CUTOFF_PASSED)
-- **Priority**: P0 · **BVA**
+### TC-003-015: token-матрица valid/expired/replayed (TOKEN_ALREADY_CONSUMED ×100)/after-cutoff (CUTOFF_PASSED); GET-запрос сканера не сжигает токен, POST потребляет
+- **Priority**: P0 · **BVA + Security**
 
-### TC-003-016: reschedule consume → redirect /book с prefill; старый слот RELEASED; новый интервал валиден
-- **Priority**: P1
+### TC-003-016: reschedule атомарный обмен — старый слот RELEASED строго при фиксации нового слота; закрытие вкладки сохраняет старый слот; для PREPAID существующий Order переносится на новый слот без повторного списания
+- **Priority**: P0 · **STM + DT**
 
 ## US5: Планировщик (FR-307)
 

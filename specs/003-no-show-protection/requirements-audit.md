@@ -82,3 +82,26 @@ low_count: 0
 ```
 
 Business plan: unchanged (дельта платёжных рельс уже в v2.5.0; waiver VII-B.5 приложен — `business-plan-waiver.md`).
+
+---
+
+## Re-Audit Addendum (run #3, spec rev 1.2) — 2026-11-08
+
+**Основание**: внешний ревью-раунд F1–F14 → spec rev 1.2. Изменения FR-301/303/304/305/306/307 — **ужесточение** формулировок (server-side paymentMode, exclusive cutoff, ACK-код 23505, autoRun-инвариант, GET/POST-токены, атомарный reschedule) без добавления/удаления требований. Нумерация FR-301..308 стабильна, RTM-покрытие не изменилось (12/12, 21 TC).
+
+- Гейт 1 (Verifiability): 0 нарушений — все ужесточения квантуемы (exclusive-граница, кроны `*/1` и `*/5`, POST-only consume).
+- Гейт 2 (Conflicts): противоречие §1.3 vs FR-304 (ревью F2) устранено — «NO UNBOUNDED AUTO-REFUND» согласован с US4 AC1; новых конфликтов нет.
+- Гейт 3 (Completeness): добавлены Edge Cases (email-сканеры, reschedule-abort, PI-failure → немедленный RELEASED) — полнота повышена.
+- Гейт 4 (Unambiguity): «сохранённая корзина» → «предзаполненные параметры услуги».
+
+```yaml
+verdict: PASS
+audit: requirements-audit
+run: 3
+audited_at: 2026-11-08T00:58:00Z
+spec_revision: 1.2
+critical_count: 0
+high_count: 0
+medium_count: 0
+low_count: 0
+```

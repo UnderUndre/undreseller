@@ -49,3 +49,36 @@ low_count: 3
 ```
 
 Гейт VI: до implement — ≥2 внешних ревью PASS (или logged override).
+
+---
+
+## Run #2 (post-review, spec rev 1.2) — 2026-11-08
+
+**Вход**: внешний antigravity-ревью (14 находок F1–F14, все RESOLVED) + zcode re-check (6 находок R1–R6).
+
+| ID | Severity | Summary | Resolution |
+| --- | --- | --- | --- |
+| R1 | MEDIUM | tasks.md: дубли секций Dependency Graph/Lanes/Notes (артефакт чужой правки) | Второй блок удалён, хвост един |
+| R2 | LOW | plan.md «Next»: «11 задач, 4 lane'а» vs фактические 8/5 | Исправлено |
+| R3 | LOW | research D5: два staff-роута (approve + reject) vs единый `route.ts` в plan/tasks | D5 гармонизирован: единый POST с `action: approve\|reject` |
+| R4 | LOW | spec §6 Q4: «Inngest vs Payload Jobs — план-фаза» при уже решённом FR-307 | Q4 закрыт: Payload Jobs (rev 1.2, D1) |
+| R5 | LOW | RTM: tier FR-306 без STM+DT (TC-003-016 стал P0 STM+DT) | Обновлено: BVA+STM+DT |
+| R6 | LOW | analyze/audit отставали от rev 1.2 | Настоящий addendum + re-audit addendum в requirements-audit.md |
+
+**Проверка резолюций F1–F14**: подтверждены по диффам всех артефактов (autoRun+schedule, refund-политика §1.3/US4/FR-304, регистрация коллекций в config, GET/POST-разделение токенов, атомарный reschedule + перенос Order, крон-свип reminders, server-side paymentMode + US1 AC5, 23505, generate:types, RESEND_FROM_EMAIL, lazy key check, staff refunds route, exclusive cutoff, «предзаполненные параметры»).
+
+Coverage пересчитан: 12/12, 21 TC, граф задач валиден.
+
+```yaml
+verdict: PASS
+reviewer: analyze
+run: 2
+reviewed_at: 2026-11-08T00:55:00Z
+spec_revision: 1.2
+critical_count: 0
+high_count: 0
+medium_count: 1
+low_count: 5
+```
+
+Гейт VI: antigravity PASS (round #2) — есть 1 внешний PASS; до implement нужна ещё ≥1 внешний PASS (codex/gemini/copilot) или logged override.
