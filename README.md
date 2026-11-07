@@ -27,7 +27,6 @@ A transferable white-label engine for service businesses: service catalog → sl
 | 005-google-calendar-sync | drafted | OAuth vault, push decision table, syncToken import, reconcile |
 | 006+ | backlog | Multi-service cart, Stars/NOWPayments, waitlist, PII hygiene |
 
-Full legacy port map: [`specs/001-reinit-from-payload-ecommerce-template/legacy-port-map.md`](specs/001-reinit-from-payload-ecommerce-template/legacy-port-map.md)
 
 ---
 

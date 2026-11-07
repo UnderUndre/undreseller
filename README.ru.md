@@ -26,8 +26,6 @@
 | 005-google-calendar-sync | drafted | OAuth vault, push decision table, syncToken import, reconcile |
 | 006+ | backlog | Мульти-сервисная корзина, Stars/NOWPayments, waitlist, PII-гигиена |
 
-Полная карта переноса легаси: [`specs/001-reinit-from-payload-ecommerce-template/legacy-port-map.md`](specs/001-reinit-from-payload-ecommerce-template/legacy-port-map.md)
-
 ---
 
 ## Быстрый старт
