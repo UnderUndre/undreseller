@@ -1,386 +1,114 @@
-# Payload Ecommerce Template
+# 🛍️ undreseller — Booking & Commerce Engine on Payload
 
-This template is in **BETA**.
+> "Без бумажки — ты какашка, а без воспроизводимого ранбука — твой релиз просто русская рулетка." — Валера
+> "Fail-closed — это не паранойя, это гигиена." — Валера
 
-This is the official [Payload Ecommerce Template](https://github.com/payloadcms/payload/blob/3.x/templates/ecommerce). This repo includes a fully-working backend, enterprise-grade admin panel, and a beautifully designed, production-ready ecommerce website.
+**Repository**: `UnderUndre/undreseller`
+**Foundation**: официальный [Payload Ecommerce Template](https://github.com/payloadcms/payload/blob/3.x/templates/ecommerce) (payload 3.93.0 / Next 16.4.1 / React 19 / PostgreSQL 16) — pinned
+**Lineage**: ребейз 2026-11-06; легаси-линия 001–007 (Next 15 + Prisma) сохранена read-only в `../undreseller-legacy`
+**Бизнес-план**: `undreplans/docs/projects/undreseller/undreseller-business-plan.md` v2.5.0 (Track 1 Mono-Engine, ICP: сервисный бизнес 3–25 сотрудников)
+**Compliance**: ISO/IEC/IEEE 29148:2018 · ISO/IEC/IEEE 12207:2017 · NIST SP 800-218 SSDF
 
-This template is right for you if you are working on building an ecommerce project or shop with Payload.
+---
 
-Core features:
+## Что это
 
-- [Pre-configured Payload Config](#how-it-works)
-- [Authentication](#users-authentication)
-- [Access Control](#access-control)
-- [Layout Builder](#layout-builder)
-- [Draft Preview](#draft-preview)
-- [Live Preview](#live-preview)
-- [On-demand Revalidation](#on-demand-revalidation)
-- [SEO](#seo)
-- [Search & Filters](#search)
-- [Jobs and Scheduled Publishing](#jobs-and-scheduled-publish)
-- [Website](#website)
-- [Products & Variants](#products-and-variants)
-- [User accounts](#user-accounts)
-- [Carts](#carts)
-- [Guest checkout](#guests)
-- [Orders & Transactions](#orders-and-transactions)
-- [Stripe Payments](#stripe)
-- [Currencies](#currencies)
-- [Automated Tests](#tests)
+Отчуждаемый white-label движок для сервисного бизнеса: витрина услуг → слоты → бронь → холд/оплата → уведомления. Решает проблему No-Show (10–25% без защит; депозиты режут на 55–65%). Scope Knife: ровно 3 staff-роли (`OWNER` / `OPERATOR` / `PERFORMER` + `customer`), 1 сквозной процесс, ≤1 внешняя бизнес-интеграция (Google Calendar, 005+).
 
-## Quick Start
+### Дорожная карта
 
-To spin up this example locally, follow these steps:
+| Спека | Статус | Содержание |
+| :--- | :--- | :--- |
+| **001-reinit** | ✅ implemented (`c5f3bf1` lineage) | Payload-фундамент, роли, SpecKit-говернанс, FSM-kernel, payments invariants |
+| **002-booking-domain** | ✅ implemented (override-gate) | Слоты/availability, бронирование, GiST+advisory двойная броня, OPERATOR approvals, /book витрина, rate limit |
+| 003-no-show-protection | drafted | Депозиты (Stripe), email-reminders, самоотмена/перенос, планировщик |
+| 004-telegram-bots | drafted | Dual bots, durable outbox, CAS-действия, GDPR-редакция |
+| 005-google-calendar-sync | drafted | OAuth vault, push decision table, syncToken import, reconcile |
+| 006+ | backlog | Мульти-сервисная корзина, Stars/NOWPayments, waitlist, PII-гигиена |
 
-### Clone
+Полная карта переноса легаси: [`specs/001-reinit-from-payload-ecommerce-template/legacy-port-map.md`](specs/001-reinit-from-payload-ecommerce-template/legacy-port-map.md)
 
-If you have not done so already, you need to have standalone copy of this repo on your machine. If you've already cloned this repo, skip to [Development](#development).
+---
 
-Use the `create-payload-app` CLI to clone this template directly to your machine:
+## Быстрый старт
 
 ```bash
-pnpx create-payload-app my-project -t ecommerce
+pnpm ii            # install (--ignore-workspace убран; настройки в pnpm-workspace.yaml)
+docker compose up -d                     # Postgres 16 (undreseller_db :5432)
+docker exec undreseller_db psql -U postgres -c   "CREATE DATABASE undreseller_test"     # однократно, для int-тестов
+pnpm dev           # dev-сервер (push-схема; первый вход /admin → создать OWNER)
 ```
 
-### Development
-
-1. First [clone the repo](#clone) if you have not done so already
-1. `cd my-project && cp .env.example .env` to copy the example environment variables
-1. `pnpm install && pnpm dev` to install dependencies and start the dev server
-1. open `http://localhost:3000` to open the app in your browser
-
-That's it! Changes made in `./src` will be reflected in your app. Follow the on-screen instructions to login and create your first admin user. Then check out [Production](#production) once you're ready to build and serve your app, and [Deployment](#deployment) when you're ready to go live.
-
-## How it works
-
-The Payload config is tailored specifically to the needs of most websites. It is pre-configured in the following ways:
-
-### Collections
-
-See the [Collections](https://payloadcms.com/docs/configuration/collections) docs for details on how to extend this functionality.
-
-- #### Users (Authentication)
-
-  Users are auth-enabled collections that have access to the admin panel and unpublished content. See [Access Control](#access-control) for more details.
-
-  For additional help, see the official [Auth Example](https://github.com/payloadcms/payload/tree/3.x/examples/auth) or the [Authentication](https://payloadcms.com/docs/authentication/overview#authentication-overview) docs.
-
-- #### Pages
-
-  All pages are layout builder enabled so you can generate unique layouts for each page using layout-building blocks, see [Layout Builder](#layout-builder) for more details. Pages are also draft-enabled so you can preview them before publishing them to your website, see [Draft Preview](#draft-preview) for more details.
-
-- #### Media
-
-  This is the uploads enabled collection used by pages, posts, and projects to contain media like images, videos, downloads, and other assets. It features pre-configured sizes, focal point and manual resizing to help you manage your pictures.
-
-- #### Categories
-
-  A taxonomy used to group products together.
-
-- ### Carts
-
-  Used to track user and guest carts within Payload. Added by the [ecommerce plugin](https://payloadcms.com/docs/ecommerce/plugin#carts).
-
-- ### Addresses
-
-  Saves user's addresses for easier checkout. Added by the [ecommerce plugin](https://payloadcms.com/docs/ecommerce/plugin#addresses).
-
-- ### Orders
-
-  Tracks orders once a transaction successfully completes. Added by the [ecommerce plugin](https://payloadcms.com/docs/ecommerce/plugin#orders).
-
-- ### Transactions
-
-  Tracks transactions from initiation to completion, once completed they will have a related Order item. Added by the [ecommerce plugin](https://payloadcms.com/docs/ecommerce/plugin#transactions).
-
-- ### Products and Variants
-
-  Primary collections for product details such as pricing per currency and optionally supports variants per product. Added by the [ecommerce plugin](https://payloadcms.com/docs/ecommerce/plugin#products).
-
-### Globals
-
-See the [Globals](https://payloadcms.com/docs/configuration/globals) docs for details on how to extend this functionality.
-
-- `Header`
-
-  The data required by the header on your front-end like nav links.
-
-- `Footer`
-
-  Same as above but for the footer of your site.
-
-## Access control
-
-Basic access control is setup to limit access to various content based based on publishing status.
-
-- `users`: Users with the `admin` role can access the admin panel and create or edit content, users with the `customer` role can only access the frontend and the relevant collection items to themselves.
-- `pages`: Everyone can access published pages, but only admin users can create, update, or delete them.
-- `products` `variants`: Everyone can access published products, but only admin users can create, update, or delete them.
-- `carts`: Customers can access their own saved cart, guest users can access any unclaimed cart by ID.
-- `addresses`: Customers can access their own addresses for record keeping.
-- `transactions`: Only admins can access these as they're meant for internal tracking.
-- `orders`: Only admins and users who own the orders can access these. Guests require a valid `accessToken` (sent via email) along with the order's email to view order details.
-
-For more details on how to extend this functionality, see the [Payload Access Control](https://payloadcms.com/docs/access-control/overview#access-control) docs.
-
-## User accounts
-
-Registered users can log in to view their order history, manage saved addresses, and track ongoing orders directly from their account dashboard.
-
-## Guests
-
-Guest checkout allows users to complete purchases without creating an account. When a guest places an order:
-
-1. The order is associated with their email address
-2. A unique `accessToken` is generated for secure order lookup
-3. An order confirmation email is sent containing a secure link to view the order
-
-To look up an order as a guest, users visit `/find-order`, enter their email and order ID, and receive an email with a secure access link. This prevents order enumeration attacks where malicious users could iterate through sequential order IDs to access other customers' order information.
-
-## Layout Builder
-
-Create unique page layouts for any type of content using a powerful layout builder. This template comes pre-configured with the following layout building blocks:
-
-- Hero
-- Content
-- Media
-- Call To Action
-- Archive
-
-Each block is fully designed and built into the front-end website that comes with this template. See [Website](#website) for more details.
-
-## Lexical editor
-
-A deep editorial experience that allows complete freedom to focus just on writing content without breaking out of the flow with support for Payload blocks, media, links and other features provided out of the box. See [Lexical](https://payloadcms.com/docs/rich-text/overview) docs.
-
-## Draft Preview
-
-All products and pages are draft-enabled so you can preview them before publishing them to your website. To do this, these collections use [Versions](https://payloadcms.com/docs/configuration/collections#versions) with `drafts` set to `true`. This means that when you create a new product or page, it will be saved as a draft and will not be visible on your website until you publish it. This also means that you can preview your draft before publishing it to your website. To do this, we automatically format a custom URL which redirects to your front-end to securely fetch the draft version of your content.
-
-Since the front-end of this template is statically generated, this also means that pages, products, and projects will need to be regenerated as changes are made to published documents. To do this, we use an `afterChange` hook to regenerate the front-end when a document has changed and its `_status` is `published`.
-
-For more details on how to extend this functionality, see the official [Draft Preview Example](https://github.com/payloadcms/payload/tree/3.x/examples/draft-preview).
-
-## Live preview
-
-In addition to draft previews you can also enable live preview to view your end resulting page as you're editing content with full support for SSR rendering. See [Live preview docs](https://payloadcms.com/docs/live-preview/overview) for more details.
-
-## On-demand Revalidation
-
-We've added hooks to collections and globals so that all of your pages, products, footer, or header changes will automatically be updated in the frontend via on-demand revalidation supported by Nextjs.
-
-> Note: if an image has been changed, for example it's been cropped, you will need to republish the page it's used on in order to be able to revalidate the Nextjs image cache.
-
-## SEO
-
-This template comes pre-configured with the official [Payload SEO Plugin](https://payloadcms.com/docs/plugins/seo) for complete SEO control from the admin panel. All SEO data is fully integrated into the front-end website that comes with this template. See [Website](#website) for more details.
-
-## Search
-
-This template comes with SSR search features can easily be implemented into Next.js with Payload. See [Website](#website) for more details.
-
-## Orders and Transactions
-
-Transactions are intended for keeping a record of any payment made, as such it will contain information regarding an order or billing address used or the payment method used and amount. Only admins can access transactions.
-
-An order is created only once a transaction is successfully completed. This is a record that the user who completed the transaction has access so they can keep track of their history.
-
-### Guest Order Access
-
-Guest users can securely access their orders through the `/find-order` page:
-
-1. Guest enters their email address and order ID
-2. If the order exists and matches the email, an access link is sent to their email
-3. The link contains a secure `accessToken` that grants temporary access to view the order
-
-This email verification flow prevents unauthorized access to order details. The `accessToken` is a unique UUID generated when the order is created and is required (along with the email) to view order details as a guest.
-
-**Security note:** Order confirmation emails should include the order ID so guests can use the "Find Order" feature. The access token is only sent via the verification email to prevent enumeration attacks.
-
-## Currencies
-
-By default the template ships with support only for USD however you can change the supported currencies via the [plugin configuration](https://payloadcms.com/docs/ecommerce/plugin#currencies). You will need to ensure that the supported currencies in Payload are also configured in your Payment platforms.
-
-## Stripe
-
-By default we ship with the Stripe adapter configured, so you'll need to setup the `secretKey`, `publishableKey` and `webhookSecret` from your Stripe dashboard. Follow [Stripe's guide](https://docs.stripe.com/get-started/api-request?locale=en-GB) on how to set this up.
-
-## Tests
-
-We provide automated tests out of the box for both E2E and Int tests along with this template. They are being run in our CI to ensure the stability of this template over time. You can integrate them into your CI or run them locally as well via:
-
-To run Int tests with Vitest:
-
-```bash
-pnpm test:int
+> ⚠️ Первый пользователь инстанса: до 002-bootstrap OWNER создаётся через admin UI **до открытия публичного ingress** (runbook: `specs/main/architecture.md` §4.1).
+
+### Команды
+
+| Команда | Что делает |
+| :--- | :--- |
+| `pnpm validate` | tsc --noEmit |
+| `pnpm lint` | eslint (flat config) |
+| `pnpm build` | production Next build |
+| `pnpm test:int` | vitest — интеграционные сьюты (изолированная `undreseller_test` через `test.env`) |
+| `pnpm test:e2e` | playwright (нужны Stripe test keys + `pnpm stripe-webhooks`) |
+| `pnpm generate:types` | регенерация `src/payload-types.ts` (ручные правки запрещены) |
+| `pnpm audit` | supply-chain gate (0 High/Critical) |
+
+### Роли и доступ
+
+| Роль | Payload /admin | Возможности |
+| :--- | :--- | :--- |
+| `OWNER` | ✅ полный | всё, включая роли и настройки |
+| `OPERATOR` | ❌ | диспетчеризация броней (app-API, 002: approvals) |
+| `PERFORMER` | ❌ | персональное расписание (003+) |
+| `customer` | ❌ | покупка/бронирование, свои заказы |
+
+---
+
+## Архитектура (кратко)
+
+```text
+[Браузер/TMA] ──► Next.js 16 (App Router)
+                    ├── (app)    витрина: /shop /book /checkout /orders
+                    └── (payload) админка (OWNER-only)
+                          │
+                          ▼
+                 Payload 3.93 (REST/GraphQL/Local API)
+                    ├── Products(+variants) · Carts · Orders · Transactions
+                    ├── SlotReservations (fail-closed, FSM-статусы)
+                    ├── Users (roles OWNER/OPERATOR/PERFORMER/customer)
+                    ├── AuditEvents (append-only)
+                    └── @payloadcms/db-postgres ──► PostgreSQL 16
+                          │  GiST EXCLUDE + advisory locks (double-booking)
+                          ▼
+                 Stripe PaymentIntent (checkout; адаптеры Stars/NOWPayments — 006+)
 ```
 
-To run E2Es with Playwright:
+- **Booking FSM** — pure-ядро `src/lib/kernel/bookingFsm.ts` (6 состояний, two-track FREE/PREPAID, hold TTL 15m, confirming-freeze 24h); IO-слой — `src/lib/booking/bookingService.ts` (единственный писатель статусов, xact advisory lock).
+- **Availability** — pure `src/lib/availability/computeSlots.ts` + DB-resolver; публичный `GET /api/availability`.
+- **Fail-closed** повсюду: секреты, доступы, коллекции default-deny.
 
-```bash
-pnpm test:e2e
-```
+---
 
-or
+## Тесты
 
-```bash
-pnpm test
-```
+**10 сьютов / 108+ тестов** (vitest, изолированная тест-БД — никогда не трогает dev):
 
-To run both.
+bootstrap-token · gist-race (100 конкурентных вставок → 1/99×23P01) · availability BVA · booking-service (FSM/idempotency/cancel/approvals) · rate-limit · error-shapes · access-roles · payment-invariants · FSM legacy-parity (42 сценария) · api smoke.
 
-## Jobs and Scheduled Publish
+ Регрессионное эталон легаси: 58 сьютов / 436 тестов — источник тест-дизайна.
 
-We have configured [Scheduled Publish](https://payloadcms.com/docs/versions/drafts#scheduled-publish) which uses the [jobs queue](https://payloadcms.com/docs/jobs-queue/jobs) in order to publish or unpublish your content on a scheduled time. The tasks are run on a cron schedule and can also be run as a separate instance if needed.
+---
 
-> Note: When deployed on Vercel, depending on the plan tier, you may be limited to daily cron only.
+## Документация (Diátaxis hub: [`specs/main/README.md`](specs/main/README.md))
 
-## Website
+- **Architecture (as-built)**: [`specs/main/architecture.md`](specs/main/architecture.md)
+- **Requirements map**: [`specs/main/requirements.md`](specs/main/requirements.md)
+- **Активная спека**: [`specs/002-booking-domain/`](specs/002-booking-domain/spec.md) (rev 1.2, antigravity PASS)
+- **Спеки 003–005 (drafts)**: no-show-protection · telegram-bots · google-calendar-sync
+- **SpecKit pipeline**: `/speckit.specify → .requirements-audit → .plan → .tasks → .test-design → .analyze → .review (×2) → .implement → .qa-signoff` — конституция [`.specify/memory/constitution.md`](.specify/memory/constitution.md) v1.10.1
 
-This template includes a beautifully designed, production-ready front-end built with the [Next.js App Router](https://nextjs.org), served right alongside your Payload app in a instance. This makes it so that you can deploy both your backend and website where you need it.
+## Инфраструктура
 
-Core features:
-
-- [Next.js App Router](https://nextjs.org)
-- [TypeScript](https://www.typescriptlang.org)
-- [React Hook Form](https://react-hook-form.com)
-- [Payload Admin Bar](https://github.com/payloadcms/payload/tree/3.x/packages/admin-bar)
-- [TailwindCSS styling](https://tailwindcss.com/)
-- [shadcn/ui components](https://ui.shadcn.com/)
-- User Accounts and Authentication
-- Fully featured blog
-- Publication workflow
-- Dark mode
-- Pre-made layout building blocks
-- SEO
-- Search
-- Live preview
-- Stripe payments
-
-### Cache
-
-Although Next.js includes a robust set of caching strategies out of the box, Payload Cloud proxies and caches all files through Cloudflare using the [Official Cloud Plugin](https://www.npmjs.com/package/@payloadcms/payload-cloud). This means that Next.js caching is not needed and is disabled by default. If you are hosting your app outside of Payload Cloud, you can easily reenable the Next.js caching mechanisms by removing the `no-store` directive from all fetch requests in `./src/app/_api` and then removing all instances of `export const dynamic = 'force-dynamic'` from pages files, such as `./src/app/(pages)/[slug]/page.tsx`. For more details, see the official [Next.js Caching Docs](https://nextjs.org/docs/app/building-your-application/caching).
-
-## Development
-
-To spin up this example locally, follow the [Quick Start](#quick-start). Then [Seed](#seed) the database with a few pages, posts, and projects.
-
-### Working with Postgres
-
-Postgres and other SQL-based databases follow a strict schema for managing your data. In comparison to our MongoDB adapter, this means that there's a few extra steps to working with Postgres.
-
-Note that often times when making big schema changes you can run the risk of losing data if you're not manually migrating it.
-
-#### Local development
-
-Ideally we recommend running a local copy of your database so that schema updates are as fast as possible. By default the Postgres adapter has `push: true` for development environments. This will let you add, modify and remove fields and collections without needing to run any data migrations.
-
-If your database is pointed to production you will want to set `push: false` otherwise you will risk losing data or having your migrations out of sync.
-
-#### Migrations
-
-[Migrations](https://payloadcms.com/docs/database/migrations) are essentially SQL code versions that keeps track of your schema. When deploy with Postgres you will need to make sure you create and then run your migrations.
-
-Locally create a migration
-
-```bash
-pnpm payload migrate:create
-```
-
-This creates the migration files you will need to push alongside with your new configuration.
-
-On the server after building and before running `pnpm start` you will want to run your migrations
-
-```bash
-pnpm payload migrate
-```
-
-This command will check for any migrations that have not yet been run and try to run them and it will keep a record of migrations that have been run in the database.
-
-### Docker
-
-Alternatively, you can use [Docker](https://www.docker.com) to spin up this template locally. To do so, follow these steps:
-
-1. Follow [steps 1 and 2 from above](#development), the docker-compose file will automatically use the `.env` file in your project root
-1. Next run `docker-compose up`
-1. Follow [steps 4 and 5 from above](#development) to login and create your first admin user
-
-That's it! The Docker instance will help you get up and running quickly while also standardizing the development environment across your teams.
-
-### Seed
-
-To seed the database with a few pages, products, and orders you can click the 'seed database' link from the admin panel.
-
-The seed script will also create a demo user for demonstration purposes only:
-
-- Demo Customer
-  - Email: `customer@example.com`
-  - Password: `password`
-
-> NOTICE: seeding the database is destructive because it drops your current database to populate a fresh one from the seed template. Only run this command if you are starting a new project or can afford to lose your current data.
-
-## Production
-
-To run Payload in production, you need to build and start the Admin panel. To do so, follow these steps:
-
-1. Invoke the `next build` script by running `pnpm build` or `npm run build` in your project root. This creates a `.next` directory with a production-ready admin bundle.
-1. Finally run `pnpm start` or `npm run start` to run Node in production and serve Payload from the `.build` directory.
-1. When you're ready to go live, see Deployment below for more details.
-
-### Deploying to Vercel
-
-This template can also be deployed to Vercel for free. You can get started by choosing the Vercel DB adapter during the setup of the template or by manually installing and configuring it:
-
-```bash
-pnpm add @payloadcms/db-vercel-postgres
-```
-
-```ts
-// payload.config.ts
-import { vercelPostgresAdapter } from '@payloadcms/db-vercel-postgres'
-
-export default buildConfig({
-  // ...
-  db: vercelPostgresAdapter({
-    pool: {
-      connectionString: process.env.POSTGRES_URL || '',
-    },
-  }),
-  // ...
-```
-
-We also support Vercel's blob storage:
-
-```bash
-pnpm add @payloadcms/storage-vercel-blob
-```
-
-```ts
-// payload.config.ts
-import { vercelBlobStorage } from '@payloadcms/storage-vercel-blob'
-
-export default buildConfig({
-  // ...
-  plugins: [
-    vercelBlobStorage({
-      collections: {
-        [Media.slug]: true,
-      },
-      token: process.env.BLOB_READ_WRITE_TOKEN || '',
-    }),
-  ],
-  // ...
-```
-
-### Self-hosting
-
-Before deploying your app, you need to:
-
-1. Ensure your app builds and serves in production. See [Production](#production) for more details.
-2. You can then deploy Payload as you would any other Node.js or Next.js application either directly on a VPS, DigitalOcean's Apps Platform, via Coolify or more. More guides coming soon.
-
-You can also deploy your app manually, check out the [deployment documentation](https://payloadcms.com/docs/production/deployment) for full details.
-
-## Questions
-
-If you have any issues or questions, reach out to us on [Discord](https://discord.com/invite/payload) or start a [GitHub discussion](https://github.com/payloadcms/payload/discussions).
+- Docker: `docker-compose.yml` — Postgres 16 (Memory Fencing 4096/2048M); app-сервис ≤500 MB — спека 002+ (deploy)
+- Миграции: `payload migrate` (prod); dev — push. Defense-DDL (GiST/EXCLUDE) — `src/migrations/`
+- Variables: см. `.env.example` (`PAYLOAD_SECRET` обязателен — fail-throw на буте)
