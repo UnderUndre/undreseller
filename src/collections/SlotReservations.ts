@@ -164,6 +164,25 @@ export const SlotReservations: CollectionConfig = {
         description: 'sha256 of the one-time customer cancel token — never exposed',
       },
     },
+    {
+      name: 'rescheduleTokenHash',
+      type: 'text',
+      admin: {
+        position: 'sidebar',
+        readOnly: true,
+        condition: () => false,
+        description: 'HMAC digest of the one-time reschedule nonce (spec 003 FR-306); consumed on use',
+      },
+    },
+    {
+      name: 'reminderSentAt',
+      type: 'date',
+      admin: {
+        position: 'sidebar',
+        readOnly: true,
+        description: 'CAS claim of the reminder sweep (spec 003 US3) — exactly-once send',
+      },
+    },
   ],
   timestamps: true,
 }

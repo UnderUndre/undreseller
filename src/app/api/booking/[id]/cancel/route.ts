@@ -5,8 +5,34 @@ import configPromise from '@payload-config'
 
 import { BookingError, cancelBooking } from '@/lib/booking/bookingService'
 import { checkRateLimit, clientIpFrom } from '@/lib/security/rateLimiter'
+import { verifyCancelToken } from '@/lib/booking/cancelValidation'
 
-/** Customer cancel by one-time cancelToken (spec 002-booking-domain US5 AC5, FR-206). */
+/** Scanner-safe view (spec 003 US4, review F4): GET validates the token and
+ * reports the cancellation window WITHOUT consuming it — email prefetch
+ * scanners (SafeLinks etc.) can never destroy a one-time token. */
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> },
+): Promise<NextResponse> {
+  const { id } = await context.params
+  const token = req.nextUrl.searchParams.get('token') ?? ''
+  if (!token) {
+    return NextResponse.json({ error: 'cancelToken required' }, { status: 400 })
+  }
+  const payload = await getPayload({ config: configPromise })
+  const view = await verifyCancelToken(payload, id, token)
+  if (!view) return NextResponse.json({ error: 'BOOKING_NOT_FOUND' }, { status: 404 })
+  if (!view.valid) return NextResponse.json({ error: 'INVALID_TOKEN' }, { status: 403 })
+  return NextResponse.json({
+    valid: true,
+    status: view.status,
+    startTime: view.startTime,
+    cutoffPassed: view.cutoffPassed,
+    paymentMode: view.paymentMode,
+  })
+}
+
+/** Customer cancel by one-time cancelToken (spec 002 US5 AC5 + 003 FR-304). */
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ id: string }> },
@@ -36,7 +62,11 @@ export async function POST(
 
   try {
     const result = await cancelBooking(payload, id, cancelToken)
-    return NextResponse.json({ status: result.status, scheduleVersion: result.scheduleVersion })
+    return NextResponse.json({
+      status: result.status,
+      scheduleVersion: result.scheduleVersion,
+      refund: result.refund ?? 'not-applicable',
+    })
   } catch (err: unknown) {
     if (err instanceof BookingError) {
       return NextResponse.json({ error: err.code, message: err.message }, { status: err.status })

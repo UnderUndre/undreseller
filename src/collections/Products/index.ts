@@ -216,6 +216,32 @@ export const ProductsCollection: CollectionOverride = ({ defaultCollection }) =>
                 description: 'Allows OUT_CALL bookings that require OPERATOR approval (FSM PENDING_APPROVAL)',
               },
             },
+            {
+              name: 'paymentMode',
+              type: 'select',
+              defaultValue: 'NONE',
+              options: [
+                { label: 'No prepayment (pay on site)', value: 'NONE' },
+                { label: 'Full prepayment (Stripe)', value: 'FULL_PREPAYMENT' },
+              ],
+              admin: {
+                condition: ({ bookable }) => bookable === true,
+                description:
+                  'Deposit policy (spec 003 FR-301). Read strictly server-side in bookingService — client input is never accepted.',
+              },
+            },
+            {
+              name: 'cancellationCutoffHours',
+              type: 'number',
+              defaultValue: 3,
+              min: 0,
+              max: 168,
+              admin: {
+                condition: ({ bookable }) => bookable === true,
+                description:
+                  'Free-cancellation boundary in hours before start; strictly exclusive: now < start - cutoff auto-refunds (spec 003 FR-304)',
+              },
+            },
           ],
         },
         {

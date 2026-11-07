@@ -34,6 +34,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     typeof body.idempotencyKey === 'string' && body.idempotencyKey
       ? body.idempotencyKey
       : undefined
+  // Spec 003 FR-301 (review F7): a client-supplied paymentMode is ignored by
+  // design — the mode is read strictly from the Product server-side. The field
+  // is intentionally NOT destructured here.
 
   if (!productId || !start || !customerName || !customerPhone) {
     return NextResponse.json(
@@ -63,8 +66,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         orderId: result.orderId,
         accessToken: result.accessToken,
         cancelToken: result.cancelToken,
+        rescheduleToken: result.rescheduleToken,
         status: result.status,
         scheduleVersion: result.scheduleVersion,
+        payment: {
+          mode: result.paymentMode,
+          paymentIntentId: result.paymentIntentId ?? null,
+          clientSecret: result.clientSecret ?? null,
+        },
       },
       { status: 201 },
     )

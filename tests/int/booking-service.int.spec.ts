@@ -1,6 +1,8 @@
 import { getPayload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
+import { resetBookingTables } from './helpers/reset003'
+
 import configPromise from '@payload-config'
 
 import {
@@ -15,10 +17,18 @@ const payload = await getPayload({ config: configPromise })
 let productId = ''
 let resourceId = ''
 
+// Re-run safety: the isolated test DB is not truncated between runs, so a
+// random sub-hour offset keeps repeated runs out of each other's buckets.
+// Fixed hour buckets (canon): tstzrange default bounds are '[)', so adjacent
+// 1h buckets with 60-min services never overlap. No jitter — random offsets
+// make neighbouring buckets collide ~50% of the time.
 const futureStart = (hoursAhead = 48): string =>
   new Date(Date.now() + hoursAhead * 60 * 60 * 1000).toISOString()
 
 beforeAll(async () => {
+  // Re-run safety: clear leftovers from previous runs (this is the first
+  // DB-booking file alphabetically; later 003 files reset for themselves).
+  await resetBookingTables(payload)
   const resource = await payload.create({
     collection: 'resources',
     data: { name: 'Booking Test Master', active: true },
@@ -181,9 +191,11 @@ describe('cancelBooking — FSM customer cancel (TC-002-014 cancel, US5 AC5)', (
     const res = await cancelBooking(payload, String(created.reservationId), created.cancelToken)
     expect(res.status).toBe('cancelled')
 
-    // Replay: idempotent
-    const replay = await cancelBooking(payload, String(created.reservationId), created.cancelToken)
-    expect(replay.status).toBe('already_cancelled')
+    // Replay (spec 003 US4 AC2, rev 1.2): a one-time token is consumed — the
+    // replayed POST is rejected rather than silently ACKed (provenance: 003 FR-306).
+    await expect(
+      cancelBooking(payload, String(created.reservationId), created.cancelToken),
+    ).rejects.toMatchObject({ code: 'TOKEN_ALREADY_CONSUMED' })
   })
 
   it('invalid token → 403 INVALID_TOKEN', async () => {

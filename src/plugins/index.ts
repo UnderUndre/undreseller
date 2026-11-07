@@ -7,6 +7,8 @@ import { ecommercePlugin } from '@payloadcms/plugin-ecommerce'
 
 import { stripeAdapter } from '@payloadcms/plugin-ecommerce/payments/stripe'
 
+import { stripeWebhookHandlers } from '@/lib/payments/webhookHandlers'
+
 import { Page, Product } from '@/payload-types'
 import { getServerSideURL } from '@/utilities/getURL'
 import { ProductsCollection } from '@/collections/Products'
@@ -91,7 +93,24 @@ export const plugins: Plugin[] = [
       ordersCollectionOverride: ({ defaultCollection }) => ({
         ...defaultCollection,
         fields: [
-          ...defaultCollection.fields,
+          ...defaultCollection.fields.map((field) => {
+            // 003 money-path statuses (FR-302/304): late-payment resolution and
+            // the refund tail states join the template's status select.
+            if ('name' in field && field.name === 'status') {
+              const statusField = field as (typeof field) & { options: Array<{ value: string; label: string }> }
+              return {
+                ...statusField,
+                options: [
+                  ...statusField.options,
+                  { label: 'Paid — requires resolution (FR-432)', value: 'paid_requires_resolution' },
+                  { label: 'Refund requested (24h SLA)', value: 'refund_requested' },
+                  { label: 'Refund failed (staff alert)', value: 'refund_failed' },
+                  { label: 'Refund rejected', value: 'refund_rejected' },
+                ],
+              }
+            }
+            return field
+          }),
           {
             name: 'accessToken',
             type: 'text',
@@ -112,6 +131,19 @@ export const plugins: Plugin[] = [
               ],
             },
           },
+          {
+            // 003 money-path (research D4): the plugin does NOT persist the
+            // adapter's stripe group into the orders schema, so the booking
+            // domain stores the PaymentIntent reference explicitly.
+            name: 'stripePaymentIntentRef',
+            type: 'text',
+            index: true,
+            admin: {
+              position: 'sidebar',
+              readOnly: true,
+              description: 'Stripe PaymentIntent id for PREPAID bookings (spec 003 FR-302)',
+            },
+          },
         ],
       }),
     },
@@ -121,6 +153,9 @@ export const plugins: Plugin[] = [
           secretKey: process.env.STRIPE_SECRET_KEY!,
           publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
           webhookSecret: process.env.STRIPE_WEBHOOKS_SIGNING_SECRET!,
+          // 003 US2 (research D2): handlers ride the plugin's verified webhook
+          // endpoint — SDK constructEvent (400 on tamper) comes from the plugin.
+          webhooks: stripeWebhookHandlers,
         }),
       ],
     },

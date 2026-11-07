@@ -17,8 +17,11 @@ import { fileURLToPath } from 'url'
 import { AvailabilityExceptions } from '@/collections/AvailabilityExceptions'
 import { AuditEvents } from '@/collections/AuditEvents'
 import { Categories } from '@/collections/Categories'
+import { EmailDeliveryLog } from '@/collections/EmailDeliveryLog'
+import { InboxEvent } from '@/collections/InboxEvent'
 import { Media } from '@/collections/Media'
 import { Pages } from '@/collections/Pages'
+import { PaymentEvents } from '@/collections/PaymentEvents'
 import { Resources } from '@/collections/Resources'
 import { SlotReservations } from '@/collections/SlotReservations'
 import { Users } from '@/collections/Users'
@@ -26,6 +29,8 @@ import { WeeklyHours } from '@/collections/WeeklyHours'
 import { Footer } from '@/globals/Footer'
 import { Header } from '@/globals/Header'
 import { ShopSettings } from '@/globals/ShopSettings'
+import { bookingEmailTask, reminderSweepTask } from '@/jobs/bookingEmail'
+import { holdSweepTask } from '@/jobs/holdSweep'
 import { plugins } from './plugins'
 
 const filename = fileURLToPath(import.meta.url)
@@ -43,7 +48,21 @@ export default buildConfig({
     },
     user: Users.slug,
   },
-  collections: [Users, Pages, Categories, Media, SlotReservations, Resources, WeeklyHours, AvailabilityExceptions, AuditEvents],
+  collections: [
+    Users,
+    Pages,
+    Categories,
+    Media,
+    SlotReservations,
+    Resources,
+    WeeklyHours,
+    AvailabilityExceptions,
+    AuditEvents,
+    // 003 money-path contours (review F3: explicit registration)
+    InboxEvent,
+    PaymentEvents,
+    EmailDeliveryLog,
+  ],
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL || '',
@@ -87,10 +106,11 @@ export default buildConfig({
   //email: nodemailerAdapter(),
   endpoints: [],
   globals: [Header, Footer, ShopSettings],
-  // Payload Jobs framework (spec 002 research D1): task definitions arrive in
-  // 003-no-show-protection (hold sweep, reminders) — framework enabled here.
+  // Payload Jobs (spec 003 research D1, review F1): task declaration alone is
+  // NOT enough — the background worker only starts with jobs.autoRun registered.
   jobs: {
-    tasks: [],
+    tasks: [holdSweepTask, bookingEmailTask, reminderSweepTask],
+    autoRun: [{ cron: '* * * * *', queue: 'default' }],
   },
   plugins,
   // Fail-closed canon (code-review F-03): an empty/missing signing secret must

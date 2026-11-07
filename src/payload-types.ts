@@ -10,7 +10,18 @@
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "OrderStatus".
  */
-export type OrderStatus = ('processing' | 'completed' | 'cancelled' | 'refunded') | null;
+export type OrderStatus =
+  | (
+      | 'processing'
+      | 'completed'
+      | 'cancelled'
+      | 'refunded'
+      | 'paid_requires_resolution'
+      | 'refund_requested'
+      | 'refund_failed'
+      | 'refund_rejected'
+    )
+  | null;
 /**
  * Supported timezones in IANA format.
  *
@@ -81,6 +92,9 @@ export interface Config {
     'weekly-hours': WeeklyHour;
     'availability-exceptions': AvailabilityException;
     'audit-events': AuditEvent;
+    'inbox-events': InboxEvent;
+    'payment-events': PaymentEvent;
+    'email-delivery-log': EmailDeliveryLog;
     forms: Form;
     'form-submissions': FormSubmission;
     addresses: Address;
@@ -92,6 +106,7 @@ export interface Config {
     orders: Order;
     transactions: Transaction;
     'payload-kv': PayloadKv;
+    'payload-jobs': PayloadJob;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
     'payload-migrations': PayloadMigration;
@@ -119,6 +134,9 @@ export interface Config {
     'weekly-hours': WeeklyHoursSelect<false> | WeeklyHoursSelect<true>;
     'availability-exceptions': AvailabilityExceptionsSelect<false> | AvailabilityExceptionsSelect<true>;
     'audit-events': AuditEventsSelect<false> | AuditEventsSelect<true>;
+    'inbox-events': InboxEventsSelect<false> | InboxEventsSelect<true>;
+    'payment-events': PaymentEventsSelect<false> | PaymentEventsSelect<true>;
+    'email-delivery-log': EmailDeliveryLogSelect<false> | EmailDeliveryLogSelect<true>;
     forms: FormsSelect<false> | FormsSelect<true>;
     'form-submissions': FormSubmissionsSelect<false> | FormSubmissionsSelect<true>;
     addresses: AddressesSelect<false> | AddressesSelect<true>;
@@ -130,6 +148,7 @@ export interface Config {
     orders: OrdersSelect<false> | OrdersSelect<true>;
     transactions: TransactionsSelect<false> | TransactionsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
+    'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
     'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
@@ -142,11 +161,13 @@ export interface Config {
     header: Header;
     footer: Footer;
     'shop-settings': ShopSetting;
+    'payload-jobs-stats': PayloadJobsStat;
   };
   globalsSelect: {
     header: HeaderSelect<false> | HeaderSelect<true>;
     footer: FooterSelect<false> | FooterSelect<true>;
     'shop-settings': ShopSettingsSelect<false> | ShopSettingsSelect<true>;
+    'payload-jobs-stats': PayloadJobsStatsSelect<false> | PayloadJobsStatsSelect<true>;
   };
   locale: null;
   widgets: {
@@ -154,7 +175,15 @@ export interface Config {
   };
   user: User;
   jobs: {
-    tasks: unknown;
+    tasks: {
+      'hold-sweep': TaskHoldSweep;
+      'booking-email': TaskBookingEmail;
+      'reminder-sweep': TaskReminderSweep;
+      inline: {
+        input: unknown;
+        output: unknown;
+      };
+    };
     workflows: unknown;
   };
   /**
@@ -269,6 +298,10 @@ export interface Order {
   amount?: number | null;
   currency?: 'USD' | null;
   accessToken?: string | null;
+  /**
+   * Stripe PaymentIntent id for PREPAID bookings (spec 003 FR-302)
+   */
+  stripePaymentIntentRef?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -327,6 +360,14 @@ export interface Product {
    * Allows OUT_CALL bookings that require OPERATOR approval (FSM PENDING_APPROVAL)
    */
   outCallEnabled?: boolean | null;
+  /**
+   * Deposit policy (spec 003 FR-301). Read strictly server-side in bookingService — client input is never accepted.
+   */
+  paymentMode?: ('NONE' | 'FULL_PREPAYMENT') | null;
+  /**
+   * Free-cancellation boundary in hours before start; strictly exclusive: now < start - cutoff auto-refunds (spec 003 FR-304)
+   */
+  cancellationCutoffHours?: number | null;
   meta?: {
     title?: string | null;
     /**
@@ -1089,6 +1130,14 @@ export interface SlotReservation {
    * sha256 of the one-time customer cancel token — never exposed
    */
   cancelTokenHash?: string | null;
+  /**
+   * HMAC digest of the one-time reschedule nonce (spec 003 FR-306); consumed on use
+   */
+  rescheduleTokenHash?: string | null;
+  /**
+   * CAS claim of the reminder sweep (spec 003 US3) — exactly-once send
+   */
+  reminderSentAt?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -1167,6 +1216,58 @@ export interface AuditEvent {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inbox-events".
+ */
+export interface InboxEvent {
+  id: number;
+  provider: string;
+  providerRef: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payment-events".
+ */
+export interface PaymentEvent {
+  id: number;
+  provider: string;
+  providerRef: string;
+  eventType: string;
+  amountMinor?: number | null;
+  currency?: string | null;
+  status: string;
+  payloadJson?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "email-delivery-log".
+ */
+export interface EmailDeliveryLog {
+  id: number;
+  kind: 'confirmation' | 'reminder';
+  status: 'sent' | 'failed';
+  bookingId?: number | null;
+  recipientHash: string;
+  /**
+   * Sanitized error class — no PII, no provider secrets
+   */
+  errorDetail?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "form-submissions".
  */
 export interface FormSubmission {
@@ -1198,6 +1299,107 @@ export interface PayloadKv {
     | number
     | boolean
     | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-jobs".
+ */
+export interface PayloadJob {
+  id: number;
+  /**
+   * Input data provided to the job
+   */
+  input?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  taskStatus?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  completedAt?: string | null;
+  totalTried?: number | null;
+  /**
+   * If hasError is true this job will not be retried
+   */
+  hasError?: boolean | null;
+  /**
+   * If hasError is true, this is the error that caused it
+   */
+  error?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * Task execution log
+   */
+  log?:
+    | {
+        executedAt: string;
+        completedAt: string;
+        taskSlug: 'inline' | 'hold-sweep' | 'booking-email' | 'reminder-sweep';
+        taskID: string;
+        input?:
+          | {
+              [k: string]: unknown;
+            }
+          | unknown[]
+          | string
+          | number
+          | boolean
+          | null;
+        output?:
+          | {
+              [k: string]: unknown;
+            }
+          | unknown[]
+          | string
+          | number
+          | boolean
+          | null;
+        state: 'failed' | 'succeeded';
+        error?:
+          | {
+              [k: string]: unknown;
+            }
+          | unknown[]
+          | string
+          | number
+          | boolean
+          | null;
+        id?: string | null;
+      }[]
+    | null;
+  taskSlug?: ('inline' | 'hold-sweep' | 'booking-email' | 'reminder-sweep') | null;
+  queue?: string | null;
+  waitUntil?: string | null;
+  processing?: boolean | null;
+  meta?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -1241,6 +1443,18 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'audit-events';
         value: number | AuditEvent;
+      } | null)
+    | ({
+        relationTo: 'inbox-events';
+        value: number | InboxEvent;
+      } | null)
+    | ({
+        relationTo: 'payment-events';
+        value: number | PaymentEvent;
+      } | null)
+    | ({
+        relationTo: 'email-delivery-log';
+        value: number | EmailDeliveryLog;
       } | null)
     | ({
         relationTo: 'forms';
@@ -1575,6 +1789,8 @@ export interface SlotReservationsSelect<T extends boolean = true> {
   customerPhone?: T;
   idempotencyKey?: T;
   cancelTokenHash?: T;
+  rescheduleTokenHash?: T;
+  reminderSentAt?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1621,6 +1837,44 @@ export interface AuditEventsSelect<T extends boolean = true> {
   aggregateType?: T;
   aggregateId?: T;
   metadataJson?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "inbox-events_select".
+ */
+export interface InboxEventsSelect<T extends boolean = true> {
+  provider?: T;
+  providerRef?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payment-events_select".
+ */
+export interface PaymentEventsSelect<T extends boolean = true> {
+  provider?: T;
+  providerRef?: T;
+  eventType?: T;
+  amountMinor?: T;
+  currency?: T;
+  status?: T;
+  payloadJson?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "email-delivery-log_select".
+ */
+export interface EmailDeliveryLogSelect<T extends boolean = true> {
+  kind?: T;
+  status?: T;
+  bookingId?: T;
+  recipientHash?: T;
+  errorDetail?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1867,6 +2121,8 @@ export interface ProductsSelect<T extends boolean = true> {
   bufferBeforeMin?: T;
   bufferAfterMin?: T;
   outCallEnabled?: T;
+  paymentMode?: T;
+  cancellationCutoffHours?: T;
   meta?:
     | T
     | {
@@ -1939,6 +2195,7 @@ export interface OrdersSelect<T extends boolean = true> {
   amount?: T;
   currency?: T;
   accessToken?: T;
+  stripePaymentIntentRef?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1994,6 +2251,38 @@ export interface TransactionsSelect<T extends boolean = true> {
 export interface PayloadKvSelect<T extends boolean = true> {
   key?: T;
   data?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-jobs_select".
+ */
+export interface PayloadJobsSelect<T extends boolean = true> {
+  input?: T;
+  taskStatus?: T;
+  completedAt?: T;
+  totalTried?: T;
+  hasError?: T;
+  error?: T;
+  log?:
+    | T
+    | {
+        executedAt?: T;
+        completedAt?: T;
+        taskSlug?: T;
+        taskID?: T;
+        input?: T;
+        output?: T;
+        state?: T;
+        error?: T;
+        id?: T;
+      };
+  taskSlug?: T;
+  queue?: T;
+  waitUntil?: T;
+  processing?: T;
+  meta?: T;
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -2089,6 +2378,32 @@ export interface ShopSetting {
    * Slot grid step in minutes
    */
   quantumMin?: number | null;
+  /**
+   * Sender address for booking emails (fallback for RESEND_FROM_EMAIL, spec 003 FR-305)
+   */
+  fromEmail?: string | null;
+  /**
+   * Hours before start to send the reminder email (spec 003 US3, default 24h)
+   */
+  confirmationNoticeHours?: number | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-jobs-stats".
+ */
+export interface PayloadJobsStat {
+  id: number;
+  stats?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   updatedAt?: string | null;
   createdAt?: string | null;
 }
@@ -2145,6 +2460,18 @@ export interface FooterSelect<T extends boolean = true> {
 export interface ShopSettingsSelect<T extends boolean = true> {
   timeZone?: T;
   quantumMin?: T;
+  fromEmail?: T;
+  confirmationNoticeHours?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-jobs-stats_select".
+ */
+export interface PayloadJobsStatsSelect<T extends boolean = true> {
+  stats?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;
@@ -2158,6 +2485,30 @@ export interface CollectionsWidget {
     [k: string]: unknown;
   };
   width: 'full';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskHold-sweep".
+ */
+export interface TaskHoldSweep {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskBooking-email".
+ */
+export interface TaskBookingEmail {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskReminder-sweep".
+ */
+export interface TaskReminderSweep {
+  input?: unknown;
+  output?: unknown;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
