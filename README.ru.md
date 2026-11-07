@@ -1,7 +1,7 @@
 # 🛍️ undreseller — Booking & Commerce Engine on Payload
 
-> "Без бумажки — ты какашка, а без воспроизводимого ранбука — твой релиз просто русская рулетка." — Валера
-> "Fail-closed — это не паранойя, это гигиена." — Валера
+> "Без бумажки ты какашка." — Народная мудрость (2ch Folk)
+> "Деплой в пятницу — как русская рулетка, только барабан полный." — DevOps & Deploy
 
 **Repository**: `UnderUndre/undreseller`
 **Foundation**: официальный [Payload Ecommerce Template](https://github.com/payloadcms/payload/blob/3.x/templates/ecommerce) (payload 3.93.0 / Next 16.4.1 / React 19 / PostgreSQL 16) — pinned

@@ -1,7 +1,7 @@
 # 🛍️ undreseller — Booking & Commerce Engine on Payload
 
-> "Without paperwork you're nothing, and without a reproducible runbook your release is just Russian roulette." — Valera
-> "Fail-closed isn't paranoia, it's hygiene." — Valera
+> "Всегда пиши код так, будто сопровождать его будет психопат, который знает, где ты живёшь." — Code Review Roasts
+> "Деплой в пятницу — как русская рулетка, только барабан полный." — DevOps & Deploy
 
 **Repository**: `UnderUndre/undreseller`
 **Foundation**: the official [Payload Ecommerce Template](https://github.com/payloadcms/payload/blob/3.x/templates/ecommerce) (payload 3.93.0 / Next 16.4.1 / React 19 / PostgreSQL 16) — pinned
