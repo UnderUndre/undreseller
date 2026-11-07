@@ -80,7 +80,7 @@ export const ProductsCollection: CollectionOverride = ({ defaultCollection }) =>
             {
               name: 'gallery',
               type: 'array',
-              minRows: 1,
+              minRows: 0, // bookable services need no imagery (spec 002-booking-domain)
               fields: [
                 {
                   name: 'image',
@@ -167,6 +167,56 @@ export const ProductsCollection: CollectionOverride = ({ defaultCollection }) =>
             },
           ],
           label: 'Product Details',
+        },
+        {
+          label: 'Booking',
+          fields: [
+            {
+              name: 'bookable',
+              type: 'checkbox',
+              defaultValue: false,
+              admin: { description: 'Bookable as an appointment service (spec 002-booking-domain)' },
+            },
+            {
+              name: 'durationMin',
+              type: 'number',
+              min: 5,
+              admin: {
+                condition: ({ bookable }) => bookable === true,
+                description: 'Service duration in minutes (required when bookable)',
+              },
+              validate: (value: unknown, options: { data?: Record<string, unknown> | null }) => {
+                if (!options.data?.bookable) return true
+                return (
+                  (typeof value === 'number' && value >= 5) ||
+                  'durationMin >= 5 is required for bookable services'
+                )
+              },
+            },
+            {
+              name: 'bufferBeforeMin',
+              type: 'number',
+              defaultValue: 0,
+              min: 0,
+              admin: { condition: ({ bookable }) => bookable === true },
+            },
+            {
+              name: 'bufferAfterMin',
+              type: 'number',
+              defaultValue: 0,
+              min: 0,
+              admin: { condition: ({ bookable }) => bookable === true },
+            },
+            {
+              name: 'outCallEnabled',
+              type: 'checkbox',
+              defaultValue: false,
+              admin: {
+                condition: ({ bookable }) => bookable === true,
+                description: 'Allows OUT_CALL bookings that require OPERATOR approval (FSM PENDING_APPROVAL)',
+              },
+            },
+          ],
         },
         {
           name: 'meta',

@@ -297,16 +297,23 @@ describe('booking FSM (legacy parity)', () => {
   });
 
   describe('invalid transitions', () => {
-    it('CONFIRMED is terminal: every event is rejected (no double-confirm)', () => {
+    it('CONFIRMED is terminal for payment/staff events (no double-confirm)', () => {
+      // 002-remediation: CUSTOMER_CANCEL from CONFIRMED is now a legal
+      // transition (spec 002-booking-domain US5 AC5 — customer cancel of a
+      // confirmed FREE-track booking releases the slot); see kernel header.
       for (const ev of [
         'CREATE_BOOKING',
         'GATEWAY_FINISHED',
         'STAFF_APPROVE',
         'TTL_EXPIRED',
-        'CUSTOMER_CANCEL',
       ] as const) {
         expect(transitionBookingFsm('CONFIRMED', ev, ctx()).ok).toBe(false);
       }
+    });
+
+    it('CONFIRMED + CUSTOMER_CANCEL → AVAILABLE with release (002-remediation)', () => {
+      const r = transitionBookingFsm('CONFIRMED', 'CUSTOMER_CANCEL', ctx());
+      expect(r).toMatchObject({ ok: true, state: 'AVAILABLE', effects: { release: 'CANCELLED' } });
     });
 
     it('AVAILABLE rejects booking-independent events', () => {

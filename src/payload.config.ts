@@ -14,13 +14,18 @@ import path from 'path'
 import { buildConfig } from 'payload'
 import { fileURLToPath } from 'url'
 
+import { AvailabilityExceptions } from '@/collections/AvailabilityExceptions'
+import { AuditEvents } from '@/collections/AuditEvents'
 import { Categories } from '@/collections/Categories'
 import { Media } from '@/collections/Media'
 import { Pages } from '@/collections/Pages'
+import { Resources } from '@/collections/Resources'
 import { SlotReservations } from '@/collections/SlotReservations'
 import { Users } from '@/collections/Users'
+import { WeeklyHours } from '@/collections/WeeklyHours'
 import { Footer } from '@/globals/Footer'
 import { Header } from '@/globals/Header'
+import { ShopSettings } from '@/globals/ShopSettings'
 import { plugins } from './plugins'
 
 const filename = fileURLToPath(import.meta.url)
@@ -38,7 +43,7 @@ export default buildConfig({
     },
     user: Users.slug,
   },
-  collections: [Users, Pages, Categories, Media, SlotReservations],
+  collections: [Users, Pages, Categories, Media, SlotReservations, Resources, WeeklyHours, AvailabilityExceptions, AuditEvents],
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL || '',
@@ -81,7 +86,12 @@ export default buildConfig({
   }),
   //email: nodemailerAdapter(),
   endpoints: [],
-  globals: [Header, Footer],
+  globals: [Header, Footer, ShopSettings],
+  // Payload Jobs framework (spec 002 research D1): task definitions arrive in
+  // 003-no-show-protection (hold sweep, reminders) — framework enabled here.
+  jobs: {
+    tasks: [],
+  },
   plugins,
   // Fail-closed canon (code-review F-03): an empty/missing signing secret must
   // abort the boot with an explicit diagnostic, never fall back to ''.

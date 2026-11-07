@@ -5,31 +5,31 @@
 
 ## Phase 1: Bootstrap (US1)
 
-- [ ] T010 [BE] [US1] FR-201: `src/access/bootstrapToken.ts` (timing-safe), `Users.create` access-guard (fail-closed: 0 users/no OWNER → token required, иначе 403), hook → token-OWNER + `pg_try_advisory_xact_lock(hashtext('users_bootstrap'))`; тесты: токен-матрица (valid/no-token-403/second/race) — SEC-1=0
+- [X] T010 [BE] [US1] FR-201: `src/access/bootstrapToken.ts` (timing-safe), `Users.create` access-guard (fail-closed: 0 users/no OWNER → token required, иначе 403), hook → token-OWNER + `pg_try_advisory_xact_lock(hashtext('users_bootstrap'))`; тесты: токен-матрица (valid/no-token-403/second/race) — SEC-1=0
 
 ## Phase 2: Migration + catalog (US2/US3)
 
-- [ ] T020 [BE] [US2] FR-202/203: миграция `btree_gist` + partial GiST + B-tree `(resource_id, start_time)` + down; `payload migrate` прогон на `undreseller_test`; гоночный тест: 100 конкурентных booking → 0 double-booking (blocking advisory lock + GiST)
-- [ ] T021 [BE] [US3] FR-204: `Resources` (+seed default_master), `WeeklyHours`, `AvailabilityExceptions`, `ShopSettings` глобал (timeZone), `SlotReservations` поля (`idempotencyKey` unique, `cancelTokenHash`, customer name/phone), Product `bookable/durationMin/buffers`; `generate:types`
+- [X] T020 [BE] [US2] FR-202/203: миграция `btree_gist` + partial GiST + B-tree `(resource_id, start_time)` + down; `payload migrate` прогон на `undreseller_test`; гоночный тест: 100 конкурентных booking → 0 double-booking (blocking advisory lock + GiST)
+- [X] T021 [BE] [US3] FR-204: `Resources` (+seed default_master), `WeeklyHours`, `AvailabilityExceptions`, `ShopSettings` глобал (timeZone), `SlotReservations` поля (`idempotencyKey` unique, `cancelTokenHash`, customer name/phone), Product `bookable/durationMin/buffers`; `generate:types`
 
 ## Phase 3: Availability (US4)
 
-- [ ] T030 [BE] [US4] FR-205: `computeSlots` PURE (квант 30, buffers inside working hours, breaks, exceptions, fixed-offset TZ из ShopSettings) + resolver + `GET /api/availability`; BVA-матрица: buffer-перекрытие, DST, границы дня, 45-мин услуга на 30-сетке
+- [X] T030 [BE] [US4] FR-205: `computeSlots` PURE (квант 30, buffers inside working hours, breaks, exceptions, fixed-offset TZ из ShopSettings) + resolver + `GET /api/availability`; BVA-матрица: buffer-перекрытие, DST, границы дня, 45-мин услуга на 30-сетке
 
 ## Phase 4: Booking domain (US5/US6)
 
-- [ ] T040 [BE] [US5] FR-206: `bookingService` (Local API, blocking advisory lock с таймаутом → re-check → FSM → atomic SlotReservation+Order+AuditEvent, cancel-token hash генерация/валидация, idempotencyKey unique); `POST /api/booking` + `GET /api/booking/[id]` (accessToken) + `POST /api/booking/[id]/cancel` (cancelToken); State Transition тесты FSM FREE-track + cancel + idempotency ×100
-- [ ] T041 [BE] [US6] FR-208: `GET/POST /api/approvals` (OPERATOR+, list PENDING_APPROVAL, approve/reject через FSM CAS); Decision Table: approve/reject × статусы × роли; AuditEvents
-- [ ] T042 [BE] [FR-210] `AuditEvents` коллекция (append-only, PII-redact gate, составной индекс `aggregateType/Id/createdAt`) + события create/cancel/approve/reject/bootstrap
+- [X] T040 [BE] [US5] FR-206: `bookingService` (Local API, blocking advisory lock с таймаутом → re-check → FSM → atomic SlotReservation+Order+AuditEvent, cancel-token hash генерация/валидация, idempotencyKey unique); `POST /api/booking` + `GET /api/booking/[id]` (accessToken) + `POST /api/booking/[id]/cancel` (cancelToken); State Transition тесты FSM FREE-track + cancel + idempotency ×100
+- [X] T041 [BE] [US6] FR-208: `GET/POST /api/approvals` (OPERATOR+, list PENDING_APPROVAL, approve/reject через FSM CAS); Decision Table: approve/reject × статусы × роли; AuditEvents
+- [X] T042 [BE] [FR-210] `AuditEvents` коллекция (append-only, PII-redact gate, составной индекс `aggregateType/Id/createdAt`) + события create/cancel/approve/reject/bootstrap
 
 ## Phase 5: Rate limit + storefront (US8/US7)
 
-- [ ] T050 [BE] [US8] FR-207: bounded rate limiter 10/60s (канон 007 eviction) с доверенным парсингом IP (`x-forwarded-for`), REPLICA_COUNT assertion; BVA-тест 10/11-го запроса
-- [ ] T051 [BE] [US7] FR-209: `/book` + SlotGrid (гонка двух вкладок → 409+refresh) + confirmation-страница (рабочая cancel-ссылка); playwright booking-flow e2e
+- [X] T050 [BE] [US8] FR-207: bounded rate limiter 10/60s (канон 007 eviction) с доверенным парсингом IP (`x-forwarded-for`), REPLICA_COUNT assertion; BVA-тест 10/11-го запроса
+- [X] T051 [BE] [US7] FR-209: `/book` + SlotGrid (гонка двух вкладок → 409+refresh) + confirmation-страница (рабочая cancel-ссылка); playwright booking-flow e2e
 
 ## Phase 6: Closeout
 
-- [ ] T060 [SETUP] Регрессия: полный гейт 0 exit (validate/lint/int/build), evidence (p95 availability замер, гоночный лог), tasks-статусы
+- [X] T060 [SETUP] Регрессия: полный гейт 0 exit (validate/lint/int/build), evidence (p95 availability замер, гоночный лог), tasks-статусы
 
 ## Dependency Graph
 

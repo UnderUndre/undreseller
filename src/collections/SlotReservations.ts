@@ -132,6 +132,38 @@ export const SlotReservations: CollectionConfig = {
       defaultValue: 0,
       min: 0,
     },
+    {
+      name: 'customerName',
+      type: 'text',
+      required: true,
+      maxLength: 200,
+    },
+    {
+      name: 'customerPhone',
+      type: 'text',
+      required: true,
+      maxLength: 50,
+    },
+    {
+      name: 'idempotencyKey',
+      type: 'text',
+      unique: true,
+      admin: {
+        position: 'sidebar',
+        readOnly: true,
+        description: 'Client-supplied idempotency key (spec 002 FR-206); unique per booking',
+      },
+    },
+    {
+      name: 'cancelTokenHash',
+      type: 'text',
+      admin: {
+        position: 'sidebar',
+        readOnly: true,
+        condition: () => false,
+        description: 'sha256 of the one-time customer cancel token — never exposed',
+      },
+    },
   ],
   timestamps: true,
 }

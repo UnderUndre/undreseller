@@ -246,9 +246,13 @@ export function transitionBookingFsm(
       return transitionFromUnderpaid(event);
 
     case 'CONFIRMED':
-      // Terminal for the normal flow. A late gateway FINISHED after the slot
-      // was released is handled from AVAILABLE (the reservation row is gone);
-      // CONFIRMED + any event here is a no-op/reject — no double-confirm.
+      // Terminal for the payment flow: no double-confirm, no gateway events.
+      // 002-remediation (spec 002-booking-domain US5 AC5): a customer may cancel
+      // a confirmed FREE-track booking via the one-time cancel token — the slot
+      // releases; cutoff policy enforcement arrives in 003-no-show-protection.
+      if (event === 'CUSTOMER_CANCEL') {
+        return ok('AVAILABLE', { release: 'CANCELLED' });
+      }
       return reject(`Invalid event '${event}' for terminal state CONFIRMED`);
 
     default: {

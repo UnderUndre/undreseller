@@ -42,6 +42,9 @@ const colorVariantOptions = [
 ]
 
 const globals: GlobalSlug[] = ['header', 'footer']
+// Globals whose data model includes navItems (002 added ShopSettings to the
+// GlobalSlug union, which broke the naive updateGlobal map typing below)
+const navItemGlobals: ('header' | 'footer')[] = ['header', 'footer']
 
 const baseAddressUSData: Transaction['billingAddress'] = {
   title: 'Dr.',
@@ -89,7 +92,7 @@ export const seed = async ({
 
   // clear the database
   await Promise.all(
-    globals.map((global) =>
+    navItemGlobals.map((global) =>
       payload.updateGlobal({
         slug: global,
         data: {

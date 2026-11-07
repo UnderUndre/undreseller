@@ -77,6 +77,10 @@ export interface Config {
     categories: Category;
     media: Media;
     'slot-reservations': SlotReservation;
+    resources: Resource;
+    'weekly-hours': WeeklyHour;
+    'availability-exceptions': AvailabilityException;
+    'audit-events': AuditEvent;
     forms: Form;
     'form-submissions': FormSubmission;
     addresses: Address;
@@ -111,6 +115,10 @@ export interface Config {
     categories: CategoriesSelect<false> | CategoriesSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     'slot-reservations': SlotReservationsSelect<false> | SlotReservationsSelect<true>;
+    resources: ResourcesSelect<false> | ResourcesSelect<true>;
+    'weekly-hours': WeeklyHoursSelect<false> | WeeklyHoursSelect<true>;
+    'availability-exceptions': AvailabilityExceptionsSelect<false> | AvailabilityExceptionsSelect<true>;
+    'audit-events': AuditEventsSelect<false> | AuditEventsSelect<true>;
     forms: FormsSelect<false> | FormsSelect<true>;
     'form-submissions': FormSubmissionsSelect<false> | FormSubmissionsSelect<true>;
     addresses: AddressesSelect<false> | AddressesSelect<true>;
@@ -133,10 +141,12 @@ export interface Config {
   globals: {
     header: Header;
     footer: Footer;
+    'shop-settings': ShopSetting;
   };
   globalsSelect: {
     header: HeaderSelect<false> | HeaderSelect<true>;
     footer: FooterSelect<false> | FooterSelect<true>;
+    'shop-settings': ShopSettingsSelect<false> | ShopSettingsSelect<true>;
   };
   locale: null;
   widgets: {
@@ -303,6 +313,20 @@ export interface Product {
   priceInUSDEnabled?: boolean | null;
   priceInUSD?: number | null;
   relatedProducts?: (number | Product)[] | null;
+  /**
+   * Bookable as an appointment service (spec 002-booking-domain)
+   */
+  bookable?: boolean | null;
+  /**
+   * Service duration in minutes (required when bookable)
+   */
+  durationMin?: number | null;
+  bufferBeforeMin?: number | null;
+  bufferAfterMin?: number | null;
+  /**
+   * Allows OUT_CALL bookings that require OPERATOR approval (FSM PENDING_APPROVAL)
+   */
+  outCallEnabled?: boolean | null;
   meta?: {
     title?: string | null;
     /**
@@ -1055,6 +1079,89 @@ export interface SlotReservation {
   holdFrozenAt?: string | null;
   bufferBeforeMin?: number | null;
   bufferAfterMin?: number | null;
+  customerName: string;
+  customerPhone: string;
+  /**
+   * Client-supplied idempotency key (spec 002 FR-206); unique per booking
+   */
+  idempotencyKey?: string | null;
+  /**
+   * sha256 of the one-time customer cancel token — never exposed
+   */
+  cancelTokenHash?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "resources".
+ */
+export interface Resource {
+  id: number;
+  name: string;
+  active?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "weekly-hours".
+ */
+export interface WeeklyHour {
+  id: number;
+  resourceId: number | Resource;
+  /**
+   * ISO weekday: 1 = Monday … 7 = Sunday
+   */
+  weekday: number;
+  /**
+   * Minutes from midnight in ShopSettings.timeZone
+   */
+  startMin: number;
+  endMin: number;
+  breakStartMin?: number | null;
+  breakEndMin?: number | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "availability-exceptions".
+ */
+export interface AvailabilityException {
+  id: number;
+  resourceId: number | Resource;
+  /**
+   * YYYY-MM-DD in ShopSettings.timeZone
+   */
+  date: string;
+  isClosed?: boolean | null;
+  /**
+   * Partial-day window start (when not fully closed)
+   */
+  startMin?: number | null;
+  endMin?: number | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-events".
+ */
+export interface AuditEvent {
+  id: number;
+  action: string;
+  actorId: string;
+  aggregateType: string;
+  aggregateId: string;
+  /**
+   * PII-redacted context (INV-010 canon)
+   */
+  metadataJson?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -1118,6 +1225,22 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'slot-reservations';
         value: number | SlotReservation;
+      } | null)
+    | ({
+        relationTo: 'resources';
+        value: number | Resource;
+      } | null)
+    | ({
+        relationTo: 'weekly-hours';
+        value: number | WeeklyHour;
+      } | null)
+    | ({
+        relationTo: 'availability-exceptions';
+        value: number | AvailabilityException;
+      } | null)
+    | ({
+        relationTo: 'audit-events';
+        value: number | AuditEvent;
       } | null)
     | ({
         relationTo: 'forms';
@@ -1448,6 +1571,56 @@ export interface SlotReservationsSelect<T extends boolean = true> {
   holdFrozenAt?: T;
   bufferBeforeMin?: T;
   bufferAfterMin?: T;
+  customerName?: T;
+  customerPhone?: T;
+  idempotencyKey?: T;
+  cancelTokenHash?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "resources_select".
+ */
+export interface ResourcesSelect<T extends boolean = true> {
+  name?: T;
+  active?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "weekly-hours_select".
+ */
+export interface WeeklyHoursSelect<T extends boolean = true> {
+  resourceId?: T;
+  weekday?: T;
+  startMin?: T;
+  endMin?: T;
+  breakStartMin?: T;
+  breakEndMin?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "availability-exceptions_select".
+ */
+export interface AvailabilityExceptionsSelect<T extends boolean = true> {
+  resourceId?: T;
+  date?: T;
+  isClosed?: T;
+  startMin?: T;
+  endMin?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-events_select".
+ */
+export interface AuditEventsSelect<T extends boolean = true> {
+  action?: T;
+  actorId?: T;
+  aggregateType?: T;
+  aggregateId?: T;
+  metadataJson?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1689,6 +1862,11 @@ export interface ProductsSelect<T extends boolean = true> {
   priceInUSDEnabled?: T;
   priceInUSD?: T;
   relatedProducts?: T;
+  bookable?: T;
+  durationMin?: T;
+  bufferBeforeMin?: T;
+  bufferAfterMin?: T;
+  outCallEnabled?: T;
   meta?:
     | T
     | {
@@ -1899,6 +2077,23 @@ export interface Footer {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "shop-settings".
+ */
+export interface ShopSetting {
+  id: number;
+  /**
+   * IANA timezone for slot computation (e.g. Asia/Yerevan)
+   */
+  timeZone?: string | null;
+  /**
+   * Slot grid step in minutes
+   */
+  quantumMin?: number | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "header_select".
  */
 export interface HeaderSelect<T extends boolean = true> {
@@ -1939,6 +2134,17 @@ export interface FooterSelect<T extends boolean = true> {
             };
         id?: T;
       };
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "shop-settings_select".
+ */
+export interface ShopSettingsSelect<T extends boolean = true> {
+  timeZone?: T;
+  quantumMin?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;
