@@ -1,9 +1,10 @@
 # 📋 СПЕЦИФИКАЦИЯ (FEATURE SPEC)
 
 **Slug:** `003-no-show-protection`
-**Репозиций:** `UnderUndre/undreseller` · **База:** 001 (`980bc32`) + 002-booking-domain (`2d5bfbe`)
-**Статус:** **DRAFT — REVISION 1.0 (2026-11-07; roadmap reorder по market research 2026-11-07: deposits −55–65% / reminders −29–39% no-show — ядро спроса, рельсы Stripe уже в 001)**
+**Репозиторий:** `UnderUndre/undreseller` · **База:** 001 (`980bc32`) + 002-booking-domain as-built (`c5f3bf1`)
+**Статус:** **DRAFT — REVISION 1.1 (2026-11-07; clarify: C1 webhook ACK-матрица, FR-308 email-политика, словарь acknowledgement; ревизия по requirements-audit run #1)**
 **Source of truth по бизнесу:** план v2.5.0 §2.2 (холд/оплата — часть сквозного процесса) · **prior research:** legacy 004 research (deposit-решение владельца FR-407), competitors-research.md
+**Grounding (002 as-built):** FSM PREPAID-трек в kernel (`bookingFsm.ts`), `invariants.ts` в репо, Payload Jobs framework включён (`jobs.tasks: []`), плагин монтирует `/api/payments/stripe/webhooks` (SDK-верификация есть, хендлеров нет), `customerEmail` на Order — nullable
 
 ---
 
@@ -45,13 +46,13 @@ Per-service переключатель `paymentMode: NONE | FULL_PREPAYMENT` (de
 
 ### US2 — Серверные Stripe webhooks (P0 — закрытие 001-пробела)
 
-`/api/payments/stripe/webhooks` (шаблонный маршрут, хендлеров нет): верификация подписи SDK → inbox-dedupe (`InboxEvent` канон) → `checkout.session.completed` / `payment_intent.*` → fulfillment через `assertProviderAmountMatch` (001 invariants) → FSM-событие. Webhooks отвечают 200 всегда (контракт провайдера), ошибки — ретраи Stripe.
+Хендлеры регистрируются в **штатный** endpoint плагина `/api/payments/stripe/webhooks` (SDK-верификация подписи и 400-on-tamper уже в плагине) через проп `webhooks` адаптера: `checkout.session.completed` / `payment_intent.*` → inbox-dedupe (`InboxEvent` канон: replay/неизвестный тип → 200 no-op) → fulfillment через `assertProviderAmountMatch` (001 invariants) → FSM-событие через доменный сервис. **ACK-матрица**: 200 — дубликат/неизвестный тип/успех; 5xx — сбой обработки (Stripe ретраит по своему расписанию); 400 — tamper (плагин). Никогда не ACK-аем необработанное.
 
-**Acceptance Scenarios**: tampered signature → 400, 0 обработок; duplicate eventId → dedupe no-op; amount mismatch → `AMOUNT_MISMATCH`-ветка (инвариант уже в репо).
+**Acceptance Scenarios**: tampered signature → 400, 0 обработок; duplicate eventId → dedupe no-op 200; amount mismatch → `AMOUNT_MISMATCH`-ветка (инвариант уже в репо); сбой БД при обработке → 5xx → Stripe ретрай → идемпотентная до-обработка.
 
 ### US3 — Email reminders (P0 — −29–39% no-show)
 
-Порт канона Resend-адаптера: reminder-job (за `confirmationNoticeHours` до слота, default 24h) → подтверждение клиентом (кнопка/ссылка — bump scheduleVersion) → delivery-log с salted-hash (PII-канон). CAS `reminderSentAt` — строго одна отправка.
+Порт канона Resend-адаптера: reminder-job (за `confirmationNoticeHours` до слота, default 24h) → клиентский **acknowledgement** (кнопка/ссылка — bump scheduleVersion; не путать с FSM `CONFIRMED`) → delivery-log с salted-hash (PII-канон). CAS `reminderSentAt` — строго одна отправка. Reminders уходят только броням с известным `customerEmail` (политика FR-308).
 
 **Acceptance Scenarios**:
 1. Напоминание уходит ровно один раз (CAS-тест на race двух воркеров).
@@ -79,7 +80,10 @@ HMAC cancel-token (одноразовый, TTL, hash в БД) в письме-п
 - **Недоплата/переплата**: инвариант 001 отфильтрует (mismatch → operator-resolution).
 - **Отмена в окне cutoff ±1 минута** (BVA): cutoff по `startTime - cancellationCutoffHours`, граница — inclusive/exclusive зафиксировать в плане.
 - **Reminder при отменённой брони**: cancel до reminder → reminder не уходит (cancelOn-матрица).
-- **Stripe retry storm**: dedupe по eventId + P2002 — 200 на дубли.
+- **Stripe retry storm**: dedupe по eventId + P2002 — 200 на дубли; сбой БД → 5xx → ретрай → до-обработка (идемпотентно).
+- **PaymentIntent creation failure** (Stripe 5xx/timeout при старте оплаты): бронь остаётся в HELD, клиенту 502 с каталог-кодом; холд истекает штатным sweep'ом (TTL 15m) → RELEASED.
+- **Resend недоступен**: job ретраится встроенным механизмом Payload Jobs (backoff, ≤5 попыток); после исчерпания — delivery-log с ошибкой, алерт в AuditEvent (повторная отправка не дублируется благодаря CAS `reminderSentAt`).
+- **Бронь без email**: NONE-бронь без email — без reminders/писем; cancel — on-page ссылкой; FULL_PREPAYMENT без email невозможен (FR-308, 422).
 - **Часовые пояса**: cutoff и reminders в TZ инстанса (канон 002 US3).
 
 ## 4. Requirements
@@ -87,11 +91,12 @@ HMAC cancel-token (одноразовый, TTL, hash в БД) в письме-п
 ### Functional Requirements
 - **FR-301 (Deposit policy)**: `paymentMode: NONE | FULL_PREPAYMENT` per-service; NONE — дефолт инстанса.
 - **FR-302 (PREPAID FSM)**: `AVAILABLE→HELD→PAYMENT_PENDING→CONFIRMED/UNDERPAID` через доменный сервис; TTL 15m sweep; late-payment → `PAID_REQUIRES_RESOLUTION`.
-- **FR-303 (Stripe webhooks)**: серверные хендлеры с SDK-верификацией, inbox-dedupe, 200-always; `PaymentEvent` ledger + `invariants.ts` в живом пути.
-- **FR-304 (Refund policy)**: refund-request SLA 24h; отмена до cutoff → авто-возврат Stripe; после — staff resolution.
-- **FR-305 (Email reminders)**: Resend-адаптер, CAS-отправка, delivery-log (salted hash), confirmation-письмо с cancel/reschedule-токенами.
+- **FR-303 (Stripe webhooks)**: хендлеры в штатном endpoint плагина (проп `webhooks`); inbox-dedupe; ACK-матрица 200/5xx/400; `PaymentEvent` ledger + `invariants.ts` в живом пути; сбой обработки → 5xx → идемпотентный ретрай Stripe.
+- **FR-304 (Refund policy)**: refund-request SLA 24h; отмена до cutoff → авто-возврат Stripe (Refund API); после — staff resolution.
+- **FR-305 (Email reminders)**: Resend-адаптер (HTTP, 0 deps), CAS-отправка, delivery-log (salted hash), confirmation-письмо с cancel/reschedule-токенами; retry-политика недоставки — встроенные ретраи Payload Jobs (экспоненциальный backoff, ≤5 попыток).
 - **FR-306 (Cancel/Reschedule tokens)**: HMAC, одноразовость, nonce-hash, cutoff per-item (default 3h), scheduleVersion bump.
 - **FR-307 (Scheduler)**: единый планировщик sweeps/jobs — решение plan-фазы (Inngest vs Payload Jobs), idempotent + lease-канон.
+- **FR-308 (Email capture policy)**: `customerEmail` **обязателен** при бронировании услуги `FULL_PREPAYMENT` (422 без него); для `NONE` — опционален; reminders/cancel-reschedule-письма — только броням с email; email-less брони самообслуживаются on-page cancel-ссылкой (002-канон), reschedule им недоступен (повторное бронирование вручную).
 
 ### Non-Functional Requirements
 - **NFR-301 (Regression)**: 72+ теста 001/002 зелёные; новые ≥25 (webhooks ×100 replay, FSM PREPAID-матрица, CAS reminders, token BVA, cutoff BVA).
@@ -106,6 +111,7 @@ HMAC cancel-token (одноразовый, TTL, hash в БД) в письме-п
 - **SC-003**: reminder CAS — 0 двойных отправок на гонке.
 - **SC-004**: cancel/reschedule token-матрица (valid/expired/replayed/after-cutoff) зелёная.
 - **SC-005**: 72+ регрессия зелёная; полный гейт 0 exit.
+- **SC-006**: email-матрица FR-308 (PREPAID без email → 422; NONE без email → booking OK, 0 писем; с email → 1 confirmation + 1 reminder) зелёная.
 
 ## 6. Зафиксированные Решения (Clarifications — дефолты ветируемы)
 
@@ -116,3 +122,4 @@ HMAC cancel-token (одноразовый, TTL, hash в БД) в письме-п
 | Q3: Card-on-file | Открыт (рынок Booksy/Square так делает; off-session-сложность) | Решается на plan с оценкой |
 | Q4: Планировщик | Inngest vs Payload Jobs — план-фаза, бенч ≤500 MB | Наследует Q3 из 002 |
 | Q5: Underpaid-ветка | Канон легаси (UNDERPAID + staff alert) без авто-подтверждения | Money-path fail-closed |
+| Q6: Email-политика | Email обязателен для FULL_PREPAYMENT; опционален для NONE; reminders только при email | Аудит run#1 B1: 002 собирает имя/телефон, email nullable; канон 007 fail-closed для money-писем |
