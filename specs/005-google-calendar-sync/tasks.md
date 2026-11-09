@@ -5,7 +5,7 @@
 
 ## Phase 1: Writer + token (US2)
 
-- [ ] T510 [BE] [US2] FR-502/D1/D3/D4:
+- [x] T510 [BE] [US2] FR-502/D1/D3/D4:
   - `src/lib/calendar/ics.ts` PURE:
     - Заголовок VCALENDAR: `PRODID:-//UnderUndre//undreseller//EN`, `VERSION:2.0`, `CALSCALE:GREGORIAN`, `METHOD:PUBLISH`, `X-WR-CALNAME`, `REFRESH-INTERVAL;VALUE=DURATION:PT15M`;
     - Инвариант окончаний строк: строгий CRLF (`\r\n`);
@@ -17,14 +17,14 @@
     - Фоллбэки для SUMMARY: `serviceName || 'Запись'`, `customerName || 'Клиент'`;
     - Окно: `now − 7 days … now + 90 days`;
   - Тесты: line folding > 75 октетов (включая русскоязычные UTF-8 строки), CRLF-инвариант, escape-матрица, детерминизм тела, пустой фид, отмена → CANCELLED + SEQ 1.
-- [ ] T511 [BE] [US1/FR-504] D2:
+- [x] T511 [BE] [US1/FR-504] D2:
   - `Resources.ts`: добавление поля `feedTokenVersion` (integer, defaultValue: 1, min: 1) с защитой `access: { read: adminOnlyFieldAccess, update: adminOnlyFieldAccess }`;
   - `tokens.ts`: хелпер вычисления HMAC-токена `hashToken('calendar-feed:v' + version + ':' + resourceId)` и timing-safe валидатор;
   - Запуск `pnpm generate:types`.
 
 ## Phase 2: Endpoint + admin (US1/US3)
 
-- [ ] T520 [BE] [US1/FR-501/503] D5:
+- [x] T520 [BE] [US1/FR-501/503] D5:
   - `src/app/api/calendar/feed/[resourceId]/route.ts`:
     - Поддержка методов `GET` и `HEAD`;
     - Rate limiter: ключ `feed:${resourceId}:${ip}`, лимит `30 requests / 60 seconds` (защита от бана краулеров Googlebot/Apple);
@@ -34,7 +34,7 @@
     - Защита PII: тело фида не логируется, токен маскируется в логах, `DESCRIPTION` опущен;
     - Замер производительности: p95 < 50 ms при 200 OK, < 5 ms при 304 Not Modified;
   - Тесты: 403-матрица (невалидный/чужой/устаревший токен), ETag и возврат 304, метод HEAD, PII-grep (0 телефонов/email'ов), create/cancel ≤ 60 c, пустой ресурс → пустой VCALENDAR (200); **окно now−7d…now+90d тестируется с фиксированным `now`** (ревью R5: подвижное окно меняет тело/ETag у граничных броней).
-- [ ] T521 [BE] [US3/FR-504] D6:
+- [x] T521 [BE] [US3/FR-504] D6:
   - `src/app/api/admin/calendar-feed/[resourceId]/route.ts`:
     - `GET`: возвращает `{ url: 'webcal://...' }` (только роль `OWNER`);
     - `POST`: инкрементирует `feedTokenVersion = feedTokenVersion + 1` в транзакции, немедленно инвалидируя старый токен;
@@ -44,7 +44,7 @@
 
 ## Phase 3: Closeout
 
-- [ ] T530 [SETUP] Регрессия: `pnpm generate:types`, полный гейт 0 exit (validate/lint/int/build), 142+ старых тестов зелёные, evidence (p95-замер, ETag/304 лог, escape и line folding лог), tasks-статусы.
+- [x] T530 [SETUP] Регрессия: `pnpm generate:types`, полный гейт 0 exit (validate/lint/int/build), 142+ старых тестов зелёные, evidence (p95-замер, ETag/304 лог, escape и line folding лог), tasks-статусы.
 
 ## Dependency Graph
 

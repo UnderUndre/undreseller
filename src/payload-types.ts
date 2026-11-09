@@ -1157,6 +1157,10 @@ export interface Resource {
   id: number;
   name: string;
   active?: boolean | null;
+  /**
+   * Versioned calendar-feed token salt — rotate invalidates old URLs (spec 005 FR-504)
+   */
+  feedTokenVersion?: number | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -1901,6 +1905,7 @@ export interface SlotReservationsSelect<T extends boolean = true> {
 export interface ResourcesSelect<T extends boolean = true> {
   name?: T;
   active?: T;
+  feedTokenVersion?: T;
   updatedAt?: T;
   createdAt?: T;
 }
