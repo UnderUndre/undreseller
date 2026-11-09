@@ -77,3 +77,33 @@ low_count: 0
 ```
 
 Business plan: unchanged (уведомление в Telegram — финал сквозного процесса §2.2; waiver VII-B.5 приложен — `business-plan-waiver.md`).
+
+
+---
+
+## Re-Audit Addendum (run #3, spec rev 1.2) — 2026-11-09
+
+**Основание**: внешний ревью-раунд F1–F12 → spec rev 1.2. Изменения:
+- FR-401/408 — **конкретизация** (поля outbox, CTE claim, партиальный индекс, sentMessageId) — ужесточение, не новые требования;
+- FR-402 — **семантическое уточнение barrier** (2-шаговый: REQUIRES_CONFIRMATION → CONFIRMED) + предусловие complete (processing) — квантуемо, DT-техника уже назначена;
+- FR-403 — новый доменный шов `cancelBookingByClientChat` (реализуемо поверх существующего FSM/return-policy — проверено по 003 as-built);
+- FR-406/407 — уточнение схемы (chatId?/phone?, составной UNIQUE) — сужение двусмысленности.
+
+Нумерация FR-401..408 стабильна, новых FR нет, RTM-покрытие 12/12 (22 TC).
+
+- Гейт 1 (Verifiability): 0 нарушений — все уточнения квантуемы (2-шаговый barrier 30s, attempts ≥5 → dead, priority диапазон 10..100).
+- Гейт 2 (Conflicts): новых конфликтов нет; barrier-семантика согласована с US3 AC.
+- Гейт 3 (Completeness): добавлены fallback-ветки (reschedule без TgLink → alert+email), black-list без Telegram (по phone) — полнота повышена.
+- Гейт 4 (Unambiguity): «1:1 chat» операционализирован (L3 = чат карточки).
+
+```yaml
+verdict: PASS
+audit: requirements-audit
+run: 3
+audited_at: 2026-11-09T04:25:00Z
+spec_revision: 1.2
+critical_count: 0
+high_count: 0
+medium_count: 0
+low_count: 0
+```

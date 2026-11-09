@@ -49,3 +49,34 @@ low_count: 4
 ```
 
 Гейт VI: до implement — ≥2 внешних ревью PASS (или logged override).
+
+
+---
+
+## Run #2 (post-review, spec rev 1.2) — 2026-11-09
+
+**Вход**: внешний antigravity-ревью (12 находок F1–F12, все RESOLVED, `reviews/antigravity.md`) + zcode re-check (R1–R3).
+
+| ID | Severity | Summary | Resolution |
+| --- | --- | --- | --- |
+| R1 | MEDIUM | analyze/audit отставали от rev 1.2 (внешний ревью-раунд) | Настоящий addendum + re-audit run #3 в requirements-audit.md |
+| R2 | MEDIUM | RTM-диапазоны устарели после перенумерации coverage: FR-402 захватывал TC-004-005 (теперь классификация outbox), FR-405 ссылался на «auth» в 005 | RTM пересобрана: FR-401/408 → 001..005, FR-402 → 006..009, FR-405 → 020 (+008) |
+| R3 | LOW | verify тип-контрактов ревью: `AutorunCronConfig.limit` (default 10 → 25) — подтверждено по dist; D9 существует; CTE SKIP LOCKED — канон Postgres (0A000-фикс корректен) | Подтверждено, правок не требует |
+
+**Проверка резолюций F1–F12**: подтверждены по диффам `6e38ceb` во всех артефактах (outbox-примитивы bot/actionType/messageId/replyMarkupJson/sentMessageId, createBooking pager enqueue + D9, cancelBookingByClientChat seam, adminOnlyFieldAccess на staffChatIds, CTE claim + партиальный индекс + autoRun 30s limit 25, 2-шаговый barrier, TgLink UNIQUE(chat_id, order_id) + callback_data routing, Blacklist chatId?/phone? с партиальными индексами, complete-предусловие processing, reschedule fallback email/alert).
+
+Coverage пересчитан: 12/12, 22 TC, граф задач валиден (критический путь T410→T420→T430→T440→T441→T460).
+
+```yaml
+verdict: PASS
+reviewer: analyze
+run: 2
+reviewed_at: 2026-11-09T04:20:00Z
+spec_revision: 1.2
+critical_count: 0
+high_count: 0
+medium_count: 2
+low_count: 1
+```
+
+Гейт VI: antigravity PASS (rev 1.2) — 1 внешний PASS; до implement нужна ещё ≥1 внешний PASS или logged override.
