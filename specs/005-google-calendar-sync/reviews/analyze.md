@@ -47,3 +47,36 @@ low_count: 3
 ```
 
 Гейт VI: до implement — ≥2 внешних ревью PASS (или logged override).
+
+
+---
+
+## Run #2 (post-review, spec rev 2.1) — 2026-11-09
+
+**Вход**: внешний antigravity-ревью (10 находок F1–F10, все RESOLVED, `reviews/antigravity.md`) + zcode re-check (R1–R5).
+
+| ID | Severity | Summary | Resolution |
+| --- | --- | --- | --- |
+| R1 | MEDIUM | `UNDERPAID` не покрыт статус-маппингом спеки; research D4 предлагал «исключается ИЛИ CANCELLED» — двусмысленность | UNDERPAID → `STATUS:TENTATIVE` (слот занят до staff-resolution); research/TC-005-006 синхронизированы |
+| R2 | MEDIUM | analyze/audit отставали от rev 2.1 | Настоящий addendum + re-audit run #2 в requirements-audit.md |
+| R3 | LOW | Шапка спеки: F-нумерация резюме перепутана относительно таблицы ревью (F5/F7 swapped) | Выровнена, ссылка на авторитетную таблицу |
+| R4 | LOW | Окно фида now−7d…now+90d подвижно — бай-детерминизм у граничных броней требует фиксированного `now` в тестах | T520/TC-005-006 дополнены freeze-now |
+| R5 | LOW | Verify тип-контрактов: 30/60s бакет `feed:${resourceId}:${ip}` (совместим с checkRateLimit-каноном 002), HEAD в Next App Router (экспорт HEAD), слабый ETag от детерминированного тела — подтверждено | Правок не требует |
+
+**Проверка резолюций F1–F10**: подтверждены по диффам `771a673` (per-resource rate limit 30/60s, ETag/304 + Cache-Control, HEAD, folding >75 octets UTF-8 safe, PRODID/VERSION, CRLF-инвариант, adminOnlyFieldAccess на feedTokenVersion, фоллбэки SUMMARY, audit {previousVersion, newVersion}).
+
+Coverage пересчитан: 8/8, 12 TC, граф задач валиден.
+
+```yaml
+verdict: PASS
+reviewer: analyze
+run: 2
+reviewed_at: 2026-11-09T22:30:00Z
+spec_revision: "2.1"
+critical_count: 0
+high_count: 0
+medium_count: 2
+low_count: 3
+```
+
+Гейт VI: antigravity PASS (rev 2.1) — 1 внешний PASS; до implement нужна ещё ≥1 внешний PASS или logged override.

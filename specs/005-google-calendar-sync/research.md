@@ -52,7 +52,7 @@
     | `RELEASED` | `CANCELLED` | 1 | Отменено / освобождено |
     | `CANCELLED` | `CANCELLED` | 1 | Отменено клиентом / персоналом |
     | `STAFF_REJECTED` | `CANCELLED` | 1 | Отклонено оператором |
-  - Статус `UNDERPAID`: исключается из фида (бронь не состоялась) либо маркируется `CANCELLED`.
+  - Статус `UNDERPAID` → `TENTATIVE` (ревью R1: устранена двусмысленность «либо/либо» — бронь физически занимает слот до staff-resolution, мастер обязан её видеть).
   - Для активных записей `SEQUENCE:0`. При отмене (`CANCELLED` / `RELEASED` / `STAFF_REJECTED`) `SEQUENCE:1`. Переносы времени (reschedule) обновляют `DTSTART/DTEND` и `DTSTAMP`, что в модели `METHOD:PUBLISH` корректно обрабатывается всеми вендорами.
 
 ## D5. Endpoint: HTTP-кэширование, Rate Limiting и поддержка HEAD

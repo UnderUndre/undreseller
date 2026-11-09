@@ -64,3 +64,27 @@ low_count: 2
 ```
 
 Business plan: **v2.6.0 (UPDATED — VII-B.2)**: §2.3 форма интеграции = Calendar Feed; commit `2f7fcf4` (undreplans). Waiver не требуется — план синхронизирован со спекой (VII-B.4 PASS).
+
+
+---
+
+## Re-Audit Addendum (run #2, spec rev 2.1) — 2026-11-09
+
+**Основание**: внешний ревью-раунд F1–F10 → spec rev 2.1. Изменения FR-501 (rate limit 30/60s per resource+IP, ETag/304, HEAD, Cache-Control), FR-502 (PRODID/VERSION, CRLF-инвариант, line folding >75 octets UTF-8 safe, полная статус-матрица), FR-503 (фоллбэки SUMMARY), FR-504 (adminOnlyFieldAccess, audit metadata) — **конкретизация и ужесточение**, нумерация FR-501..504 стабильна. NFR-501 поднят до «новых ≥12».
+
+- Гейт 1: 0 нарушений — все уточнения квантуемы (30/60s, <5 ms на 304, 75 октетов, SEQUENCE:0/1).
+- Гейт 2: UNDERPAID-пробел в маппинге закрыт (→ TENTATIVE, re-check R1); конфликтов нет.
+- Гейт 3: fallback-ветки (пустые имена, HEAD-валидация) повышают полноту; окно-детерминизм зафиксирован через freeze-now тест-требование.
+- Гейт 4: словарь стабилен.
+
+```yaml
+verdict: PASS
+audit: requirements-audit
+run: 2
+audited_at: 2026-11-09T22:35:00Z
+spec_revision: "2.1"
+critical_count: 0
+high_count: 0
+medium_count: 0
+low_count: 0
+```

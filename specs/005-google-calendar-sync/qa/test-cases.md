@@ -24,7 +24,7 @@
 ### TC-005-005: escape-матрица — имя/услуга со спецсимволами `,` `;` `\` и переносом строки `\n` → RFC-корректное экранирование (`\,`, `\;`, `\\`, `\n`)
 - **Priority**: P0 · **BVA**
 
-### TC-005-006: полная матрица статусов и детерминизм:
+### TC-005-006: полная матрица статусов (включая UNDERPAID → TENTATIVE, ревью R1) и детерминизм (окно тестируется с фиксированным now):
 - `BOOKED` → STATUS:CONFIRMED, SEQUENCE:0;
 - `HELD`, `PAYMENT_PENDING`, `PENDING_APPROVAL` → STATUS:TENTATIVE, SEQUENCE:0;
 - `RELEASED`, `CANCELLED`, `STAFF_REJECTED` → STATUS:CANCELLED, SEQUENCE:1;

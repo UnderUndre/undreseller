@@ -2,7 +2,7 @@
 
 **Slug:** `005-google-calendar-sync` (директория сохранена для истории тегов; фактический скоуп — **Calendar Feed**)
 **Репозиторий:** `UnderUndre/undreseller` · **База:** 001 (`980bc32`) + 002 (`c5f3bf1`) + 003 (`3697b3d`) + 004 (`9efe76a`)
-**Статус:** **DRAFT — REVISION 2.1 (2026-11-09; review fixes: F1 rate limit per resource+IP [30/60s] для защиты от бана краулеров Google/Apple, F2 ETag/304 Not Modified HTTP-кэширование, F3 поддержка метода HEAD, F4 RFC 5545 §3.1 Line Folding >75 octets UTF-8 safe, F5 CRLF \r\n инвариант, F6 фоллбэки для пустых имён в SUMMARY, F7 обязательные PRODID и VERSION:2.0, F8 Resources.feedTokenVersion adminOnlyFieldAccess, F9 детальная схема аудита calendar.feed-rotated, F10 полная матрица статусов CONFIRMED/TENTATIVE/CANCELLED)**
+**Статус:** **DRAFT — REVISION 2.1 (2026-11-09; review fixes: F1 rate limit per resource+IP [30/60s] для защиты от бана краулеров Google/Apple, F2 ETag/304 Not Modified HTTP-кэширование, F3 поддержка метода HEAD, F4 RFC 5545 §3.1 Line Folding >75 octets UTF-8 safe, F5 CRLF \r\n инвариант, F6 фоллбэки для пустых имён в SUMMARY, F7 строгий CRLF-инвариант, F8 Resources.feedTokenVersion adminOnlyFieldAccess, F9 безопасные фоллбэки имён, F10 схема аудита calendar.feed-rotated (нумерация F — по таблице reviews/antigravity.md) CONFIRMED/TENTATIVE/CANCELLED)**
 **Source of truth по бизнесу:** план v2.6.0 §2.3 (форма интеграции = Calendar Feed; лимит «≤1» расходуется фидом) · **forensic dossier:** рыночная проверка 2026-11-09 (Booksy без нативного пуша; YClients/Altegio — с GC two-way; 100-user cap неверифицированного GCP-проекта)
 
 ---
@@ -47,7 +47,7 @@
 - Длинные строки складываются по RFC 5545 §3.1 (Line Folding: не более 75 октетов на строку, продолжение через `\r\n ` без распила UTF-8 кодовых точек);
 - Полный маппинг статусов:
   - `BOOKED` → `STATUS:CONFIRMED`, `SEQUENCE:0`
-  - `HELD`, `PAYMENT_PENDING`, `PENDING_APPROVAL` → `STATUS:TENTATIVE`, `SEQUENCE:0`
+  - `HELD`, `PAYMENT_PENDING`, `PENDING_APPROVAL`, `UNDERPAID` → `STATUS:TENTATIVE`, `SEQUENCE:0` (UNDERPAID: слот фактически занят до staff-resolution, мастер видит холд)
   - `RELEASED`, `CANCELLED`, `STAFF_REJECTED` → `STATUS:CANCELLED`, `SEQUENCE:1`
 - `UID: booking-<reservationId>@<host>` (стабильный — правки propagate);
 - `DTSTAMP`: вычисляется из `updated_at` брони в формате UTC (`YYYYMMDDTHHMMSSZ`), что гарантирует байт-детерминизм тела и стабильность ETag;
