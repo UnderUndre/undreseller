@@ -1,9 +1,9 @@
 # 📋 СПЕЦИФИКАЦИЯ (FEATURE SPEC)
 
-**Slug:** `005-google-calendar-sync`
-**Репозиторий:** `UnderUndre/undreseller` · **База:** 001–004
-**Статус:** **DRAFT — REVISION 1.0 (2026-11-07; sketch — port-map #10, единственная бизнес-интеграция плана v2.5.0 §2.3 — лимит «≤1» расходуется здесь)**
-**Source of truth по бизнесу:** план v2.5.0 §2.3 · **легаси-канон:** 006-integrations (review zcode F1–F10 resolution round — самый вылизанный контур линии)
+**Slug:** `005-google-calendar-sync` (директория сохранена для истории тегов; фактический скоуп — **Calendar Feed**)
+**Репозиторий:** `UnderUndre/undreseller` · **База:** 001 (`980bc32`) + 002 (`c5f3bf1`) + 003 (`3697b3d`) + 004 (`9efe76a`)
+**Статус:** **DRAFT — REVISION 2.0 (2026-11-09; re-scope по forensic dossier + решению владельца: full Google Calendar API two-way ЗАМОРОЖЕН до L1-сигнала; Яндекс исключён владельцем; скоуп = односторонний ICS/webcal push-фид per-resource, ноль OAuth; бизнес-план v2.6.0)**
+**Source of truth по бизнесу:** план v2.6.0 §2.3 (форма интеграции = Calendar Feed; лимит «≤1» расходуется фидом) · **forensic dossier:** рыночная проверка 2026-11-09 (Booksy без нативного пуша; YClients/Altegio — с GC two-way; 100-user cap неверифицированного GCP-проекта)
 
 ---
 
@@ -11,83 +11,81 @@
 
 ### 1.1. Проблема
 
-Мастер живёт в Google Calendar; бронь, которой нет в GC, — это двойная бронь через внешний канал (телефон/личка). freeBusy-импорт внешней занятости + push наших броней = kill двойных броней с обеих сторон стояка (главная боль ICP по плану §1.1).
+Мастер живёт в личном календаре; бронь, которой там нет, = «а во сколько запись?» в Telegram и ручное дублирование. Полный GC API two-way упирается в sensitive-scope OAuth-верификацию на каждое white-label развёртывание (100-user cap lifetime на неверифицированный GCP-проект) — стоимость владения выше вклада при нулевом клиентском сигнале.
 
 ### 1.2. Решение
 
-Двусторонняя sync per-resource: **push** наших броней в GC мастера (FSM→GC decision table, идемпотентный upsert) + **import** внешней занятости (freeBusy/syncToken → `ExternalBusyBlock` → вычитание в availability engine 002). OAuth-токены — AES-256-GCM vault.
+**Односторонний ICS push-фид per-resource** (RFC 5545 `text/calendar`): мастер подписывается на webcal-ссылку в ЛЮБОМ календаре (Google/Apple/Outlook) и видит брони своего ресурса. HMAC-токен в URL (канон токенов 003), ноль OAuth/верификаций, ротация = перегенерация токена. Гигиенический фактор закрываем самой дешёвой формой.
 
 ### 1.3. Границы и Via Negativa (Strict Taboos)
 
-* ❌ **NO SECOND INTEGRATION:** закон «≤1» — исчерпан GC (план v2.5.0).
-* ❌ **NO CalDAV / ICS-only fallback:** отвергнуты брейнштормом (канон легаси Option 1).
-* ❌ **NO BIDIRECTIONAL EDIT:** GC-правки мастером **не мутируют** наши брони (только import занятости); встречные правки — runbook-ограничение.
-* ❌ **NO CRON-BY-HAND:** sweeps только через планировщик 003 (D-решение).
+* ❌ **NO GC API / OAUTH:** full two-way (push + freeBusy-импорт) заморожен до L1-сигнала — решено владельцем 2026-11-09, план v2.6.0.
+* ❌ **NO YANDEX:** выплен владельцем (нет публичного REST write API; CalDAV — не в этой спеке).
+* ❌ **NO PHONE / FULL PII IN FEED:** фид хранится на сторонних серверах (Google et al) — в SUMMARY/DESCRIPTION запрещены телефон и контакты; имя клиента + услуга + время.
+* ❌ **NO BUFFERS IN FEED:** фид показывает услугу (durationMin); служебные буферы 002 — внутренняя кухня.
+* ❌ **NO WRITE-BACK:** подписка read-only по определению; встречные правки календаря фид не видит (ограничение формы, документировано в UAT).
 
 ---
 
 ## 2. User Stories (Prioritized)
 
-### US1 — OAuth connect + credential vault (P0)
+### US1 — Feed endpoint + HMAC-токен (P0)
 
-OWNER подключает GC per-resource (`/admin` → connect → OAuth consent) → токены в `IntegrationCredential` (AES-256-GCM через secretVault-канон: `v1:<iv>:<tag>:<ct>`); `NEEDS_REAUTH`-статус + staff alert при invalid_grant; disconnect = wipe токена + sync-состояния.
+`GET /api/calendar/feed/[resourceId]?token=<nonce>` → `text/calendar; charset=utf-8` (RFC 5545). Токен = HMAC-SHA256(secret, resourceId) в URL; timing-safe сверка; невалидный/чужой токен → 403; ротация токена владельцем в `/admin`. Rate limit канон 002 (10/60s на IP).
 
-**Acceptance**: plaintext-токенов в БД 0 (grep + тест vault roundtrip); reauth-флоу самовосстанавливается после повторного consent.
+**Acceptance**: 0 неавторизованных чтений (403-матрица); ротация инвалидирует старый URL; endpoint p95 < 50 ms (тот же контур, что availability).
 
-### US2 — Push: FSM→GC decision table (P0)
+### US2 — ICS-тело: брони → VEVENT (P0)
 
-FSM-переходы брони (CONFIRMED/RELEASED/CANCELLED из 002/003) → `CREATE/PATCH/DELETE` через decision table (порт `gcalMapping.ts`); идемпотентный upsert с `extendedProperties.private.undresellerOrderId` (self-event filter — свой ивент не импортируем как busy); delete 404/410 = NOOP; async через outbox-канон (fail-open — GC-сбой не ломает бронь, SC-006 канон).
+Каждая активная бронь ресурса (BOOKED/HELD/PENDING_APPROVAL/PAYMENT_PENDING) → VEVENT: `UID: booking-<reservationId>@<host>` (стабильный — правки propagate), `DTSTART/DTEND` UTC (`Z`), `DTSTAMP`, `SUMMARY: <услуга> — <имя клиента>`, `STATUS: CONFIRMED`; отмена/релиз → `STATUS:CANCELLED` + `SEQUENCE+1` (канон cancel-флоу 002). Окно фида: now−7d … now+90d. Внешнее busy-импортирование — НЕТ (заморожено с GC API).
 
-**Acceptance**: replay любого FSM-перехода → идемпотентный результат (0 дублей событий); PATCH на внешне удалённое → re-CREATE (легаси F3).
+**Acceptance**: повторная генерация фида при неизменных бронах — детерминированное тело (кроме DTSTAMP); отмена брони → следующий fetch содержит `STATUS:CANCELLED` ≤ 60 c (серверная правда; латентность подписки — сторона календаря, документирована в UAT).
 
-### US3 — Import: внешняя занятость (P0)
+### US3 — Ротация и админ-поверхность (P1)
 
-Initial full-sync (`timeMin + singleEvents + showDeleted` → `nextSyncToken`, канон легаси F1-фикса: рекуррентные события как expanded instances) → инкрементал чистым `syncToken`; busy-интервалы → `ExternalBusyBlock` → вычитание в `availability engine` (002 US4).
+OWNER в `/admin` (Resources): кнопка «Calendar link» (copy webcal URL) + «Rotate token» (не деструктив для броней). Ротированный токен → 403 на старом URL мгновенно.
 
-**Acceptance**: рекуррентное «каждый пн 10:00» даёт экземплярные блоки; слот внутри внешнего busy — недоступен; GC-side удаление снимает блок.
-
-### US4 — Reconcile sweep + rate-limit гигиена (P1)
-
-15-мин reconcile: re-push BOOKED в окне 7 дней (`updatedAt asc`, take 50 — канон 007 F-хвост); session-level `pg_advisory_lock` на sync-цикл (легаси F4); 429 → экспоненциальный бэкофф (RateLimitedError-таксономия).
-
-**Acceptance**: 60 броней после простоя дренируются циклами по 50 без 429-шторма; сменившийся syncToken → автоматический full-sync re-bootstrap.
+**Acceptance**: rotate → старый URL 403, новый 200; событие в audit_events (`calendar.feed-rotated`).
 
 ---
 
 ## 3. Edge Cases
 
-- **Инвентарь owner'а в другом TZ**: GC-события UTC, слоты — TZ инстанса; конверсия на границе (тест DST-окна).
-- **Несколько ресурсов = несколько календарей**: credential per-resource; instance-wide fallback для соло (`NULLS NOT DISTINCT` — канон zcode F2-rev).
-- **GC 429/403 quota**: бэкофф + счётчик; не валяет бронь (fail-open канон).
-- **Токен отозван владельцем Google**: NEEDS_REAUTH + alert, брони живут без push (degradation mode).
-- **Удаление credential при живых событиях**: disconnect = wipe локально; GC-события — известное ограничение (runbook, легаси F10).
+- **Латентность подписчика**: Google/Apple поллит фид по своему расписанию (до ~суток) — серверная свежесть ≤60 c, клиентская — не наша труба (документировано в UAT и runbook; мастер может «Refresh» вручную).
+- **Несколько ресурсов**: отдельный фид на каждый ресурс; соло-инстанс — один фид.
+- **Пустой ресурс** (0 броней): валидный пустой VCALENDAR (без VEVENT) — не 404.
+- **HELD/PENDING_APPROVAL в фиде**: `STATUS:TENTATIVE` — мастер видит холд до оплаты; отмена холда → CANCELLED.
+- **Токен утёк**: ротация — единственный ответ; перебор бессмыслен (256-bit HMAC).
+- **TZ**: DTSTART/DTEND — UTC `Z`; отображение — сторона календаря (канон 002 US3).
 
 ## 4. Requirements
 
 ### Functional Requirements
-- **FR-501 (Vault)**: OAuth-токены per-resource AES-256-GCM; 0 plaintext; NEEDS_REAUTH-статус-машина.
-- **FR-502 (Push)**: decision table FSM→GC, upsert-идемпотентность, self-filter, 404/410-NOOP, fail-open.
-- **FR-503 (Import)**: full-sync bootstrap + syncToken инкрементал; ExternalBusyBlock → availability вычитание; recurrence → instances.
-- **FR-504 (Reconcile)**: 15-min sweep, окно 7d asc take 50, session advisory lock, rate-limit бэкофф.
-- **FR-505 (Multi-resource)**: credential per-resource + instance-wide solo fallback.
+- **FR-501 (Feed endpoint)**: `GET /api/calendar/feed/[resourceId]?token=` → RFC 5545 `text/calendar`; timing-safe HMAC; 403-матрица (невалидный/ротированный/чужой ресурс); rate limit 10/60s.
+- **FR-502 (ICS-тело)**: VEVENT per активная бронь (UID стабильный, UTC, STATUS CONFIRMED/TENTATIVE/CANCELLED, SEQUENCE инкремент); окно now−7d…now+90d; пустой ресурс → валидный пустой VCALENDAR; детерминированное тело.
+- **FR-503 (PII-граница)**: SUMMARY = `<услуга> — <имя>`; телефон/email/примечания запрещены (grep-тест по телу фида).
+- **FR-504 (Ротация)**: владельческая ротация токена per-resource; старый токен → 403 мгновенно; audit `calendar.feed-rotated`.
 
 ### Non-Functional Requirements
-- **NFR-501**: регрессия 72+ зелёная; новые ≥20 (decision table матрица, vault roundtrip, syncToken bootstrap, NOOP-идемпотентность).
-- **NFR-502**: googleapis-пакет — **единственный новый dep** спеки (обоснование в плане; альтернатива raw-REST — план решает).
-- **NFR-503**: 0 plaintext-креденшелов (PCI DSS Req 10 / ISO 27001 канон); ≤500 MB.
+- **NFR-501 (Regression)**: 142+ старых теста зелёные; новые ≥10 (403-матрица, ICS-структура, PII-grep, ротация, пустой фид, отмена).
+- **NFR-502 (No new deps)**: 0 — ICS-серилиализация hand-rolled по RFC 5545 (escape-правила тестами; dep ради 4 полей отвергнут).
+- **NFR-503 (Perf)**: p95 фида < 50 ms при ≤2k броней (B-tree индекс 002 уже в деле).
+- **NFR-504 (PII в логах)**: дени-лист канон — тело фида не логируется.
 
 ## 5. Success Criteria
 
-- **SC-001**: push-идемпотентность — 0 дублей GC-событий на 100 FSM-replay.
-- **SC-002**: внешний busy-блок исключает слот в availability (end-to-end тест).
-- **SC-003**: reauth-цикл (revoke → NEEDS_REAUTH → re-consent → восстановление push) зелёный.
-- **SC-004**: reconcile-дренаж 60 броней без дублей/429-шторма.
+- **SC-001**: 403-матрица (невалидный/ротированный/чужой) — 0 несанкционированных чтений.
+- **SC-002**: ICS-тело структурно валидно (RFC 5545: escape, STATUS, SEQUENCE, UID-стабильность) и отражает create/cancel ≤ 60 c серверно.
+- **SC-003**: grep тела фида — 0 телефонов/email'ов (PII-граница).
+- **SC-004**: ротация мгновенно инвалидирует старый URL; 142+ регрессия зелёная.
 
 ## 6. Зафиксированные Решения (Clarifications — дефолты ветируемы)
 
 | Вопрос | Решение | Обоснование |
 | :--- | :--- | :--- |
-| Q1: googleapis SDK vs raw REST | **googleapis** (дефолт) vs raw — план решает по бандлу | Raw-REST = 0-dep, но ручной OAuth-танец |
-| Q2: Meet-ссылки | `remoteMeetingEnabled` per-item (легаси-канон), meetLink хранится на Order | ICP-опция, не ядро |
-| Q3: GC-правки мастера | Не мутируют брони (только busy-import) | Via Negativa; bidirectional — отвергнут |
-| Q4: Offline-доступ токенов | refresh_token + авто-refresh, onTokensRefreshed → vault | Канон легаси F6 |
+| Q1: Форма интеграции | **ICS push-фид** (односторонний) | Dossier 2026-11-09: OAuth-верификация per deployment + 0 сигналов; Booksy-прецедент |
+| Q2: Яндекс | **Исключён** владельцем | Нет публичного REST write API; CalDAV — не в этой спеке |
+| Q3: Full GC two-way | **Заморожен до L1-сигнала** (первый клиент) | Возвращается как 005-bis с решённой OAuth-топологией (service account DWD / общий проект) |
+| Q4: Что в SUMMARY | `<услуга> — <имя клиента>`; телефон/контакты запрещены | Фид живёт на сторонних серверах — PII-граница FR-503 |
+| Q5: Буферы в фиде | **Нет** — только услуга | Буферы — внутренняя кухня availability, мастеру нужны границы услуги |
+| Q6: Холды в фиде | Показывать `STATUS:TENTATIVE` | Мастер видит будущую запись до оплаты; отмена → CANCELLED |
