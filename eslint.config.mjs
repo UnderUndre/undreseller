@@ -35,7 +35,10 @@ const eslintConfig = [
     },
   },
   {
-    ignores: ['.next/', 'src/payload-types.ts', 'src/payload-generated-schema.ts'],
+    // playwright-report/ carries minified trace-viewer bundles (gitignored but
+    // generated locally by `pnpm test:e2e`) — linting them produced 200+ false
+    // 'errors' from minified code (spec 004 T460 finding).
+    ignores: ['.next/', 'src/payload-types.ts', 'src/payload-generated-schema.ts', 'playwright-report/'],
   },
 ]
 

@@ -16,12 +16,15 @@ import { fileURLToPath } from 'url'
 
 import { AvailabilityExceptions } from '@/collections/AvailabilityExceptions'
 import { AuditEvents } from '@/collections/AuditEvents'
+import { Blacklist } from '@/collections/Blacklist'
 import { Categories } from '@/collections/Categories'
 import { EmailDeliveryLog } from '@/collections/EmailDeliveryLog'
 import { InboxEvent } from '@/collections/InboxEvent'
 import { Media } from '@/collections/Media'
 import { Pages } from '@/collections/Pages'
 import { PaymentEvents } from '@/collections/PaymentEvents'
+import { TelegramOutbox } from '@/collections/TelegramOutbox'
+import { TgLink } from '@/collections/TgLink'
 import { Resources } from '@/collections/Resources'
 import { SlotReservations } from '@/collections/SlotReservations'
 import { Users } from '@/collections/Users'
@@ -30,7 +33,9 @@ import { Footer } from '@/globals/Footer'
 import { Header } from '@/globals/Header'
 import { ShopSettings } from '@/globals/ShopSettings'
 import { bookingEmailTask, reminderSweepTask } from '@/jobs/bookingEmail'
+import { gdprPurgeTask } from '@/jobs/gdprPurge'
 import { holdSweepTask } from '@/jobs/holdSweep'
+import { outboxDispatchTask } from '@/jobs/outboxDispatch'
 import { plugins } from './plugins'
 
 const filename = fileURLToPath(import.meta.url)
@@ -62,6 +67,10 @@ export default buildConfig({
     InboxEvent,
     PaymentEvents,
     EmailDeliveryLog,
+    // 004 telegram contours
+    TelegramOutbox,
+    TgLink,
+    Blacklist,
   ],
   db: postgresAdapter({
     pool: {
@@ -109,8 +118,10 @@ export default buildConfig({
   // Payload Jobs (spec 003 research D1, review F1): task declaration alone is
   // NOT enough — the background worker only starts with jobs.autoRun registered.
   jobs: {
-    tasks: [holdSweepTask, bookingEmailTask, reminderSweepTask],
-    autoRun: [{ cron: '* * * * *', queue: 'default' }],
+    tasks: [holdSweepTask, bookingEmailTask, reminderSweepTask, outboxDispatchTask, gdprPurgeTask],
+    // 004 review F6: outbox dispatch needs the 30s cadence (default 60s/limit 10
+    // would sleep through the queue SLA); limit 25 matches the batch size.
+    autoRun: [{ cron: '*/30 * * * * *', queue: 'default', limit: 25 }],
   },
   plugins,
   // Fail-closed canon (code-review F-03): an empty/missing signing secret must

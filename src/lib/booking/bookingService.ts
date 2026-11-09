@@ -308,6 +308,30 @@ export async function createBooking(
       }
     }
 
+    // Staff pager (spec 004 FR-402/D9): card to every staff chat via outbox.
+    // Booking flow never blocks on Telegram (enqueue is best-effort).
+    try {
+      const { staffChatTargets } = await import('@/lib/telegram/staffAuth')
+      const { enqueueStaffCard } = await import('@/lib/telegram/staffBot')
+      await enqueueStaffCard(
+        payload,
+        {
+          reservationId: result.reservationId,
+          scheduleVersion: result.scheduleVersion,
+          customerName: input.customerName,
+          customerPhone: input.customerPhone,
+          serviceName: (product.title as string) ?? null,
+          durationMin,
+          startTime: start.toISOString(),
+          timeZone: ((await payload.findGlobal({ slug: 'shop-settings', depth: 0 })) as { timeZone?: string } | null)?.timeZone || 'UTC',
+          fulfillment,
+        },
+        await staffChatTargets(payload),
+      )
+    } catch (pagerErr: unknown) {
+      payload.logger.error({ err: pagerErr, message: 'staff pager enqueue failed (booking itself is fine)' })
+    }
+
     return result
   } catch (err: unknown) {
     if (err instanceof BookingError) throw err
@@ -899,4 +923,174 @@ export async function acknowledgeBooking(
       VALUES ('booking.acknowledged', 'CUSTOMER', 'BOOKING', ${String(row.id)}, '{}'::jsonb, now(), now())`)
     return { status: 'acknowledged' as const, scheduleVersion: Number(row.schedule_version) + 1 }
   })
+}
+
+// ---------------------------------------------------------------------------
+// 004-telegram-bots: staff re-issue + client chat cancel seam
+// ---------------------------------------------------------------------------
+
+export interface IssueRescheduleTokenResult {
+  reservationId: number
+  rescheduleToken: string
+  scheduleVersion: number
+}
+
+/**
+ * Staff re-issue (spec 004 FR-403/D7): 003 issues the reschedule nonce exactly
+ * once at booking time; when the link is lost/expired, staff mints a NEW nonce
+ * (CAS bump + advisory lock + audit). The old link dies with the hash replace.
+ */
+export async function issueRescheduleToken(
+  payload: Payload,
+  input: { reservationId: string; actorId: string },
+): Promise<IssueRescheduleTokenResult> {
+  const nonce = randomUUID()
+  const tokenHash = hashToken(nonce)
+  const db: any = payload.db
+  return await db.drizzle.transaction(async (trx: any) => {
+    await trx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('resource_slot_cancel_' || ${input.reservationId}))`,
+    )
+    const cas = await trx.execute(sql`
+      UPDATE slot_reservations
+      SET reschedule_token_hash = ${tokenHash}, schedule_version = schedule_version + 1, updated_at = now()
+      WHERE id = ${input.reservationId} AND status IN ('BOOKED', 'HELD', 'PENDING_APPROVAL', 'PAYMENT_PENDING')
+      RETURNING schedule_version`)
+    if (cas.rows.length === 0) {
+      throw new BookingError('BOOKING_NOT_ACTIVE', 422, 'Booking is not active')
+    }
+    await trx.execute(sql`
+      INSERT INTO audit_events (action, actor_id, aggregate_type, aggregate_id, metadata_json, created_at, updated_at)
+      VALUES ('booking.reschedule-token-issued', ${input.actorId}, 'BOOKING', ${input.reservationId}, '{}'::jsonb, now(), now())`)
+    return {
+      reservationId: Number(input.reservationId),
+      rescheduleToken: nonce,
+      scheduleVersion: Number((cas.rows[0] as { schedule_version: number }).schedule_version),
+    }
+  })
+}
+
+export interface CancelByClientChatInput {
+  orderId: number
+  chatId: string
+  now?: Date
+  gateway?: PaymentGateway
+}
+
+export interface CancelByClientChatResult {
+  status: 'cancelled'
+  reservationId: number
+  scheduleVersion: number
+  refund?: 'auto-refunded' | 'refund_requested' | 'refund_failed'
+}
+
+/**
+ * Client decline via Telegram (spec 004 FR-403, review F3): `cancelBooking`
+ * requires the raw one-time cancelToken (hash-only storage), which the bot
+ * holding only (chatId, orderId) does not have. This seam authorizes via the
+ * TgLink binding and reuses the SAME FSM + refund policy (003) under the hood.
+ */
+export async function cancelBookingByClientChat(
+  payload: Payload,
+  input: CancelByClientChatInput,
+  gateway?: PaymentGateway,
+): Promise<CancelByClientChatResult> {
+  const db: any = payload.db
+
+  // TgLink authorization: this chat must be bound to this order.
+  const link = await db.execute({
+    drizzle: db.drizzle,
+    sql: sql`SELECT 1 FROM tg_links WHERE chat_id = ${input.chatId} AND order_id = ${input.orderId} LIMIT 1`,
+  })
+  if ((link.rows ?? []).length === 0) {
+    throw new BookingError('LINK_NOT_FOUND', 403, 'This chat is not linked to the booking')
+  }
+
+  // Latest active reservation for the order.
+  const rowRes = await db.execute({
+    drizzle: db.drizzle,
+    sql: sql`SELECT sr.id, sr.status, sr.schedule_version, sr.order_id,
+                    o.status AS order_status, o.amount, o.stripe_payment_intent_ref AS stripe_payment_intent_id,
+                    sr.start_time, COALESCE(p.cancellation_cutoff_hours, 3) AS cutoff_hours
+             FROM slot_reservations sr
+             JOIN orders o ON o.id = sr.order_id
+             LEFT JOIN products p ON p.id::text = sr.item_id
+             WHERE sr.order_id = ${input.orderId}
+             ORDER BY sr.id DESC LIMIT 1`,
+  })
+  const row = rowRes.rows?.[0] as
+    | {
+        id: number
+        status: string
+        schedule_version: number
+        order_id: number
+        order_status: string
+        amount: string | number
+        stripe_payment_intent_id: string | null
+        start_time: string
+        cutoff_hours: number
+      }
+    | undefined
+  if (!row) throw new BookingError('BOOKING_NOT_FOUND', 404, 'Booking not found')
+  if (row.status === 'RELEASED') {
+    throw new BookingError('BOOKING_NOT_ACTIVE', 422, 'Booking is already cancelled')
+  }
+
+  const now = input.now ?? new Date()
+  const specState: BookingFsmState | null =
+    DB_TO_SPEC_BOOKING_STATE[row.status as keyof typeof DB_TO_SPEC_BOOKING_STATE] ?? null
+  if (!specState) throw new BookingError('FSM_REJECTED', 422, `Unmappable DB status ${row.status}`)
+  const fsm = transitionBookingFsm(specState, 'CUSTOMER_CANCEL', { now })
+  if (!fsm.ok) throw new BookingError('FSM_REJECTED', 422, fsm.reason)
+  if (!fsm.effects.release) throw new BookingError('FSM_REJECTED', 422, 'cancel produced no release')
+
+  const amountNum = Number(row.amount)
+  const paid =
+    row.order_status === 'completed' && Number.isFinite(amountNum) && amountNum > 0 && Boolean(row.stripe_payment_intent_id)
+  const beforeCutoff = isBeforeCancellationCutoff({
+    start: new Date(row.start_time),
+    cancellationCutoffHours: row.cutoff_hours,
+    now,
+  })
+  let refund: CancelByClientChatResult['refund']
+  if (paid) refund = beforeCutoff ? 'auto-refunded' : 'refund_requested'
+
+  await db.drizzle.transaction(async (trx: any) => {
+    await trx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('resource_slot_cancel_' || ${row.id}))`,
+    )
+    const cas = await trx.execute(sql`
+      UPDATE slot_reservations
+      SET status = 'RELEASED', schedule_version = schedule_version + 1, updated_at = now()
+      WHERE id = ${row.id} AND schedule_version = ${row.schedule_version}
+      RETURNING id`)
+    if (cas.rows.length === 0) throw new BookingError('CONFLICT', 409, 'Booking changed concurrently, retry')
+    await trx.execute(
+      sql`UPDATE orders SET status = ${paid ? 'refund_requested' : 'cancelled'}, updated_at = now() WHERE id = ${row.order_id}`,
+    )
+    await trx.execute(sql`
+      INSERT INTO audit_events (action, actor_id, aggregate_type, aggregate_id, metadata_json, created_at, updated_at)
+      VALUES ('booking.cancel-by-telegram', 'CUSTOMER', 'BOOKING', ${String(row.id)},
+              ${JSON.stringify({ chatId: input.chatId, refund: refund ?? 'not-applicable' })}::jsonb, now(), now())`)
+  })
+
+  // Refund after commit — same two-phase canon as cancelBooking (003).
+  if (refund === 'auto-refunded') {
+    const gw = gateway ?? stripeGateway
+    try {
+      await gw.createRefund({ paymentIntentId: row.stripe_payment_intent_id as string })
+      await db.execute({
+        drizzle: db.drizzle,
+        sql: sql`UPDATE orders SET status = 'refunded', updated_at = now() WHERE id = ${row.order_id}`,
+      })
+    } catch {
+      refund = 'refund_failed'
+      await db.execute({
+        drizzle: db.drizzle,
+        sql: sql`UPDATE orders SET status = 'refund_failed', updated_at = now() WHERE id = ${row.order_id}`,
+      })
+    }
+  }
+
+  return { status: 'cancelled', reservationId: row.id, scheduleVersion: row.schedule_version + 1, refund }
 }

@@ -95,6 +95,9 @@ export interface Config {
     'inbox-events': InboxEvent;
     'payment-events': PaymentEvent;
     'email-delivery-log': EmailDeliveryLog;
+    'telegram-outbox': TelegramOutbox;
+    'tg-links': TgLink;
+    blacklist: Blacklist;
     forms: Form;
     'form-submissions': FormSubmission;
     addresses: Address;
@@ -137,6 +140,9 @@ export interface Config {
     'inbox-events': InboxEventsSelect<false> | InboxEventsSelect<true>;
     'payment-events': PaymentEventsSelect<false> | PaymentEventsSelect<true>;
     'email-delivery-log': EmailDeliveryLogSelect<false> | EmailDeliveryLogSelect<true>;
+    'telegram-outbox': TelegramOutboxSelect<false> | TelegramOutboxSelect<true>;
+    'tg-links': TgLinksSelect<false> | TgLinksSelect<true>;
+    blacklist: BlacklistSelect<false> | BlacklistSelect<true>;
     forms: FormsSelect<false> | FormsSelect<true>;
     'form-submissions': FormSubmissionsSelect<false> | FormSubmissionsSelect<true>;
     addresses: AddressesSelect<false> | AddressesSelect<true>;
@@ -179,6 +185,8 @@ export interface Config {
       'hold-sweep': TaskHoldSweep;
       'booking-email': TaskBookingEmail;
       'reminder-sweep': TaskReminderSweep;
+      'outbox-dispatch': TaskOutboxDispatch;
+      'gdpr-purge': TaskGdprPurge;
       inline: {
         input: unknown;
         output: unknown;
@@ -1268,6 +1276,86 @@ export interface EmailDeliveryLog {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "telegram-outbox".
+ */
+export interface TelegramOutbox {
+  id: number;
+  bot: 'staff' | 'client';
+  actionType: 'sendMessage' | 'editMessageText' | 'editMessageReplyMarkup';
+  toChatId: string;
+  text?: string | null;
+  /**
+   * Target message for edit* actions
+   */
+  messageId?: number | null;
+  replyMarkupJson?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * Captured on sendMessage success — redaction address (review F2)
+   */
+  sentMessageId?: number | null;
+  priority: number;
+  status: 'queued' | 'sending' | 'sent' | 'failed' | 'dead';
+  leaseUntil?: string | null;
+  /**
+   * 429 retry_after cooldown gate
+   */
+  availableAt?: string | null;
+  attempts: number;
+  lastError?: string | null;
+  aggregateType?: string | null;
+  aggregateId?: string | null;
+  metaJson?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "tg-links".
+ */
+export interface TgLink {
+  id: number;
+  chatId: string;
+  orderId: number;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "blacklist".
+ */
+export interface Blacklist {
+  id: number;
+  /**
+   * Telegram chat id — optional when phone is set
+   */
+  chatId?: string | null;
+  /**
+   * Booking phone — optional when chatId is set
+   */
+  phone?: string | null;
+  reason: string;
+  createdBy: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "form-submissions".
  */
 export interface FormSubmission {
@@ -1352,7 +1440,7 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug: 'inline' | 'hold-sweep' | 'booking-email' | 'reminder-sweep';
+        taskSlug: 'inline' | 'hold-sweep' | 'booking-email' | 'reminder-sweep' | 'outbox-dispatch' | 'gdpr-purge';
         taskID: string;
         input?:
           | {
@@ -1385,7 +1473,7 @@ export interface PayloadJob {
         id?: string | null;
       }[]
     | null;
-  taskSlug?: ('inline' | 'hold-sweep' | 'booking-email' | 'reminder-sweep') | null;
+  taskSlug?: ('inline' | 'hold-sweep' | 'booking-email' | 'reminder-sweep' | 'outbox-dispatch' | 'gdpr-purge') | null;
   queue?: string | null;
   waitUntil?: string | null;
   processing?: boolean | null;
@@ -1455,6 +1543,18 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'email-delivery-log';
         value: number | EmailDeliveryLog;
+      } | null)
+    | ({
+        relationTo: 'telegram-outbox';
+        value: number | TelegramOutbox;
+      } | null)
+    | ({
+        relationTo: 'tg-links';
+        value: number | TgLink;
+      } | null)
+    | ({
+        relationTo: 'blacklist';
+        value: number | Blacklist;
       } | null)
     | ({
         relationTo: 'forms';
@@ -1875,6 +1975,52 @@ export interface EmailDeliveryLogSelect<T extends boolean = true> {
   bookingId?: T;
   recipientHash?: T;
   errorDetail?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "telegram-outbox_select".
+ */
+export interface TelegramOutboxSelect<T extends boolean = true> {
+  bot?: T;
+  actionType?: T;
+  toChatId?: T;
+  text?: T;
+  messageId?: T;
+  replyMarkupJson?: T;
+  sentMessageId?: T;
+  priority?: T;
+  status?: T;
+  leaseUntil?: T;
+  availableAt?: T;
+  attempts?: T;
+  lastError?: T;
+  aggregateType?: T;
+  aggregateId?: T;
+  metaJson?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "tg-links_select".
+ */
+export interface TgLinksSelect<T extends boolean = true> {
+  chatId?: T;
+  orderId?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "blacklist_select".
+ */
+export interface BlacklistSelect<T extends boolean = true> {
+  chatId?: T;
+  phone?: T;
+  reason?: T;
+  createdBy?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -2386,6 +2532,19 @@ export interface ShopSetting {
    * Hours before start to send the reminder email (spec 003 US3, default 24h)
    */
   confirmationNoticeHours?: number | null;
+  /**
+   * Telegram chat ids of staff pager recipients (spec 004 FR-402, L1 auth)
+   */
+  staffChatIds?:
+    | {
+        chatId: string;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Bot strings locale (spec 004 US3, botStrings without per-staff override)
+   */
+  defaultLocale?: ('ru' | 'en') | null;
   updatedAt?: string | null;
   createdAt?: string | null;
 }
@@ -2462,6 +2621,13 @@ export interface ShopSettingsSelect<T extends boolean = true> {
   quantumMin?: T;
   fromEmail?: T;
   confirmationNoticeHours?: T;
+  staffChatIds?:
+    | T
+    | {
+        chatId?: T;
+        id?: T;
+      };
+  defaultLocale?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;
@@ -2507,6 +2673,22 @@ export interface TaskBookingEmail {
  * via the `definition` "TaskReminder-sweep".
  */
 export interface TaskReminderSweep {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskOutbox-dispatch".
+ */
+export interface TaskOutboxDispatch {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskGdpr-purge".
+ */
+export interface TaskGdprPurge {
   input?: unknown;
   output?: unknown;
 }

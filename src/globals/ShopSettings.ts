@@ -1,6 +1,7 @@
 import type { GlobalConfig } from 'payload'
 
 import { adminOnly } from '@/access/adminOnly'
+import { adminOnlyFieldAccess } from '@/access/adminOnlyFieldAccess'
 import { publicAccess } from '@/access/publicAccess'
 
 /**
@@ -46,6 +47,28 @@ export const ShopSettings: GlobalConfig = {
       admin: {
         description: 'Hours before start to send the reminder email (spec 003 US3, default 24h)',
       },
+    },
+    {
+      name: 'staffChatIds',
+      type: 'array',
+      // Review F4: the global itself is publicly readable (storefront needs
+      // timeZone/quantum) — staff chat ids are PII and stay OWNER-only.
+      access: {
+        read: adminOnlyFieldAccess,
+        update: adminOnlyFieldAccess,
+      },
+      admin: { description: 'Telegram chat ids of staff pager recipients (spec 004 FR-402, L1 auth)' },
+      fields: [{ name: 'chatId', type: 'text', required: true }],
+    },
+    {
+      name: 'defaultLocale',
+      type: 'select',
+      defaultValue: 'ru',
+      options: [
+        { label: 'Русский', value: 'ru' },
+        { label: 'English', value: 'en' },
+      ],
+      admin: { description: 'Bot strings locale (spec 004 US3, botStrings without per-staff override)' },
     },
   ],
 }
