@@ -17,6 +17,9 @@ export const Resources: CollectionConfig = {
     group: 'Bookings',
     useAsTitle: 'name',
     defaultColumns: ['name', 'active'],
+    components: {
+      edit: { beforeDocumentControls: ['@/components/admin/CalendarFeedLink#CalendarFeedLink'] },
+    },
   },
   fields: [
     {

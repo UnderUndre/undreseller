@@ -27,15 +27,7 @@ export default async function BookServicePage({ params }: { params: Promise<{ sl
       {typeof service.durationMin === 'number' && (
         <p className="mb-4 text-neutral-500">Duration: {service.durationMin} min</p>
       )}
-      <SlotGrid
-        serviceId={String(service.id)}
-        onBooked={({ reservationId, accessToken, cancelToken }) => {
-          window.location.href =
-            `/book/confirmation/${reservationId}` +
-            `?accessToken=${encodeURIComponent(accessToken)}` +
-            `&cancelToken=${encodeURIComponent(cancelToken)}`
-        }}
-      />
+      <SlotGrid serviceId={String(service.id)} />
     </div>
   )
 }

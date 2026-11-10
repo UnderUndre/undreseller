@@ -14,7 +14,9 @@ export function SlotGrid({
   onBooked,
 }: {
   serviceId: string
-  onBooked: (result: { reservationId: string; accessToken: string; cancelToken: string }) => void
+  /** Optional: defaults to navigating to the confirmation page. Server
+   * Components cannot pass function props — the navigation lives here. */
+  onBooked?: (result: { reservationId: string; accessToken: string; cancelToken: string }) => void
 }) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [slots, setSlots] = useState<ComputedSlotDTO[]>([])
@@ -78,7 +80,14 @@ export function SlotGrid({
         accessToken: string
         cancelToken: string
       }
-      onBooked(data)
+      if (onBooked) {
+        onBooked(data)
+      } else {
+        window.location.href =
+          `/book/confirmation/${data.reservationId}` +
+          `?accessToken=${encodeURIComponent(data.accessToken)}` +
+          `&cancelToken=${encodeURIComponent(data.cancelToken)}`
+      }
     } finally {
       setSubmitting(false)
     }
