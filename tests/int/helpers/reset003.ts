@@ -14,7 +14,7 @@ export async function resetBookingTables(payload: Payload): Promise<void> {
     drizzle: db.drizzle,
     sql: sql`TRUNCATE TABLE slot_reservations, orders, audit_events, payment_events,
              inbox_events, email_delivery_log, payload_jobs, products, resources,
-             telegram_outbox, tg_links, blacklist
+             telegram_outbox, tg_links, blacklist, waitlist_entries
              RESTART IDENTITY CASCADE`,
   })
 }

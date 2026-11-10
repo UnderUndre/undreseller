@@ -23,6 +23,7 @@ import { InboxEvent } from '@/collections/InboxEvent'
 import { Media } from '@/collections/Media'
 import { Pages } from '@/collections/Pages'
 import { PaymentEvents } from '@/collections/PaymentEvents'
+import { WaitlistEntries } from '@/collections/WaitlistEntries'
 import { TelegramOutbox } from '@/collections/TelegramOutbox'
 import { TgLink } from '@/collections/TgLink'
 import { Resources } from '@/collections/Resources'
@@ -35,6 +36,7 @@ import { ShopSettings } from '@/globals/ShopSettings'
 import { bookingEmailTask, reminderSweepTask } from '@/jobs/bookingEmail'
 import { gdprPurgeTask } from '@/jobs/gdprPurge'
 import { holdSweepTask } from '@/jobs/holdSweep'
+import { waitlistMatchTask, waitlistSweepTask } from '@/jobs/waitlistJobs'
 import { outboxDispatchTask } from '@/jobs/outboxDispatch'
 import { plugins } from './plugins'
 
@@ -71,6 +73,8 @@ export default buildConfig({
     TelegramOutbox,
     TgLink,
     Blacklist,
+    // 006 waitlist (review F7: registered, slug waitlist-entries)
+    WaitlistEntries,
   ],
   db: postgresAdapter({
     pool: {
@@ -118,7 +122,7 @@ export default buildConfig({
   // Payload Jobs (spec 003 research D1, review F1): task declaration alone is
   // NOT enough — the background worker only starts with jobs.autoRun registered.
   jobs: {
-    tasks: [holdSweepTask, bookingEmailTask, reminderSweepTask, outboxDispatchTask, gdprPurgeTask],
+    tasks: [holdSweepTask, bookingEmailTask, reminderSweepTask, outboxDispatchTask, gdprPurgeTask, waitlistMatchTask, waitlistSweepTask],
     // 004 review F6: outbox dispatch needs the 30s cadence (default 60s/limit 10
     // would sleep through the queue SLA); limit 25 matches the batch size.
     autoRun: [{ cron: '*/30 * * * * *', queue: 'default', limit: 25 }],

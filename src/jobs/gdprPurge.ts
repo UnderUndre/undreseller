@@ -32,6 +32,14 @@ export async function runGdprPurge(payload: Payload): Promise<GdprPurgeResult> {
   })
   const tgLinksPurged = (purge.rows ?? []).length
 
+  // Waitlist GDPR (spec 006 review F11): terminal entries older than 90 days.
+  await db.execute({
+    drizzle: db.drizzle,
+    sql: sql`DELETE FROM waitlist_entries
+             WHERE status IN ('converted', 'expired', 'cancelled')
+               AND updated_at < now() - interval '90 days'`,
+  })
+
   // Outbox minimal retention: strip PII-bearing text/markup/meta older than 30 days.
   const meta = await db.execute({
     drizzle: db.drizzle,

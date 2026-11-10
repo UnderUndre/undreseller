@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 
 import { evaluateHoldExpiry } from '@/lib/kernel/bookingFsm'
+import { notifySlotFreed } from '@/lib/waitlist/waitlistService'
 
 /**
  * Hold sweep (spec 003 US5, research D1): releases expired PREPAID holds.
@@ -18,13 +19,15 @@ export async function releaseExpiredHolds(payload: Payload): Promise<HoldSweepRe
   const db: any = payload.db
   const candidates = await db.execute({
     drizzle: db.drizzle,
-    sql: sql`SELECT id, status, schedule_version, order_id, hold_expires_at, hold_frozen_at
+    sql: sql`SELECT id, status, schedule_version, order_id, hold_expires_at, hold_frozen_at,
+                    resource_id, item_id, start_time, end_time
              FROM slot_reservations
              WHERE status IN ('HELD', 'PAYMENT_PENDING') AND hold_expires_at IS NOT NULL`,
   })
   const now = new Date()
   let released = 0
 
+  const releasedSlots: Array<{ resourceId: string; productId: string; slotStart: Date; slotEnd: Date }> = []
   for (const raw of (candidates.rows ?? []) as Array<{
     id: number
     status: string
@@ -32,6 +35,10 @@ export async function releaseExpiredHolds(payload: Payload): Promise<HoldSweepRe
     order_id: number
     hold_expires_at: string | null
     hold_frozen_at: string | null
+    resource_id: string
+    item_id: string | null
+    start_time: string
+    end_time: string
   }>) {
     const verdict = evaluateHoldExpiry({
       status: raw.status as 'HELD' | 'PAYMENT_PENDING',
@@ -58,7 +65,22 @@ export async function releaseExpiredHolds(payload: Payload): Promise<HoldSweepRe
         INSERT INTO audit_events (action, actor_id, aggregate_type, aggregate_id, metadata_json, created_at, updated_at)
         VALUES ('booking.hold-expired', 'SYSTEM', 'BOOKING', ${String(raw.id)}, '{}'::jsonb, now(), now())`)
       released += 1
+      releasedSlots.push({
+        resourceId: String(raw.resource_id),
+        productId: String(raw.item_id),
+        slotStart: new Date(raw.start_time),
+        slotEnd: new Date(raw.end_time),
+      })
     })
+  }
+
+  // Waitlist: freed slots re-enter the queue (best-effort, spec 006 FR-602).
+  for (const slot of releasedSlots) {
+    try {
+      await notifySlotFreed(payload, slot)
+    } catch (wlErr: unknown) {
+      payload.logger.error({ err: wlErr, message: 'waitlist notifySlotFreed failed (hold sweep)' })
+    }
   }
 
   return { released }

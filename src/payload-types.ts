@@ -98,6 +98,7 @@ export interface Config {
     'telegram-outbox': TelegramOutbox;
     'tg-links': TgLink;
     blacklist: Blacklist;
+    'waitlist-entries': WaitlistEntry;
     forms: Form;
     'form-submissions': FormSubmission;
     addresses: Address;
@@ -143,6 +144,7 @@ export interface Config {
     'telegram-outbox': TelegramOutboxSelect<false> | TelegramOutboxSelect<true>;
     'tg-links': TgLinksSelect<false> | TgLinksSelect<true>;
     blacklist: BlacklistSelect<false> | BlacklistSelect<true>;
+    'waitlist-entries': WaitlistEntriesSelect<false> | WaitlistEntriesSelect<true>;
     forms: FormsSelect<false> | FormsSelect<true>;
     'form-submissions': FormSubmissionsSelect<false> | FormSubmissionsSelect<true>;
     addresses: AddressesSelect<false> | AddressesSelect<true>;
@@ -187,6 +189,8 @@ export interface Config {
       'reminder-sweep': TaskReminderSweep;
       'outbox-dispatch': TaskOutboxDispatch;
       'gdpr-purge': TaskGdprPurge;
+      'waitlist-match': TaskWaitlistMatch;
+      'waitlist-sweep': TaskWaitlistSweep;
       inline: {
         input: unknown;
         output: unknown;
@@ -1267,7 +1271,7 @@ export interface PaymentEvent {
  */
 export interface EmailDeliveryLog {
   id: number;
-  kind: 'confirmation' | 'reminder';
+  kind: 'confirmation' | 'reminder' | 'waitlist';
   status: 'sent' | 'failed';
   bookingId?: number | null;
   recipientHash: string;
@@ -1360,6 +1364,32 @@ export interface Blacklist {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "waitlist-entries".
+ */
+export interface WaitlistEntry {
+  id: number;
+  customerName: string;
+  customerPhone: string;
+  customerEmail: string;
+  serviceId: number | Product;
+  resourceId: number | Resource;
+  expiresAt: string;
+  status: 'waiting' | 'notified' | 'converted' | 'expired' | 'cancelled';
+  /**
+   * Campaign cap = 3 (spec 006 audit M1)
+   */
+  campaignCount?: number | null;
+  activeCampaignAt?: string | null;
+  /**
+   * Slot coordinates bound into the claim HMAC (review F1)
+   */
+  notifiedSlotStart?: string | null;
+  notifiedSlotEnd?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "form-submissions".
  */
 export interface FormSubmission {
@@ -1444,7 +1474,15 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug: 'inline' | 'hold-sweep' | 'booking-email' | 'reminder-sweep' | 'outbox-dispatch' | 'gdpr-purge';
+        taskSlug:
+          | 'inline'
+          | 'hold-sweep'
+          | 'booking-email'
+          | 'reminder-sweep'
+          | 'outbox-dispatch'
+          | 'gdpr-purge'
+          | 'waitlist-match'
+          | 'waitlist-sweep';
         taskID: string;
         input?:
           | {
@@ -1477,7 +1515,18 @@ export interface PayloadJob {
         id?: string | null;
       }[]
     | null;
-  taskSlug?: ('inline' | 'hold-sweep' | 'booking-email' | 'reminder-sweep' | 'outbox-dispatch' | 'gdpr-purge') | null;
+  taskSlug?:
+    | (
+        | 'inline'
+        | 'hold-sweep'
+        | 'booking-email'
+        | 'reminder-sweep'
+        | 'outbox-dispatch'
+        | 'gdpr-purge'
+        | 'waitlist-match'
+        | 'waitlist-sweep'
+      )
+    | null;
   queue?: string | null;
   waitUntil?: string | null;
   processing?: boolean | null;
@@ -1559,6 +1608,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'blacklist';
         value: number | Blacklist;
+      } | null)
+    | ({
+        relationTo: 'waitlist-entries';
+        value: number | WaitlistEntry;
       } | null)
     | ({
         relationTo: 'forms';
@@ -2026,6 +2079,25 @@ export interface BlacklistSelect<T extends boolean = true> {
   phone?: T;
   reason?: T;
   createdBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "waitlist-entries_select".
+ */
+export interface WaitlistEntriesSelect<T extends boolean = true> {
+  customerName?: T;
+  customerPhone?: T;
+  customerEmail?: T;
+  serviceId?: T;
+  resourceId?: T;
+  expiresAt?: T;
+  status?: T;
+  campaignCount?: T;
+  activeCampaignAt?: T;
+  notifiedSlotStart?: T;
+  notifiedSlotEnd?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -2694,6 +2766,22 @@ export interface TaskOutboxDispatch {
  * via the `definition` "TaskGdpr-purge".
  */
 export interface TaskGdprPurge {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskWaitlist-match".
+ */
+export interface TaskWaitlistMatch {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskWaitlist-sweep".
+ */
+export interface TaskWaitlistSweep {
   input?: unknown;
   output?: unknown;
 }

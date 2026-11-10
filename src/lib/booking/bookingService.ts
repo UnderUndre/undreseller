@@ -13,6 +13,7 @@ import { toAmountMinor, isBeforeCancellationCutoff } from '@/lib/payments/amount
 import { assertProviderAmountMatch } from '@/lib/payments/invariants'
 import { stripeGateway, type PaymentGateway } from '@/lib/payments/stripeGateway'
 import { verifyTokenHash, hashToken } from '@/lib/booking/tokens'
+import { notifySlotFreed } from '@/lib/waitlist/waitlistService'
 
 /**
  * Booking domain service (spec 002-booking-domain US5/US6, research D4;
@@ -382,7 +383,9 @@ export async function cancelBooking(
         order_id: number
         cancel_token_hash: string | null
         start_time: string
+        end_time: string
         item_id: string | null
+        resource_id: string
         amount: number
         order_status: string
         stripe_payment_intent_id: string | null
@@ -458,6 +461,18 @@ export async function cancelBooking(
               ${JSON.stringify({ via: 'cancel-endpoint', refund: refund ?? 'not-applicable', cutoffHours })}::jsonb, now(), now())`)
   })
 
+  // Waitlist: a freed slot re-enters the queue (best-effort, spec 006 FR-602).
+  try {
+    await notifySlotFreed(payload, {
+      resourceId: row.resource_id,
+      productId: row.item_id as string,
+      slotStart: new Date(row.start_time),
+      slotEnd: new Date(row.end_time),
+    })
+  } catch (wlErr: unknown) {
+    payload.logger.error({ err: wlErr, message: 'waitlist notifySlotFreed failed (cancel continues)' })
+  }
+
   // Stripe refund strictly AFTER the release commit (research D5): a network
   // call never holds the advisory-locked transaction open.
   if (refund === 'auto-refunded') {
@@ -496,7 +511,12 @@ export async function cancelBooking(
 export type ApprovalAction = 'approve' | 'reject'
 
 export type ApprovalResult =
-  | { status: 'approved' | 'rejected' | 'ALREADY_PROCESSED'; scheduleVersion: number }
+  | {
+      status: 'approved' | 'rejected' | 'ALREADY_PROCESSED'
+      scheduleVersion: number
+      /** Set on reject — waitlist hook consumes it (spec 006 FR-602). */
+      releasedSlot?: { resourceId: string; productId: string | null; slotStart: string; slotEnd: string }
+    }
 
 /** OPERATOR approve/reject via FSM CAS (spec 002-booking-domain US6, research D4). */
 export async function approveBooking(
@@ -505,12 +525,12 @@ export async function approveBooking(
 ): Promise<ApprovalResult> {
   const db: any = payload.db
   try {
-    return await db.drizzle.transaction(async (trx: any) => {
+    const result: ApprovalResult = await db.drizzle.transaction(async (trx: any) => {
       const rowRes = await trx.execute(sql`
-        SELECT id, status, schedule_version, order_id, resource_id
+        SELECT id, status, schedule_version, order_id, resource_id, item_id, start_time, end_time
         FROM slot_reservations WHERE id = ${input.reservationId} FOR UPDATE`)
       const row = rowRes.rows?.[0] as
-        | { id: string; status: string; schedule_version: number; order_id: number; resource_id: string }
+        | { id: string; status: string; schedule_version: number; order_id: number; resource_id: string; item_id: string | null; start_time: string; end_time: string }
         | undefined
       if (!row) throw new BookingError('BOOKING_NOT_FOUND', 404, 'Booking not found')
       if (row.status !== 'PENDING_APPROVAL') {
@@ -539,8 +559,25 @@ export async function approveBooking(
       return {
         status: input.action === 'approve' ? 'approved' : 'rejected',
         scheduleVersion: Number(row.schedule_version) + 1,
+        releasedSlot: input.action === 'reject'
+          ? { resourceId: row.resource_id, productId: row.item_id, slotStart: row.start_time, slotEnd: row.end_time }
+          : undefined,
       }
     })
+    // Waitlist: a rejected slot re-enters the queue (best-effort, spec 006 FR-602).
+    if (result.releasedSlot) {
+      try {
+        await notifySlotFreed(payload, {
+          resourceId: result.releasedSlot.resourceId,
+          productId: result.releasedSlot.productId as string,
+          slotStart: new Date(result.releasedSlot.slotStart),
+          slotEnd: new Date(result.releasedSlot.slotEnd),
+        })
+      } catch (wlErr: unknown) {
+        payload.logger.error({ err: wlErr, message: 'waitlist notifySlotFreed failed (reject continues)' })
+      }
+    }
+    return result
   } catch (err: unknown) {
     if (err instanceof BookingError) throw err
     const pgCode = pgErrorCode(err)
@@ -560,14 +597,16 @@ async function releaseAfterPaymentInitFailure(
   orderId: number,
 ): Promise<void> {
   const db: any = payload.db
+  let released: { rows?: Array<{ resource_id: string; item_id: string; start_time: string; end_time: string }> } | undefined
   await db.drizzle.transaction(async (trx: any) => {
     await trx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtext('resource_slot_cancel_' || ${reservationId}))`,
     )
-    await trx.execute(sql`
+    released = await trx.execute(sql`
       UPDATE slot_reservations
       SET status = 'RELEASED', schedule_version = schedule_version + 1, updated_at = now()
-      WHERE id = ${reservationId} AND status = 'HELD'`)
+      WHERE id = ${reservationId} AND status = 'HELD'
+      RETURNING resource_id, item_id, start_time, end_time`)
     await trx.execute(
       sql`UPDATE orders SET status = 'cancelled', updated_at = now() WHERE id = ${orderId}`,
     )
@@ -575,6 +614,19 @@ async function releaseAfterPaymentInitFailure(
       INSERT INTO audit_events (action, actor_id, aggregate_type, aggregate_id, metadata_json, created_at, updated_at)
       VALUES ('booking.release.payment-init-failed', 'SYSTEM', 'BOOKING', ${String(reservationId)}, '{}'::jsonb, now(), now())`)
   })
+  const rel = (released as any)?.rows?.[0] as { resource_id: string; item_id: string; start_time: string; end_time: string } | undefined
+  if (rel) {
+    try {
+      await notifySlotFreed(payload, {
+        resourceId: rel.resource_id,
+        productId: rel.item_id,
+        slotStart: new Date(rel.start_time),
+        slotEnd: new Date(rel.end_time),
+      })
+    } catch (wlErr: unknown) {
+      payload.logger.error({ err: wlErr, message: 'waitlist notifySlotFreed failed (PI-fail release)' })
+    }
+  }
 }
 
 export interface GatewayEventInput {
@@ -603,7 +655,8 @@ export async function applyGatewayEvent(
 ): Promise<GatewayEventResult> {
   const now = input.now ?? new Date()
   const db: any = payload.db
-  return await db.drizzle.transaction(async (trx: any) => {
+  let releasedSlot: { resourceId: string; productId: string | null; slotStart: Date; slotEnd: Date } | undefined
+  const outcome = await db.drizzle.transaction(async (trx: any) => {
     const claim = await trx.execute(sql`
       INSERT INTO inbox_events (provider, provider_ref, created_at, updated_at)
       VALUES (${input.provider}, ${input.providerRef}, now(), now())
@@ -616,7 +669,7 @@ export async function applyGatewayEvent(
     const rows = await trx.execute(sql`
       SELECT o.id AS order_id, o.amount, o.currency, o.status AS order_status,
              sr.id AS reservation_id, sr.status AS res_status, sr.schedule_version,
-             sr.resource_id, sr.start_time, sr.end_time
+             sr.resource_id, sr.item_id, sr.start_time, sr.end_time
       FROM orders o
       JOIN slot_reservations sr ON sr.order_id = o.id
       WHERE o.stripe_payment_intent_ref = ${input.providerRef}
@@ -631,6 +684,7 @@ export async function applyGatewayEvent(
           res_status: string
           schedule_version: number
           resource_id: string
+          item_id: string | null
           start_time: string
           end_time: string
         }
@@ -742,12 +796,23 @@ export async function applyGatewayEvent(
       )
       await ledger('PROCESSED')
       await audit(trx, 'payment.failed-release', 'BOOKING', String(row.reservation_id), { providerRef: input.providerRef })
+      releasedSlot = { resourceId: String(row.resource_id), productId: row.item_id, slotStart: new Date(row.start_time), slotEnd: new Date(row.end_time) }
       return { deduped: false, outcome: 'released' as const }
     }
 
     await ledger('PROCESSED')
     return { deduped: false, outcome: 'ignored' as const }
   })
+  // Waitlist: a payment-failed release frees the slot (best-effort, spec 006 FR-602).
+  const slot = releasedSlot
+  if (outcome.outcome === 'released' && slot && slot.productId) {
+    try {
+      await notifySlotFreed(payload, { resourceId: slot.resourceId, productId: slot.productId, slotStart: slot.slotStart, slotEnd: slot.slotEnd })
+    } catch (wlErr: unknown) {
+      payload.logger.error({ err: wlErr, message: 'waitlist notifySlotFreed failed (gateway release)' })
+    }
+  }
+  return outcome
 }
 
 async function audit(trx: any, action: string, aggregateType: string, aggregateId: string, metadata: Record<string, unknown>) {
@@ -1009,7 +1074,7 @@ export async function cancelBookingByClientChat(
   // Latest active reservation for the order.
   const rowRes = await db.execute({
     drizzle: db.drizzle,
-    sql: sql`SELECT sr.id, sr.status, sr.schedule_version, sr.order_id,
+    sql: sql`SELECT sr.id, sr.status, sr.schedule_version, sr.order_id, sr.resource_id, sr.item_id, sr.end_time,
                     o.status AS order_status, o.amount, o.stripe_payment_intent_ref AS stripe_payment_intent_id,
                     sr.start_time, COALESCE(p.cancellation_cutoff_hours, 3) AS cutoff_hours
              FROM slot_reservations sr
@@ -1028,6 +1093,9 @@ export async function cancelBookingByClientChat(
         amount: string | number
         stripe_payment_intent_id: string | null
         start_time: string
+        end_time: string
+        resource_id: string
+        item_id: string | null
         cutoff_hours: number
       }
     | undefined
@@ -1073,6 +1141,18 @@ export async function cancelBookingByClientChat(
       VALUES ('booking.cancel-by-telegram', 'CUSTOMER', 'BOOKING', ${String(row.id)},
               ${JSON.stringify({ chatId: input.chatId, refund: refund ?? 'not-applicable' })}::jsonb, now(), now())`)
   })
+
+  // Waitlist: freed slot re-enters the queue (best-effort, spec 006 FR-602).
+  try {
+    await notifySlotFreed(payload, {
+      resourceId: row.resource_id,
+      productId: row.item_id as string,
+      slotStart: new Date(row.start_time),
+      slotEnd: new Date(row.end_time),
+    })
+  } catch (wlErr: unknown) {
+    payload.logger.error({ err: wlErr, message: 'waitlist notifySlotFreed failed (tg-cancel continues)' })
+  }
 
   // Refund after commit — same two-phase canon as cancelBooking (003).
   if (refund === 'auto-refunded') {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import type { ComputedSlotDTO } from '@/components/booking/types'
+import { WaitlistJoinForm } from '@/components/booking/WaitlistJoinForm'
 
 /**
  * Client slot grid (spec 002-booking-domain US7): fetches availability for the
@@ -115,7 +116,10 @@ export function SlotGrid({
       {loading ? (
         <p className="text-neutral-500">Loading slots…</p>
       ) : slots.length === 0 ? (
-        <p className="text-neutral-500">No available slots on this date.</p>
+        <>
+          <p className="text-neutral-500">No available slots on this date.</p>
+          <WaitlistJoinForm serviceId={serviceId} />
+        </>
       ) : (
         <div className="flex flex-wrap gap-2">
           {slots.map((slot) => (

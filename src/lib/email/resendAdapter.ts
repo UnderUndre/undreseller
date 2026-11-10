@@ -83,7 +83,7 @@ export async function sendEmail(
 export async function logDelivery(
   payload: Payload,
   entry: {
-    kind: 'confirmation' | 'reminder'
+    kind: 'confirmation' | 'reminder' | 'waitlist'
     status: 'sent' | 'failed'
     bookingId?: number
     email: string
