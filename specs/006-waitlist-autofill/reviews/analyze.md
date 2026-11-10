@@ -66,7 +66,7 @@ low_count: 0
 | ID | Severity | Summary | Resolution |
 | --- | --- | --- | --- |
 | R1 | MEDIUM | F12 полечен наполовину: спека говорит «006=waitlist, 007=ЮKassa», но bizplan v2.7.0 §2.4 по-прежнему маркировал ЮKassa как «(006)» | Bizplan поправлен (undreplans, отдельный коммит) — «ЮKassa (007)» |
-| R2 | MEDIUM | T610 advisory lock `waitlist_join_${phone}` — строковый литерал без hashtext = ровно класс бага 004 F6 (`function pg_advisory_xact_lock(unknown) does not exist`) | T610 дополнен каноном `hashtext('waitlist_join_' \|\| phone)` |
+| R2 | MEDIUM | T610 advisory lock `waitlist_join_${phone}` — строковый литерал без hashtext = ровно класс бага 004 F6 (`function pg_advisory_xact_lock(unknown) does not exist`) | T610 дополнен каноном `hashtext('waitlist_join_' || phone)` |
 | R3 | LOW | Verify HMAC-токена: `campaignCount` не растёт на re-arm → одинаковый slotStart в разных кампаниях даёт одинаковый токен — принято (свой токен/свой entry, claim легитимен; статус-машина + activeCampaignAt guard держат корректность) | Зафиксировано как accepted trade-off |
 | R4 | LOW | `notifiedSlotStart.toISOString()` — timestamptz из PG (микросекунды) сериализуется драйвером в Date (ms) детерминированно с обеих сторон; token-строка стабильна | Подтверждено, правок не требует |
 
