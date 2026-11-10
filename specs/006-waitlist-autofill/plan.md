@@ -1,69 +1,80 @@
 # Implementation Plan: 006 (006-waitlist-autofill)
 
-> "Очередь — это труба, в которой вода сама находит свободный стояк." — Валера
+> "Очередь — это труба, в которой вода сама находит свободный стояк, но только если кран опломбирован HMAC-ом, а при гидроударе 409 насос не заливает соседей." — Валера
 
-**Branch**: `main` (single-branch lineage — IX-девиация) | **Date**: 2026-11-10 | **Spec**: rev 1.1 (audit PASS run #2)
-**Input**: spec rev 1.1 + requirements-audit (PASS run #2) + research.md (D1–D6) + план v2.7.0
+**Branch**: `main` (single-branch lineage — IX-девиация) | **Date**: 2026-11-10 | **Spec**: rev 1.2 (post-antigravity review fixes F1–F13)
+**Input**: spec rev 1.2 + requirements-audit (rev 1.2) + research.md (D1–D8) + план v2.7.0
 
 ## Summary
 
-Smart Waitlist: (1) публичный join с кап-анти-спамом (3/телефон, дубли 409); (2) триггер на RELEASED → Payload Job `waitlist-match` → FIFO top-5 → email с claim-ссылкой (HMAC, TTL 30 мин); (3) claim = FSM `CREATE_BOOKING` (FREE→CONFIRMED / PREPAID→HELD 15m) через bookingService — гонка закрыта advisory+GiST каноном; проигравшие → auto-advance; (4) sweep — expired/re-arm с камп-капом 3; (5) unsubscribe + OWNER-коллекция. Ноль новых deps, ноль новых внешних сервисов.
+Smart Waitlist:
+1. Публичный `POST /api/waitlist` с валидацией (name, phone, обязательный email в MVP, `now < expiresAt <= now + 60d`), проверкой `Blacklist` (403), капом 3/телефон и защитой от дублей (409);
+2. Коллекция `WaitlistEntries` со слагом `waitlist-entries` (исключает route shadowing) и композитными индексами `(resource_id, service_id, status)` и `(phone, status)`;
+3. Триггеры на все 6 точек `RELEASED` (с проверкой `slotStart > now`) -> Payload Job `waitlist-match` -> FIFO top-5 -> фиксация `notifiedSlotStart/End` в БД -> email с подписанной claim-ссылкой (`HMAC(campaignCount:entryId:slotStartIso)`, TTL 30 мин) и unsubscribe-ссылкой;
+4. Claim через `bookingService.createBooking` (FREE->CONFIRMED, PREPAID->HELD 15m) со временем слота строго из БД. При победе — остальные кандидаты re-arm в `waiting`; при 409 — честный отказ и re-arm проигравшего БЕЗ ложного auto-advance;
+5. Payload Job `waitlist-sweep` каждые 5 минут (`*/5 * * * *`) для re-arm и камп-капа 3, с auto-advance только на действительно свободные слоты;
+6. GDPR 90d purge в `gdprPurge.ts`.
 
 ## Technical Context
 
-**Language/Version**: без изменений (001–005 фундамент). **Testing**: vitest int (join-матрица, FIFO, claim-гонка ×100, lifecycle, PII-grep). **New deps**: 0 (NFR-602). **Storage**: новая коллекция `Waitlist` (+ EmailDeliveryLog.kind enum + 'waitlist' — additions-only).
+**Language/Version**: Next.js 16 + Payload 3.93 + React 19 + PostgreSQL 16. **Testing**: vitest int (join, blacklist, FIFO, race x100, sweep 5m, auto-advance rules, PII-grep). **New deps**: 0 (NFR-602). **Storage**: новая коллекция `WaitlistEntries` (слаг `waitlist-entries`) + расширение `EmailDeliveryLog.kind` enum на `'waitlist'`.
 
 ## Constitution Check
 
 | Принцип | Статус | Примечание |
 |---|---|---|
-| I–V | PASS/N/A | без изменений от 005 |
-| VI | ON TRACK | analyze + внутренние ревью; ≥2 external до implement |
-| VII | PASS | теги батчем на коммите контура |
-| VII-B | PASS | план v2.7.0 без дельты (waitlist не трогает ICP/цены/рельсы) |
+| I–V | PASS/N/A | без изменений |
+| VI | ON TRACK | analyze + antigravity review fixes; >=2 external PASS до implement |
+| VII | PASS | теги батчем (`review/006-waitlist-autofill/v1`) |
+| VII-B | PASS | план v2.7.0 (006 waitlist, 007 ЮKassa — нумерация синхронизирована) |
 | IX | DEVIATION (lineage) | как 001–005 |
 | X | PASS | additions-only (новая коллекция + enum-значение) |
 | XI | PASS | 0 спайков |
-| XII | **ON TRACK — money-adjacent** | FR-603 Risk=20 → STM+DT+EG+UAT обязательны |
+| XII | **ON TRACK — money-adjacent** | FR-603 Risk=20 -> STM+DT+EG+UAT обязательны |
 | XIII | PASS | WIP = 1 |
 
 ## Project Structure (Source changes)
 
 ```text
-src/collections/Waitlist.ts              # NEW: entry (name/phone/email/service/resource/status/campaignCount/...)
-src/lib/waitlist/waitlistService.ts      # NEW: join (кап/дубли), notifySlotFreed (матчинг FIFO top-5), claim (FSM через bookingService), lifecycle
-src/lib/waitlist/claimToken.ts           # NEW: вычислимый HMAC с солью кампании (канон 005)
+src/collections/WaitlistEntries.ts       # NEW: слаг waitlist-entries, поля (name/phone/email/serviceId/resourceId/status/campaignCount/activeCampaignAt/notifiedSlotStart/notifiedSlotEnd), композитные индексы, adminOnly доступ
+src/lib/waitlist/waitlistService.ts      # NEW: join (blacklist/кап/дубли), notifySlotFreed (6 точек RELEASED, slotStart > now), match (FIFO top-5), claim (FSM через bookingService, time from DB, auto-advance guard), sweep (5m, auto-advance on free slots)
+src/lib/waitlist/claimToken.ts           # NEW: HMAC claimToken(slotStartIso) + unsubscribeToken, timing-safe
 src/app/api/waitlist/route.ts            # NEW: POST join (rate limit, валидация)
-src/app/api/waitlist/[entryId]/claim/route.ts   # NEW: POST claim (HMAC+status guard → FSM)
-src/app/api/waitlist/[entryId]/route.ts  # NEW: DELETE unsubscribe (token)
-src/app/api/admin/waitlist/[entryId]/route.ts   # NEW: OWNER list-детали (опц.)
+src/app/api/waitlist/[entryId]/claim/route.ts   # NEW: POST claim (HMAC+status guard -> FSM)
+src/app/api/waitlist/[entryId]/route.ts  # NEW: DELETE unsubscribe (unsubToken guard -> cancelled + auto-advance if slot was active)
 src/jobs/waitlistMatch.ts                # NEW: Payload Job — матчинг + письма (D3)
-src/jobs/waitlistSweep.ts                # NEW: Payload Job daily — expired/re-arm (D4)
-src/collections/EmailDeliveryLog.ts      # MOD: kind += 'waitlist'
-src/lib/booking/bookingService.ts        # MOD: notifySlotFreed() вызов из точек RELEASED (cancel/PI-fail/hold-expiry/reject)
-src/app/(app)/book/[slug]/page.tsx       # MOD: SlotGrid получает флаг пустоты → WaitlistJoinForm
-src/components/booking/WaitlistJoinForm.tsx  # NEW: инлайн-форма подписки
-src/app/(app)/book/waitlist-claim/page.tsx   # NEW: claim-страница (явный Confirm, D6)
-tests/int/waitlist.int.spec.ts           # NEW: join-матрица/FIFO/claim-гонка ×100/lifecycle/PII
+src/jobs/waitlistSweep.ts                # NEW: Payload Job cron */5 * * * * — expired/re-arm/auto-advance (D4, D8)
+src/collections/EmailDeliveryLog.ts      # MOD: kind select += 'waitlist'
+src/lib/email/resendAdapter.ts           # MOD: logDelivery typing kind += 'waitlist'
+src/lib/booking/bookingService.ts        # MOD: RETURNING resource_id, item_id, start_time, end_time и вызов notifySlotFreed() во всех 5 точках RELEASED
+src/jobs/holdSweep.ts                    # MOD: RETURNING resource_id, item_id, start_time, end_time и вызов notifySlotFreed() в 6-й точке RELEASED
+src/jobs/gdprPurge.ts                    # MOD: удаление терминальных waitlist_entries старше 90 дней
+src/payload.config.ts                    # MOD: регистрация WaitlistEntries в collections и waitlistSweepTask в jobs.tasks
+src/app/(app)/book/[slug]/page.tsx       # MOD: SlotGrid передача контекста для формы ожидания
+src/components/booking/WaitlistJoinForm.tsx  # NEW: инлайн-форма подписки (name, phone, email обязателен)
+src/app/(app)/book/waitlist-claim/page.tsx   # NEW: claim-страница (детали слота, явный Confirm, честное сообщение при 409, кнопка отписки)
+tests/int/waitlist.int.spec.ts           # NEW: сьют тестов (join/blacklist/FIFO/claim-гонка x100/sweep 5m/no-spam-on-409/PII)
 ```
 
 ## Threat Modeling (STRIDE)
 
-- **S**: вычислимый HMAC claim-токен; rate limit на join; OWNER-only админ. **T**: claim через единственный status-writer (advisory+GiST); CAS-переходы статусов записи. **R**: audit `waitlist.join/converted/expired/unsubscribed`. **I**: токен без PII; письма — услуга/время; дени-лист. **D**: job-очередь буферизует пики отмен; кап-кампаний против циклов. **E**: join публичный (rate limit + кап), мутации статусов — только сервис.
+- **S (Spoofing)**: HMAC-токен с привязкой к версии кампании, entryId и `slotStartIso` (клиент не может подделать время брони); timingSafeEqual; rate limit на join; OWNER-only админка.
+- **T (Tampering)**: время слота читается сервером строго из `notifiedSlotStart` в БД; статус-мутации через атомарные CAS-запросы; бронь через `bookingService` под advisory lock + GiST.
+- **R (Repudiation)**: аудит-события `waitlist.join`, `waitlist.notified`, `waitlist.converted`, `waitlist.expired`, `waitlist.cancelled`.
+- **I (Information Disclosure)**: токены без открытого PII; адреса в `EmailDeliveryLog` хешируются солью `PAYLOAD_SECRET`; закрытие доступа к системным полям коллекции.
+- **D (Denial of Service)**: rate limit 10/60s; кап 3 записей на телефон; фильтрация Blacklist; Payload Job буферизует пики отмен; камп-кап 3 предотвращает зацикливание.
+- **E (Elevation of Privilege)**: коллекция `waitlist-entries` защищена `adminOnly`; слаг `waitlist-entries` не перекрывает REST API.
 
 ## Rollback
 
-Additions-only: новая коллекция/роуты/джобы; release-точка получает один вызов notifySlotFreed (best-effort, try/catch); откат = git.
+Additions-only: новая коллекция `WaitlistEntries`, новые роуты и джобы. Вызовы `notifySlotFreed` в точках RELEASED изолированы try/catch и не блокируют основные транзакции бронирования. Откат = git revert.
 
 ## Risks
 
 | Риск | Вер-ть | Митигация |
 |---|---|---|
-| Notify-цикл (hold-expiry↔match) | низкая | камп-кап 3 (D4) + sweep re-arm |
-| Claim-гонка с витриной | средняя | advisory+GiST канон 002 — тест ×100; проигравший → auto-advance |
-| Спам-подписки ботом | низкая | rate limit + кап 3/телефон + expiresAt |
-| Письмо уходит медленнее, чем слот займут | средняя | честная семантика: first-to-claim; в письме «слот может быть уже занят» |
-
-## Next
-
-`/speckit.tasks` — выполнено: 6 задач, 3 lane'а (см. tasks.md).
+| Notify-цикл (hold-expiry <-> match) | низкая | камп-кап 3 (D4) + sweep 5m re-arm |
+| Каскадный спам при 409 | устранено (F4) | при 409 слот занят -> auto-advance НЕ вызывается |
+| Подмена слота клиентом при claim | устранено (F1) | `slotStart` читается из БД + подписан в HMAC |
+| Конфликт URL админки и API | устранено (F2) | слаг коллекции `waitlist-entries` |
+| Кража слота витриной | средняя | честная семантика first-to-claim; понятное сообщение при 409 |
