@@ -4,6 +4,7 @@ import { getPayload } from 'payload'
 import configPromise from '@payload-config'
 
 import { BookingError, createBooking } from '@/lib/booking/bookingService'
+import { hashToken } from '@/lib/booking/tokens'
 import {
   createIntent,
   IntentError,
@@ -62,10 +63,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const resourceId = typeof body.resourceId === 'string' ? body.resourceId : undefined
   const intentId = typeof body.intentId === 'string' ? body.intentId : null
   const otp = typeof body.otp === 'string' ? body.otp : null
-  const idempotencyKey =
-    typeof body.idempotencyKey === 'string' && body.idempotencyKey
-      ? body.idempotencyKey
-      : undefined
+  // 008 T812 (F-BE-02): a client-supplied idempotencyKey is IGNORED — the key
+  // is server-derived (verified email + product + start) so that sequential or
+  // guessed keys can never resolve another customer's booking. Spec 003
+  // FR-301 (review F7) still holds: paymentMode is equally unread.
+  void body.idempotencyKey
   // Spec 003 FR-301 (review F7) still holds: a client-supplied paymentMode is
   // ignored by design. In phase 2 EVERY param comes from the DB intent (F5) —
   // nothing in this body can influence the booked slot or customer data.
@@ -112,6 +114,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       if (await isBlacklisted(payload, { phone: customerPhone })) {
         return NextResponse.json({ error: 'BLACKLISTED', message: 'This phone is not allowed to book' }, { status: 403 })
       }
+      // 008 T812 (F-BE-02): deterministic SERVER-derived idempotency key —
+      // a repeat of the same (email, service, slot) is an idempotent re-book,
+      // anything else is a fresh booking.
+      const startIso = new Date(start).toISOString()
+      const serverIdempotencyKey = hashToken(`booking-idem:${customerEmail}:${productId}:${startIso}`)
       const result = await createBooking(payload, {
         productId,
         resourceId,
@@ -119,7 +126,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         customerName,
         customerPhone,
         customerEmail,
-        idempotencyKey,
+        idempotencyKey: serverIdempotencyKey,
       })
       const res = bookingResponse(result, 201)
       // Sliding window: every verified booking re-issues the cookie (F1).

@@ -87,17 +87,22 @@ function timingSafeHexMatch(a: string | null | undefined, b: string | null | und
 export async function findBookingByIdempotencyKey(
   payload: Payload,
   idempotencyKey: string,
+  ownerEmail?: string,
 ): Promise<BookingResult | null> {
   const res = await payload.db.execute({
     drizzle: (payload.db as unknown as { drizzle: any }).drizzle,
-    sql: sql`SELECT sr.id AS reservation_id, sr.status, sr.schedule_version, sr.order_id, o.access_token
+    sql: sql`SELECT sr.id AS reservation_id, sr.status, sr.schedule_version, sr.order_id, o.access_token, o.customer_email
              FROM slot_reservations sr JOIN orders o ON o.id = sr.order_id
              WHERE sr.idempotency_key = ${idempotencyKey} LIMIT 1`,
   })
   const row = res.rows?.[0] as
-    | { reservation_id: number; status: string; schedule_version: number; order_id: number; access_token: string }
+    | { reservation_id: number; status: string; schedule_version: number; order_id: number; access_token: string; customer_email: string | null }
     | undefined
   if (!row) return null
+  // 008 T812 (F-BE-02, antigravity): a known/sequential idempotency key must
+  // never leak another customer's booking — without an owner match the
+  // booking is invisible to this caller.
+  if (ownerEmail !== undefined && (row.customer_email ?? '') !== ownerEmail) return null
   return {
     reservationId: Number(row.reservation_id),
     orderId: Number(row.order_id),
@@ -121,7 +126,7 @@ export async function createBooking(
   }
 
   if (input.idempotencyKey) {
-    const existing = await findBookingByIdempotencyKey(payload, input.idempotencyKey)
+    const existing = await findBookingByIdempotencyKey(payload, input.idempotencyKey, input.customerEmail)
     if (existing) return existing
   }
 
@@ -342,7 +347,7 @@ export async function createBooking(
       throw new BookingError('SLOT_TAKEN', 409, 'The slot has just been taken')
     }
     if (pgCode === '23505' && input.idempotencyKey) {
-      const existing = await findBookingByIdempotencyKey(payload, input.idempotencyKey)
+      const existing = await findBookingByIdempotencyKey(payload, input.idempotencyKey, input.customerEmail)
       if (existing) return existing
     }
     throw err

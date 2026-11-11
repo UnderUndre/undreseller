@@ -319,7 +319,7 @@ export async function verifyIntentBooking(payload: Payload, input: VerifyIntentI
     if (!verifyOtpCode(intent.id, intent.email, input.otp, intent.code_hash)) {
       throw new IntentError('OTP_INVALID', 403, 'Invalid verification code')
     }
-    const existing = await findBookingByIdempotencyKey(payload, `booking-intent-${intent.id}`)
+    const existing = await findBookingByIdempotencyKey(payload, `booking-intent-${intent.id}`, intent.email)
     if (!existing) throw new IntentError('INTENT_DEAD', 403, 'This verification request is no longer active')
     return { booking: existing, replayed: true, email: intent.email }
   }
@@ -381,7 +381,7 @@ export async function verifyIntentBooking(payload: Payload, input: VerifyIntentI
       // clash-check fires before its own 23505 fallback, so re-check HERE
       // before declaring the slot taken. No booking → a REAL take: honest 409
       // and the intent dies (never re-armed).
-      const existing = await findBookingByIdempotencyKey(payload, `booking-intent-${intent.id}`)
+      const existing = await findBookingByIdempotencyKey(payload, `booking-intent-${intent.id}`, intent.email)
       if (!existing) {
         const dead = await db.execute({
           drizzle: db.drizzle,
