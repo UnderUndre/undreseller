@@ -2,7 +2,7 @@
 
 **Slug:** `008-audit-hardening`
 **Репозиторий:** `UnderUndre/undreseller` · **База:** 001 (`980bc32`) + 002 (`c5f3bf1`) + 003 (`3697b3d`) + 004 (`9efe76a`) + 005 (`3a576e4`) + 006 (`a66eed5`) + 007 (`cb7a8ec`)
-**Статус:** **DRAFT — REVISION 1.0 (2026-11-12; source of truth — два аудита: `docs/reviews/code-review-zcode.md` (48 находок: 3 BLOCKER / 11 CRITICAL / 22 WARNING / 12 SUGGESTION) и `docs/reviews/security-audit-zcode.md` (3 High / 17 Medium / 13 Low, verdict HIGH)**
+**Статус:** **DRAFT — REVISION 1.1 (2026-11-12; интегрировано antigravity-ревью `reviews/antigravity.md` verdict HIGH 5H/5M/1L: F1 job-токены → deleteJobOnComplete, F2 refund через FOR UPDATE вместо несуществующего статуса, F3 утечка accessToken в задачах, F4 message_id+chatId резолв карточек, F5 CSP 'unsafe-inline' против RSC-брейка, F6 intentService в плане, F7 миграция+index.ts+enum вне транзакции, F8 boot через instrumentation, F9 контракт clientIpFrom, F10 booking-conflict testid, F11 семантика очистки грида). Source of truth — два аудита: `docs/reviews/code-review-zcode.md` (48 находок: 3 BLOCKER / 11 CRITICAL / 22 WARNING / 12 SUGGESTION) и `docs/reviews/security-audit-zcode.md` (3 High / 17 Medium / 13 Low, verdict HIGH)**
 **Source of truth по бизнесу:** план v2.7.1 (undreplans ledger) — **без дельты**: харденинг не меняет ICP/цены/рельсы; это защита денег, инвентаря и данных · **WAIVER:** `business-plan-waiver.md` (техническая спека, прецедент 002/003/004)
 
 ---
@@ -49,21 +49,21 @@ Whole-repo код-ревью и security-аудит (2026-11-12) вскрыли 
 
 ### US4 — Целостность денежного пути (P0)
 
-Stripe-вебхук: CAS-UPDATE проверяет rowCount; при проигранной гонке — re-read и корректная ветка (late-payment/late-reconfirm), order не трогается до успешного CAS. Raw-токены брони не персистятся в job input: джоба генерирует одноразовые линки сама (CAS) или получает только данные без секретов. Refund-approve — транзакция с CAS по статусу (двойной вызов Stripe невозможен, проигравший не перезаписывает `refunded` на `refund_failed`); `charge.refunded` сверяет сумму с order (partial ≠ full). 
+Stripe-вебхук: CAS-UPDATE проверяет rowCount; при проигранной гонке — re-read и корректная ветка (late-payment/late-reconfirm), order не трогается до успешного CAS. Raw-токены брони не персистятся в job input: Payload-таска отправки письма конфигурируется с `deleteJobOnComplete` (вход стирается из очереди сразу после отправки — сырые токены живут только в pending-окне джобы; ссылки cancel/reschedule на экране подтверждения остаются валидными, хэши в БД не перезаписываются). Refund-approve: `SELECT … FOR UPDATE` в транзакции (без введения нового статуса — Via Negativa), детерминированный Stripe idempotencyKey, статус пишется сразу в финальное значение; `charge.refunded` сверяет сумму с order (partial ≠ full). Плюс: accessToken заказа не попадает в stdout (логируется только id).
 
-**Acceptance**: гонка webhook×cancel → ровно один корректный исход (confirmed / late-reconfirmed / paid_requires_resolution); гонка refund×refund → один Stripe-вызов, статус верифицируем; partial refund не помечает ордер `refunded`.
+**Acceptance**: гонка webhook×cancel → ровно один корректный исход (confirmed / late-reconfirmed / paid_requires_resolution); гонка refund×refund → один Stripe-вызов, статус верифицируем; partial refund не помечает ордер `refunded`; после отправки письма input джобы пуст; stdout не содержит `accessToken=`.
 
 ### US5 — Trust-gate route hardening (P0)
 
-Trust-cookie путь фазы 1 проходит ту же grid-валидацию, что и intent-путь (future/сетка/существование ресурса) — брони вне сетки и на несуществующем ресурсе невозможны; ошибки валидации не дают необработанных 500. `SlotGrid.submit` получает catch с честным сообщением о сетевой ошибке (паритет с OTP-шагом).
+Trust-cookie путь фазы 1 проходит ту же grid-валидацию, что и intent-путь (future/сетка/существование ресурса) — брони вне сетки и на несуществующем ресурсе невозможны; ошибки валидации не дают необработанных 500. Семантика очистки грида разделена: сбой загрузки availability очищает устаревший грид; сбой сабмита брони показывает ошибку, **сохраняя** грид для повторной попытки.
 
-**Acceptance**: бронь с валидным cookie и off-grid `start` → 422; несуществующий resourceId → 422 (не 500); упавший fetch при сабмите → видимое сообщение, кнопка восстанавливается.
+**Acceptance**: бронь с валидным cookie и off-grid `start` → 422; несуществующий resourceId → 422 (не 500); упавший fetch при сабмите → видимое сообщение при живом гриде; упавшая загрузка availability → пустой грид (без слотов чужой даты).
 
 ### US6 — Воронка без тупиков (P0 — UX)
 
-(a) Время брони на confirmation/claim-лендинге рендерится в таймзоне клиента. (b) Токены ошибок/успеха проходят контраст 4.5:1 в обеих темах. (c) OTP-шаг имеет выход «Выбрать другой слот» (без потери введённых полей) + autoFocus на код. (d) После оплаты ошибочный confirm-order показывает честный экран с повтором, а не вечный спиннер. (e) Страница логина говорит языком клиента и не светит админку. (f) При ошибке загрузки слотов устаревший грид не показывается.
+(a) Время брони на confirmation/claim-лендинге рендерится в таймзоне клиента. (b) Токены ошибок/успеха проходят контраст 4.5:1 в обеих темах. (c) OTP-шаг имеет выход «Выбрать другой слот» (без потери введённых полей) + autoFocus на код; конфликт слота на OTP-шаге помечается тем же testid, что и на гриде (е2е-контракт). (d) После оплаты ошибочный confirm-order показывает честный экран с повтором, а не вечный спиннер. (e) Страница логина говорит языком клиента и не светит админку.
 
-**Acceptance**: время на confirmation совпадает с локальным для клиента; обе темы проходят 4.5:1 на error/success; каждый тупик флоу имеет видимый выход; не-аутентифицированный пользователь на /login видит customer-копию.
+**Acceptance**: время на confirmation совпадает с локальным для клиента; обе темы проходят 4.5:1 на error/success; каждый тупик флоу имеет видимый выход; SLOT_TAKEN на OTP-шаге различим e2e-селектором; не-аутентифицированный пользователь на /login видит customer-копию.
 
 ### US7 — Release gates live (P0 — тесты)
 
@@ -73,9 +73,9 @@ Trust-cookie путь фазы 1 проходит ту же grid-валидац�
 
 ### US8 — Инфраструктурный харденинг (P1)
 
-(a) Postgres не публикует порт наружу (app-сеть compose / 127.0.0.1), пароль без fallback-дефолта (fail-closed как PAYLOAD_SECRET). (b) Security headers: CSP, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy strict-origin-when-cross-origin, HSTS, `X-Powered-By` off. (c) Определение IP fail-closed (нет достоверного хопа → явный отказ лимита, не общий bucket; CF-заголовок доверяется только при фактическом Cloudflare). (d) Single-instance guard вызывается на boot. (e) `/api/availability` — rate limit + короткий кэш (serviceId+date → слоты, 15–30с). (f) GraphQL disabled в prod (REST-канон остаётся).
+(a) Postgres не публикует порт наружу (app-сеть compose / 127.0.0.1), пароль без fallback-дефолта (fail-closed как PAYLOAD_SECRET). (b) Security headers: статическая CSP с `'unsafe-inline'` для скриптов/стилей (совместимая с App Router-гидрацией и Payload-админкой — без per-request nonce), X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy strict-origin-when-cross-origin, HSTS, `X-Powered-By` off. (c) Определение IP fail-closed: контракт возвращает null при недостоверной цепочке; роуты при null получают отказ лимита (не общий bucket); CF-заголовок доверяется только при фактическом Cloudflare. (d) Single-instance guard вызывается на boot через `instrumentation.ts` (не на уровне модуля — билд не должен падать). (e) `/api/availability` — rate limit + короткий кэш (serviceId+date → слоты, 15–30с). (f) GraphQL disabled в prod (REST-канон остаётся). (g) Секреты/PII не логируются: accessToken-лог в find-order удалён, debug-остатки и сырые webhook-объекты переведены на структурный логгер без чувствительных полей.
 
-**Acceptance**: снаружи 5432 не отвечает; ответ storefront содержит все заголовки; запрос с поддельным XFF напрямую на origin получает отказ лимита; GraphQL в prod → 404/выключен.
+**Acceptance**: снаружи 5432 не отвечает; ответ storefront содержит все заголовки; запрос с поддельным XFF напрямую на origin получает отказ лимита; GraphQL в prod → 404/выключен; `stdout` не содержит токенов заказов и сырых Telegram-апдейтов.
 
 ### US9 — Комплаенс-гигиена (P1)
 
@@ -102,12 +102,13 @@ Trust-cookie путь фазы 1 проходит ту же grid-валидац�
 - **FR-801 (Deployable schema, US1)**: полный fresh-migrate + CI-гейт smoke.
 - **FR-802 (Token isolation, US2)**: серверная детерминация idempotencyKey; отказ выдачи accessToken по чужому контексту; claim-роут делегирует сервису.
 - **FR-803 (Staff authz, US3)**: серверная привязка карточка↔чат, инвалидация при отзыве, FSM-канон для complete, tg_links-гейт acknowledge.
-- **FR-804 (Money path, US4)**: webhook CAS + re-read; job input без секретов; refund CAS/идемпотентность; charge.refunded amount-сверка.
-- **FR-805 (Trust route, US5)**: grid-валидация trust-cookie пути; catch в booking submit.
-- **FR-806 (Funnel UX, US6)**: локальное время, контраст 4.5:1, OTP-выход, honest confirm-order error, customer login copy, stale-grid cleanup.
+- **FR-804 (Money path, US4)**: webhook CAS + re-read; job input стирается после отправки (`deleteJobOnComplete`); refund через `FOR UPDATE` + детерминированный Stripe idempotencyKey БЕЗ новых статусов; charge.refunded amount-сверка; accessToken не в логах.
+- **FR-805 (Trust route, US5)**: grid-валидация trust-cookie пути; семантика: сбой availability → пустой грид, сбой submit → ошибка при живом гриде.
+- **FR-806 (Funnel UX, US6)**: локальное время, контраст 4.5:1, OTP-выход (+ testid конфликта на OTP-шаге), honest confirm-order error, customer login copy.
 - **FR-807 (Gates, US7)**: e2e под контракт 007; route-тест-матрица ≥15; trust-cookie route-тесты; error-shapes снапшот + каталог 007; TTL-ветка opt-in.
-- **FR-808 (Infra, US8)**: закрытый Postgres, security headers, fail-closed IP, boot-guard, availability RL+кэш, GraphQL off в prod.
+- **FR-808 (Infra, US8)**: закрытый Postgres, CSP `'unsafe-inline'` + остальные headers, контракт `clientIpFrom → string | null` с отказом лимита при null, boot-guard через instrumentation, availability RL+кэш, graphql off в prod, секреты/PII не в stdout.
 - **FR-809 (Compliance, US9)**: анонимизация терминальных PII >90д; JSON-LD escape.
+- **FR-810 (Migration mechanics, US1 — antigravity F7)**: миграция регистрируется в миграционном индексе; валидный down-метод; добавление enum-значений выполняется в отдельном от использования шаге (Postgres-квирк `unsafe use of new value`).
 - **FR-BK (Backlog, явный)**: вне спеки — F-BE-07..16 (кроме вошедших в US4/US5), F-UX-07..20, SEC-A-04/05→частично/09/10/11/13/14/15, SEC-B-04/06/07(частично)/10..18, F-TQ-06..12 (кроме F-TQ-06 в US7). Бэклог — кандидат в 009-ux-hygiene.
 
 ### Non-Functional Requirements

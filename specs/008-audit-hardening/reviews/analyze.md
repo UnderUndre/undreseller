@@ -52,3 +52,29 @@ low_count: 3
 Гейт VI (Principle VI): analyze PASS + внутренние ревью — до `/speckit.implement` требуется ≥2 external PASS (antigravity/codex/gemini) или logged owner override.
 
 Гейт 8.5 (QA-contour): manual QA на staging + `/speckit.qa-signoff` — ПОСЛЕ имплементации, перед code-review.
+
+---
+
+## Run #2 addendum (2026-11-12): интеграция antigravity-ревью
+
+**Вход**: reviews/antigravity.md verdict HIGH (5H/5M/1L, все 11 согласованы) → spec rev 1.1, plan/tasks обновлены.
+
+**Проверка интеграции (F1–F11 → задачи)**: F1→T811 (deleteJobOnComplete) ✓ · F2→T810 (FOR UPDATE без нового статуса — Via Negativa восстановлен) ✓ · F3→T842 (sendOrderAccessEmail в plan+tasks) ✓ · F4→T813 (route + message_id + to_chat_id резолв + allow-list) ✓ · F5→T840/T843 (статическая CSP 'unsafe-inline', nonce-вариант явно отложен) ✓ · F6→T812 (intentService в plan, координация сигнатуры) ✓ · F7→T820 (index.ts + down() + enum отдельной миграцией) ✓ · F8→T840 (instrumentation.ts) ✓ · F9→T840 (контракт string|null + отказ лимита) ✓ · F10→T830/T850 (testid booking-conflict на OTP-шаге) ✓ · F11→T821 (семантика очистки разделена: availability vs submit) ✓
+
+**Coverage после интеграции**: FR-801..810 (добавлен FR-810 миграционной механики) ↔ T810–T852 — 10/10, orphans 0. Граф не изменился (T810→T811 осталась: deleteJobOnComplete на той же таске). Бюджет задач не изменился (13).
+
+**Resolve antigravity HIGH**: 5/5 устранены (F1–F5); MEDIUM 5/5 (F6–F10); LOW 1/1 (F11).
+
+```yaml
+verdict: PASS
+reviewer: analyze
+run: 2
+reviewed_at: 2026-11-12T02:05:00+02:00
+spec_revision: "1.1"
+critical_count: 0
+high_count: 0
+medium_count: 0
+low_count: 2
+```
+
+Гейт VI: antigravity run #1 = 1/2 external. Для implement: ещё ≥1 external PASS (codex/gemini) или owner override.

@@ -2,12 +2,12 @@
 
 > "Течь не там, где капает, а там, где прорвёт." — Валера
 
-**Branch**: `main` (single-branch lineage — IX-девиация) | **Date**: 2026-11-12 | **Spec**: rev 1.0 (requirements-audit PASS run #1)
-**Input**: spec rev 1.0 + requirements-audit PASS + два аудита (code-review 48 / security 33) + план v2.7.1 (без дельты)
+**Branch**: `main` (single-branch lineage — IX-девиация) | **Date**: 2026-11-12 | **Spec**: rev 1.1 (antigravity F1–F11 интегрированы; requirements-audit PASS run #1)
+**Input**: spec rev 1.1 + requirements-audit PASS + antigravity review (5H/5M/1L, все согласованы) + два аудита (code-review 48 / security 33) + план v2.7.1 (без дельты)
 
 ## Summary
 
-Харденинг 001–007 по обоим аудитам: (1) полная миграция + CI fresh-migrate smoke; (2) серверный idempotencyKey (A01 IDOR закрыт); (3) server-side привязка карточка↔чат в Telegram staff-контуре; (4) webhook CAS + job без секретов + refund CAS + amount-сверка; (5) grid-валидация trust-cookie пути; (6) UX-тупики воронки (локальное время, контраст, OTP-выход, honest confirm-order, login copy, stale grid); (7) release-гейты: e2e под OTP-контракт, route-тест-матрица, error-shapes снапшот; (8) инфра: закрытый Postgres, security headers, fail-closed IP, boot-guard, availability RL+кэш, graphql off в prod; (9) GDPR-анонимизация >90д + JSON-LD escape.
+Харденинг 001–007 по обоим аудитам: (1) полная миграция (регистрация в индексе, down-метод, enum-значения отдельным шагом) + CI fresh-migrate smoke; (2) серверный idempotencyKey (A01 IDOR закрыт, координация с intentService); (3) server-side привязка карточка↔чат (message_id + to_chat_id резолв из outbox, staff allow-list); (4) webhook CAS + `deleteJobOnComplete` для токенов письма + refund через `FOR UPDATE` без новых статусов + amount-сверка + accessToken не в логах; (5) grid-валидация trust-cookie пути + семантика очистки грида (availability vs submit раздельно); (6) UX-тупики воронки (локальное время, контраст, OTP-выход с testid конфликта, honest confirm-order, login copy); (7) release-гейты: e2e под OTP-контракт, route-тест-матрица, error-shapes снапшот; (8) инфра: закрытый Postgres, статическая CSP `'unsafe-inline'` (совместимая с App Router/Payload — без nonce), fail-closed IP-контракт `string | null`, boot-guard через instrumentation, availability RL+кэш, graphql off в prod, секреты не в stdout; (9) GDPR-анонимизация >90д + JSON-LD escape.
 
 ## Technical Context
 
@@ -30,31 +30,38 @@
 ## Project Structure (Source changes)
 
 ```text
-src/migrations/20261112_complete_domain_schema.ts  # NEW: все доменные таблицы/enum-значения/колонки 002–007 (IF NOT EXISTS-идемпотентность) — F-BE-01
-src/lib/booking/bookingService.ts                  # MOD: findBookingByIdempotencyKey email-guard (F-BE-02), webhook CAS rowCount + re-read (F-BE-03), job input без секретов (F-BE-05), refund CAS (SEC-A-05), charge.refunded amount-сверка (SEC-A-15), reschedule grid — нет (бэклог)
-src/app/api/booking/route.ts                       # MOD: серверный idempotencyKey (детерминированный, клиентский игнорируется), grid-валидация trust-cookie пути (SEC-A-08)
+src/migrations/20261112_complete_domain_schema.ts  # NEW: все доменные таблицы/колонки 002–007 (IF NOT EXISTS-идемпотентность, additions-only) — F-BE-01
+src/migrations/20261112_order_enum_values.ts       # NEW: ALTER TYPE ADD VALUE IF NOT EXISTS отдельным шагом (Postgres-квирк: нельзя в одной транзакции с использованием — antigravity F7)
+src/migrations/index.ts                            # MOD: регистрация обеих миграций (antigravity F7)
+src/lib/booking/bookingService.ts                  # MOD: findBookingByIdempotencyKey email-guard (F-BE-02), webhook CAS rowCount + re-read (F-BE-03), queue письма → deleteJobOnComplete-таска (F1), charge.refunded amount-сверка (SEC-A-15)
+src/app/api/booking/route.ts                       # MOD: серверный idempotencyKey (детерминированный HMAC, клиентский игнорируется), grid-валидация trust-cookie пути (SEC-A-08)
+src/lib/booking/intentService.ts                   # MOD: передача intent.email в idempotency-гвард — координация со сменой сигнатуры (antigravity F6)
 src/app/api/waitlist/[entryId]/claim/route.ts      # MOD: делегация в claimWaitlistEntry, клиентский key удалён (F-BE-12)
-src/lib/booking/refundService.ts                   # MOD: транзакция + CAS status='refunding' (SEC-A-05/F-BE-06)
-src/jobs/bookingEmail.ts + bookingService.queue    # MOD: input без токенов — джоба CAS-генерит одноразовые линки сама (F-BE-05)
-src/lib/telegram/staffBot.ts                       # MOD: card→chat server-side binding, auth-denied на mismatch (F-BE-04), complete через FSM (SEC-A-06)
+src/lib/booking/refundService.ts                   # MOD: транзакция + SELECT FOR UPDATE (без нового статуса) + детерминированный Stripe idempotencyKey refund-<orderId> (antigravity F2, SEC-A-05/F-BE-06)
+src/jobs/bookingEmail.ts                           # MOD: task-конфиг deleteJobOnComplete:true — input стирается после отправки (antigravity F1, F-BE-05)
+src/lib/telegram/staffBot.ts                       # MOD: резолв карточки по sent_message_id AND to_chat_id, staff allow-list, auth-denied на mismatch (antigravity F4, F-BE-04), complete через FSM (SEC-A-06)
+src/app/api/telegram/staff/webhook/route.ts        # MOD: проброс message_id колбэка в хендлер (antigravity F4)
+src/lib/telegram/staffCard.ts                      # MOD: sent_message_id + to_chat_id сохраняются при отправке карточки
 src/lib/telegram/staffAuth.ts                      # MOD: удаление тавтологии L3
-src/lib/telegram/staffCard.ts                      # MOD: сохранение chat-binding в outbox metadata при отправке карточки
 src/lib/telegram/clientBot.ts                      # MOD: acknowledge tg_links-гейт (SEC-A-07)
-src/components/booking/SlotGrid.tsx                # MOD: catch в submit (F-UX-04), setSlots([]) при ошибке (F-UX-17), onBack прокид
-src/components/booking/BookingFormOTP.tsx          # MOD: onBack «Выбрать другой слот», autoFocus (F-UX-03)
+src/components/booking/SlotGrid.tsx                # MOD: catch в submit БЕЗ очистки грида (antigravity F11) + setSlots([]) в loadSlots при сбое availability (F-UX-17), onBack прокид
+src/components/booking/BookingFormOTP.tsx          # MOD: onBack «Выбрать другой слот», autoFocus, data-testid="booking-conflict" на SLOT_TAKEN (antigravity F10)
 src/components/checkout/ConfirmOrder.tsx           # MOD: error-экран + retry (F-UX-05)
 src/components/booking/LocalTime.tsx               # NEW: client-side time render (suppressHydrationWarning) — F-UX-01
 src/app/(app)/book/confirmation/[id]/page.tsx      # MOD: LocalTime
 src/app/(app)/book/waitlist-claim/page.tsx         # MOD: LocalTime + RU-копия invalid-link (F-UX-07 частично)
 src/app/(app)/login/page.tsx                       # MOD: customer-копия без админ-линка (F-UX-06)
 src/app/(app)/globals.css                          # MOD: --error/--success контраст 4.5:1 (F-UX-02) + cursor-pointer базовый слой (F-UX-11 дёшево)
-next.config.ts                                     # MOD: headers() CSP/XFO/XCTO/Referrer-Policy + poweredByHeader:false (SEC-B-02)
+next.config.ts                                     # MOD: headers() статическая CSP script-src 'self' 'unsafe-inline' (RSC-совместимая — antigravity F5) + XFO/XCTO/Referrer-Policy + poweredByHeader:false (SEC-B-02)
+src/instrumentation.ts                             # NEW/MOD: register() вызывает assertSingleInstance (antigravity F8 — не на уровне модуля)
 docker-compose.yml                                 # MOD: 127.0.0.1:5432 bind + ${POSTGRES_PASSWORD:?err} (SEC-B-01)
-src/lib/security/rateLimiter.ts                    # MOD: clientIpFrom fail-closed (SEC-A-01/B-18), вызов assertSingleInstance на boot (SEC-A-03)
+src/lib/security/rateLimiter.ts                    # MOD: clientIpFrom → string | null fail-closed контракт, роуты при null получают отказ лимита (antigravity F9, SEC-A-01/B-18)
 src/app/api/availability/route.ts                  # MOD: checkRateLimit + кэш (SEC-B-05)
 src/lib/availability/slotCache.ts                  # NEW: in-memory TTL-кэш (15-30с, bounded — канон rateLimiter)
 src/payload.config.ts                              # MOD: graphql.disable() в prod (SEC-B-03)
 src/jobs/gdprPurge.ts                              # MOD: анонимизация customer_* в orders/slot_reservations >90д (SEC-B-08)
+src/components/forms/FindOrderForm/sendOrderAccessEmail.ts  # MOD: console.log тела письма удалён — accessToken не в stdout (antigravity F3, SEC-A-02)
+src/lib/booking/bookingService.ts [003-debug] + telegram webhook routes  # MOD: payload.logger без сырых объектов (SEC-B-07)
 src/app/(app)/products/[slug]/page.tsx             # MOD: JSON-LD </script> escape (SEC-B-09)
 tests/int/booking-route.int.spec.ts                # NEW: HTTP-матрица двухфазности (F-TQ-02/04)
 tests/int/trust-gate.int.spec.ts                   # MOD: route-тесты trust-cookie + honeypot HTTP (F-TQ-03/04)
@@ -70,17 +77,18 @@ tests/helpers/otpFromDb.ts                         # NEW: OTP-код из БД H
 
 ## Rollback
 
-Additions-only миграция откатывается revert'ом файла миграции; каждый US — изолированный блок коммитов (1 US = 1 commit) → точечный revert без каскада. Contract changes (серверный idempotencyKey, error-shapes) снапшотятся в error-shapes до мерджа.
+Миграция additions-only: откат = применение `down()` (DROP TABLE IF EXISTS / DROP COLUMN IF EXISTS — antigravity F7: git revert файла НЕ откатывает БД). Каждый US — изолированный блок коммитов (1 US = 1 commit) → точечный revert кода без каскада. Contract changes (серверный idempotencyKey, error-shapes) снапшотятся в error-shapes до мерджа. deleteJobOnComplete — отключаемая конфиг-строка.
 
 ## Risks
 
 | Риск | Вер-ть | Митигация |
 |---|---|---|
 | Миграция конфликтует с dev-push схемой | средняя | IF NOT EXISTS-идемпотентность + тест на pre-existing схеме |
-| Job-генерация линков при ретрае даёт вторые линки | низкая | генерация только при пустом hash (CAS-guard) |
+| Enum ADD VALUE в одной транзакции с использованием | высокая (PG-квирк) | отдельная миграция `order_enum_values` до табличной (antigravity F7) |
+| Токены письма в pending-окне джобы | низкая | окно ≤ очередь-латенции; deleteJobOnComplete стирает после отправки (antigravity F1) |
 | Кэш availability отдаёт устаревший слот | низкая | TTL ≤30с → существующий SLOT_TAKEN 409 честно ловит |
 | e2e flakiness после переписывания | средняя | OTP-хелпер детерминирован; fake Resend канон |
-| header CSP ломает Next inline bootstrap | средняя | nonce/strict-dynamic + браузерная проверка (канон nextjs-15-5) |
+| CSP ломает App Router/Payload admin | снята | статическая CSP с 'unsafe-inline' — RSC-совместимая (antigravity F5); nonce-вариант — отдельная работа |
 
 ## Next
 
