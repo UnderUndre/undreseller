@@ -1,0 +1,47 @@
+npm warn Unknown project config "enable-pre-post-scripts". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn install-scripts .npmrc: ignoring unparseable entry "omniroute keytar onnxruntime-node @parcel/watcher @swc/core protobufjs esbuild"
+npm notice run undreseller@1.0.0 npx
+npm notice run payload migrate
+[02:41:17] [33mWARN[39m: [36mNo email adapter provided. Email will be written to console. More info at https://payloadcms.com/docs/email/overview.[39m
+[02:41:17] [32mINFO[39m: [36mReading migration files from C:\Users\Admin\Documents\Repos\UnderUndre\repos\undreseller\src\migrations[39m
+[02:41:17] [32mINFO[39m: [36mMigrating: 20261107_003147_booking_gist[39m
+[02:41:19] [32mINFO[39m: [36mMigrated:  20261107_003147_booking_gist (1680ms)[39m
+[02:41:19] [32mINFO[39m: [36mMigrating: 20261112_000001_order_enum_values[39m
+[02:41:19] [32mINFO[39m: [36mMigrated:  20261112_000001_order_enum_values (4ms)[39m
+[02:41:19] [32mINFO[39m: [36mMigrating: 20261112_000002_complete_domain_schema[39m
+[02:41:19] [32mINFO[39m: [36mMigrated:  20261112_000002_complete_domain_schema (244ms)[39m
+[02:41:19] [32mINFO[39m: [36mDone.[39m
+npm warn Unknown project config "enable-pre-post-scripts". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn install-scripts .npmrc: ignoring unparseable entry "omniroute keytar onnxruntime-node @parcel/watcher @swc/core protobufjs esbuild"
+npm notice run undreseller@1.0.0 npx
+npm notice run cross-env DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/undreseller_smoke_008 NODE_OPTIONS=--no-deprecation npx vitest run tests/int/gist-race.int.spec.ts
+npm warn Unknown env config "enable-pre-post-scripts". This will error in a future major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "enable-pre-post-scripts". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn install-scripts CLI flag: ignoring unparseable entry "omniroute keytar onnxruntime-node @parcel/watcher @swc/core protobufjs esbuild"
+npm warn install-scripts .npmrc: ignoring unparseable entry "omniroute keytar onnxruntime-node @parcel/watcher @swc/core protobufjs esbuild"
+npm notice run undreseller@1.0.0 npx
+npm notice run vitest run tests/int/gist-race.int.spec.ts
+
+[1m[46m RUN [49m[22m [36mv4.1.0 [39m[90mC:/Users/Admin/Documents/Repos/UnderUndre/repos/undreseller[39m
+
+[⣷] Pulling schema from database...
+[2K[1G[⣯] Pulling schema from database...
+[2K[1G[⣟] Pulling schema from database...
+[2K[1G[⡿] Pulling schema from database...
+[2K[1G[⢿] Pulling schema from database...
+[2K[1G[⣻] Pulling schema from database...
+[2K[1G[⣽] Pulling schema from database...
+[2K[1G[⣷] Pulling schema from database...
+[2K[1G[⣯] Pulling schema from database...
+[2K[1G[⣟] Pulling schema from database...
+[2K[1G[⡿] Pulling schema from database...
+[2K[1G[⢿] Pulling schema from database...
+[2K[1G[✓] Pulling schema from database...
+[02:41:24] [33mWARN[39m: [36mNo email adapter provided. Email will be written to console. More info at https://payloadcms.com/docs/email/overview.[39m
+ [32m✓[39m tests/int/gist-race.int.spec.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 380[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m4 passed[39m[22m[90m (4)[39m
+[2m   Start at [22m 02:41:20
+[2m   Duration [22m 4.14s[2m (transform 371ms, setup 26ms, import 3.56s, tests 380ms, environment 0ms)[22m
+
