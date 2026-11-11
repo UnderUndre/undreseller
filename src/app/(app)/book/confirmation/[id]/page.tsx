@@ -4,6 +4,7 @@ import { getPayload } from 'payload'
 import configPromise from '@payload-config'
 
 import { CancelBookingButton } from '@/components/booking/CancelBookingButton'
+import { LocalTime } from '@/components/booking/LocalTime'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,7 +45,7 @@ export default async function BookingConfirmationPage({
       {slot ? (
         <p className="mb-2">
           Appointment:{' '}
-          <strong>{new Date(slot.startTime as string).toLocaleString()}</strong> —{' '}
+          <strong className="font-semibold"><LocalTime iso={slot.startTime as string} /></strong> —{' '}
           {String(slot.status)}
         </p>
       ) : null}

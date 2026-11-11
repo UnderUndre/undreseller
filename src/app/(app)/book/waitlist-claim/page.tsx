@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import { getPayload } from 'payload'
 
 import { ClaimWaitlistClient } from '@/components/booking/ClaimWaitlistClient'
+import { LocalTime } from '@/components/booking/LocalTime'
 
 import configPromise from '@payload-config'
 
@@ -21,7 +22,7 @@ export default async function WaitlistClaimPage(props: {
   searchParams: Promise<{ entry?: string; token?: string }>
 }) {
   const { entry = '', token = '' } = await props.searchParams
-  if (!entry || !token) return <p>Invalid link: entry and token are required.</p>
+  if (!entry || !token) return <p>Некорректная ссылка: требуются entry и token.</p>
 
   const payload = await getPayload({ config: configPromise })
   const db: any = payload.db
@@ -61,7 +62,7 @@ export default async function WaitlistClaimPage(props: {
       <p>
         <strong>{row.service_title ?? 'Запись'}</strong>
         <br />
-        {new Date(row.notified_slot_start).toLocaleString()} — {new Date(row.notified_slot_end).toLocaleTimeString()}
+        <LocalTime iso={row.notified_slot_start} endIso={row.notified_slot_end} />
       </p>
       <ClaimWaitlistClient entryId={entry} token={token} />
     </div>

@@ -50,6 +50,8 @@ export function SlotGrid({
       setSlots(data.slots ?? [])
     } catch {
       setError('Failed to load availability')
+      // 008 T821 (F-UX-17 / Antigravity F11): availability failure clears stale slots
+      setSlots([])
     } finally {
       setLoading(false)
     }
@@ -105,6 +107,9 @@ export function SlotGrid({
       }
       // 201 — either the trust-cookie path or an idempotent replay: no OTP step.
       navigateToConfirmation((await res.json()) as { reservationId: string; accessToken: string; cancelToken: string })
+    } catch {
+      // 008 T821 (F-UX-04 / Antigravity F11): submit failure displays error WITHOUT wiping slots
+      setError('Network error, please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -118,6 +123,7 @@ export function SlotGrid({
           expiresAt={otpPhase.expiresAt}
           emailSent={otpPhase.emailSent}
           onVerified={navigateToConfirmation}
+          onBack={() => setOtpPhase(null)}
         />
       ) : (
         <>

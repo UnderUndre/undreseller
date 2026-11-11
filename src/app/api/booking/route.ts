@@ -5,6 +5,7 @@ import configPromise from '@payload-config'
 
 import { BookingError, createBooking } from '@/lib/booking/bookingService'
 import { hashToken } from '@/lib/booking/tokens'
+import { resolveAvailability } from '@/lib/availability/resolver'
 import {
   createIntent,
   IntentError,
@@ -114,14 +115,33 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       if (await isBlacklisted(payload, { phone: customerPhone })) {
         return NextResponse.json({ error: 'BLACKLISTED', message: 'This phone is not allowed to book' }, { status: 403 })
       }
+      // 008 T821 (SEC-A-08): Grid validation on the trust-cookie fast path too!
+      // Arbitrary/unverified slots or non-active resources cannot bypass the grid.
+      const startIso = new Date(start).toISOString()
+      const date = startIso.slice(0, 10)
+      const grid = await resolveAvailability(payload, {
+        productId,
+        date,
+        resourceId: resourceId ? String(resourceId) : undefined,
+        now: new Date(),
+      })
+      if (!grid.ok) {
+        if (grid.code === 'SERVICE_NOT_FOUND') return NextResponse.json({ error: 'SERVICE_NOT_FOUND' }, { status: 404 })
+        if (grid.code === 'SERVICE_NOT_BOOKABLE') return NextResponse.json({ error: 'SERVICE_NOT_BOOKABLE' }, { status: 422 })
+        return NextResponse.json({ error: 'RESOURCE_NOT_FOUND' }, { status: 422 })
+      }
+      const slot = grid.slots.find((s) => s.start === startIso)
+      if (!slot) {
+        return NextResponse.json({ error: 'SLOT_NOT_AVAILABLE', message: 'The requested time is not an available slot' }, { status: 422 })
+      }
+
       // 008 T812 (F-BE-02): deterministic SERVER-derived idempotency key —
       // a repeat of the same (email, service, slot) is an idempotent re-book,
       // anything else is a fresh booking.
-      const startIso = new Date(start).toISOString()
       const serverIdempotencyKey = hashToken(`booking-idem:${customerEmail}:${productId}:${startIso}`)
       const result = await createBooking(payload, {
         productId,
-        resourceId,
+        resourceId: grid.resourceId,
         start,
         customerName,
         customerPhone,

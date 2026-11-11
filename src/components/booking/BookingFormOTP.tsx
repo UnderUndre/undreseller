@@ -19,21 +19,25 @@ export function BookingFormOTP({
   expiresAt,
   emailSent,
   onVerified,
+  onBack,
 }: {
   intentId: string
   expiresAt: string
   emailSent: boolean
   onVerified: (result: BookingData) => void
+  onBack?: () => void
 }) {
   const [code, setCode] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [resending, setResending] = useState(false)
   const [resendNote, setResendNote] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [isConflict, setIsConflict] = useState(false)
 
   const verify = async () => {
     setSubmitting(true)
     setError(null)
+    setIsConflict(false)
     try {
       const res = await fetch('/api/booking', {
         method: 'POST',
@@ -54,6 +58,7 @@ export function BookingFormOTP({
         return
       }
       if (data.error === 'SLOT_TAKEN') {
+        setIsConflict(true)
         setError('Увы — слот только что заняли. Выберите другой.')
         return
       }
@@ -105,6 +110,7 @@ export function BookingFormOTP({
         <input
           id="booking-otp"
           data-testid="booking-otp"
+          autoFocus
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
           inputMode="numeric"
@@ -131,9 +137,23 @@ export function BookingFormOTP({
       >
         {resending ? 'Отправляем…' : 'Отправить код ещё раз'}
       </button>
+      {onBack && (
+        <button
+          type="button"
+          data-testid="booking-otp-back"
+          onClick={onBack}
+          className="text-sm text-neutral-500 hover:text-neutral-700 underline text-left"
+        >
+          ← Выбрать другой слот
+        </button>
+      )}
       {resendNote && <p role="status">{resendNote}</p>}
       {error && (
-        <p role="alert" className="text-error">
+        <p
+          role="alert"
+          className="text-error"
+          {...(isConflict ? { 'data-testid': 'booking-conflict' } : {})}
+        >
           {error}
         </p>
       )}
