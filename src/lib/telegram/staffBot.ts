@@ -50,13 +50,31 @@ export function parseStaffCallback(data: string): StaffCallback | null {
 /** Handle a staff callback (webhook route → here). Always answers; 0 silent mutations. */
 export async function handleStaffCallback(
   payload: Payload,
-  args: { chatId: string; data: string },
+  args: { chatId: string; messageId?: number; data: string },
 ): Promise<StaffActionResult> {
   const cb = parseStaffCallback(args.data)
   if (!cb) return { status: 'invalid-state' }
 
-  // 3-level auth (L3: callback must come from the card's own chat).
-  if (!(await isStaffChat(payload, args.chatId, args.chatId))) {
+  // 008 T813 (antigravity F4 / F-BE-04 / SEC-A-06): the old 3-level auth passed
+  // the SAME chatId twice — a tautology that authorized any chat holding the
+  // card. Two REAL gates now:
+  // (1) the callback chat is a staff chat (L1 ShopSettings / L2 env allow-list);
+  // (2) the card was sent BY US to THIS chat — outbox lookup on
+  //     (sent_message_id, to_chat_id); a forwarded card gets a new message_id
+  //     and fails the lookup, a card in a revoked chat fails the allow-list.
+  if (!args.messageId) return { status: 'auth-denied' }
+  const db0: any = payload.db
+  const cardRes = await db0.execute({
+    drizzle: db0.drizzle,
+    sql: sql`SELECT 1 FROM telegram_outbox
+             WHERE bot = 'staff' AND action_type = 'sendMessage'
+               AND aggregate_type = 'BOOKING' AND aggregate_id = ${cb.reservationId}
+               AND sent_message_id = ${args.messageId} AND to_chat_id = ${args.chatId}
+             LIMIT 1`,
+  })
+  const cardBound = (cardRes.rows ?? []).length > 0
+  const staffListed = await isStaffChat(payload, args.chatId)
+  if (!cardBound || !staffListed) {
     await enqueue(payload, {
       bot: 'staff',
       actionType: 'sendMessage',

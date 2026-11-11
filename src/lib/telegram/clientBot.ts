@@ -77,7 +77,7 @@ export async function handleClientCallback(
   }
 
   if (cb.action === 'ack') {
-    const res = await acknowledgeByOrder(payload, cb.orderId)
+    const res = await acknowledgeByOrder(payload, { chatId: args.chatId, orderId: cb.orderId })
     if (!res) return { status: 'LINK_NOT_FOUND' }
     return { status: res.status, scheduleVersion: res.scheduleVersion }
   }
@@ -108,14 +108,24 @@ export async function handleClientCallback(
   }
 }
 
-/** acknowledgeBooking resolves by accessToken; the bot only knows orderId. */
-async function acknowledgeByOrder(payload: Payload, orderId: number) {
+/**
+ * acknowledgeBooking resolves by accessToken; the bot only knows orderId.
+ * 008 T813 (SEC-A-07): the callback chat MUST be linked to the order
+ * (tg_links) — same gate as cancelBookingByClientChat; without it a foreign
+ * chat could confirm someone else's booking once c:ack cards ship.
+ */
+async function acknowledgeByOrder(payload: Payload, args: { chatId: string; orderId: number }) {
   const db: any = payload.db
+  const link = await db.execute({
+    drizzle: db.drizzle,
+    sql: sql`SELECT 1 FROM tg_links WHERE chat_id = ${args.chatId} AND order_id = ${args.orderId} LIMIT 1`,
+  })
+  if ((link.rows ?? []).length === 0) return null
   const row = await db.execute({
     drizzle: db.drizzle,
     sql: sql`SELECT o.access_token FROM orders o
              JOIN slot_reservations sr ON sr.order_id = o.id
-             WHERE o.id = ${orderId} AND sr.status IN ('BOOKED','HELD','PENDING_APPROVAL','PAYMENT_PENDING')
+             WHERE o.id = ${args.orderId} AND sr.status IN ('BOOKED','HELD','PENDING_APPROVAL','PAYMENT_PENDING')
              ORDER BY sr.id DESC LIMIT 1`,
   })
   const accessToken = (row.rows?.[0] as { access_token?: string } | undefined)?.access_token

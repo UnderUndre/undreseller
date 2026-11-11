@@ -17,16 +17,30 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const update = (await req.json()) as { callback_query?: { message?: { chat?: { id?: number } }; data?: string } }
+    const update = (await req.json()) as {
+      callback_query?: { message?: { chat?: { id?: number }; message_id?: number }; data?: string }
+    }
     const cb = update.callback_query
     if (cb?.data && cb.message?.chat?.id) {
       const payload = await getPayload({ config: configPromise })
-      await handleStaffCallback(payload, { chatId: String(cb.message.chat.id), data: cb.data })
+      await handleStaffCallback(payload, {
+        chatId: String(cb.message.chat.id),
+        // 008 T813 (antigravity F4): the card message_id binds the callback to
+        // the chat it was ACTUALLY sent to (outbox lookup in staffBot).
+        messageId: typeof cb.message.message_id === 'number' ? cb.message.message_id : undefined,
+        data: cb.data,
+      })
     }
     return NextResponse.json({ ok: true })
   } catch (err: unknown) {
     // 200-degradation: Telegram must not retry (outbox owns retries).
-    console.error('[telegram-staff] webhook processing error (ACK 200):', err)
+    // 008 T842 (SEC-B-07): structured log without the raw update object.
+    try {
+      const p = await getPayload({ config: configPromise })
+      p.logger.error({ err: err instanceof Error ? { message: err.message } : {}, message: '[telegram-staff] webhook processing error (ACK 200)' })
+    } catch {
+      // logger unavailable (config not booted) — degrade silently
+    }
     return NextResponse.json({ ok: true })
   }
 }

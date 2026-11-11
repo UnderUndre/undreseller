@@ -2,11 +2,13 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 
 /**
- * Staff authorization (spec 004 FR-402, research D4): three levels —
- * L1 ShopSettings.staffChatIds → L2 env TELEGRAM_STAFF_CHAT_IDS → L3 the chat
- * the card was sent to (callback accepted only from the card's own chat).
+ * Staff authorization (spec 004 FR-402, research D4; 008 T813 rework):
+ * TWO levels — L1 ShopSettings.staffChatIds → L2 env TELEGRAM_STAFF_CHAT_IDS.
+ * The old "L3 the card's own chat" was a TAUTOLOGY (staffBot passed the same
+ * chatId twice — antigravity F4 / F-BE-04); the card→chat binding is now a
+ * REAL outbox lookup (sent_message_id + to_chat_id) done by staffBot.
  */
-export async function isStaffChat(payload: Payload, chatId: string, cardChatId?: string): Promise<boolean> {
+export async function isStaffChat(payload: Payload, chatId: string): Promise<boolean> {
   // L1: ShopSettings.staffChatIds (adminOnly field)
   try {
     const settings = (await payload.findGlobal({ slug: 'shop-settings', depth: 0 })) as {
@@ -20,8 +22,6 @@ export async function isStaffChat(payload: Payload, chatId: string, cardChatId?:
   // L2: env list (csv)
   const envList = (process.env.TELEGRAM_STAFF_CHAT_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean)
   if (envList.includes(chatId)) return true
-  // L3: the chat the card lives in
-  if (cardChatId && cardChatId === chatId) return true
   return false
 }
 
