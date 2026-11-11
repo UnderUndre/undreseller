@@ -50,6 +50,24 @@ export async function runWaitlistSweep(payload: Payload): Promise<WaitlistSweepR
   const out: WaitlistSweepResult = { expired: 0, reArmed: 0, advanced: 0 }
   const now = new Date()
 
+  // 0) Double-opt-in expiry (spec 007 FR-704): unconfirmed pending > 48h →
+  // expired; a pending entry NEVER notified anyone (anti-relay C2).
+  const stalePending = await db.execute({
+    drizzle: db.drizzle,
+    sql: sql`UPDATE waitlist_entries SET status = 'expired', updated_at = now()
+             WHERE status = 'pending' AND created_at < now() - interval '48 hours'
+             RETURNING id`,
+  })
+  for (const raw of (stalePending.rows ?? []) as Array<{ id: number }>) {
+    await db.execute({
+      drizzle: db.drizzle,
+      sql: sql`INSERT INTO audit_events (action, actor_id, aggregate_type, aggregate_id, metadata_json, created_at, updated_at)
+               VALUES ('waitlist.expired', 'SYSTEM', 'WAITLIST', ${String(raw.id)},
+                       ${JSON.stringify({ reason: 'OPTIN_TIMEOUT' })}::jsonb, now(), now())`,
+    })
+    out.expired += 1
+  }
+
   // 1) Horizon expiry (waiting + notified).
   const expired = await db.execute({
     drizzle: db.drizzle,

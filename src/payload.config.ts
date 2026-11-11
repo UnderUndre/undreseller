@@ -17,6 +17,7 @@ import { fileURLToPath } from 'url'
 import { AvailabilityExceptions } from '@/collections/AvailabilityExceptions'
 import { AuditEvents } from '@/collections/AuditEvents'
 import { Blacklist } from '@/collections/Blacklist'
+import { BookingIntents } from '@/collections/BookingIntents'
 import { Categories } from '@/collections/Categories'
 import { EmailDeliveryLog } from '@/collections/EmailDeliveryLog'
 import { InboxEvent } from '@/collections/InboxEvent'
@@ -36,6 +37,7 @@ import { ShopSettings } from '@/globals/ShopSettings'
 import { bookingEmailTask, reminderSweepTask } from '@/jobs/bookingEmail'
 import { gdprPurgeTask } from '@/jobs/gdprPurge'
 import { holdSweepTask } from '@/jobs/holdSweep'
+import { intentSweepTask } from '@/jobs/intentSweep'
 import { waitlistMatchTask, waitlistSweepTask } from '@/jobs/waitlistJobs'
 import { outboxDispatchTask } from '@/jobs/outboxDispatch'
 import { plugins } from './plugins'
@@ -75,6 +77,8 @@ export default buildConfig({
     Blacklist,
     // 006 waitlist (review F7: registered, slug waitlist-entries)
     WaitlistEntries,
+    // 007 trust gate (slug booking-intents — F2 naming canon, adminOnly)
+    BookingIntents,
   ],
   db: postgresAdapter({
     pool: {
@@ -122,7 +126,7 @@ export default buildConfig({
   // Payload Jobs (spec 003 research D1, review F1): task declaration alone is
   // NOT enough — the background worker only starts with jobs.autoRun registered.
   jobs: {
-    tasks: [holdSweepTask, bookingEmailTask, reminderSweepTask, outboxDispatchTask, gdprPurgeTask, waitlistMatchTask, waitlistSweepTask],
+    tasks: [holdSweepTask, bookingEmailTask, reminderSweepTask, outboxDispatchTask, gdprPurgeTask, waitlistMatchTask, waitlistSweepTask, intentSweepTask],
     // 004 review F6: outbox dispatch needs the 30s cadence (default 60s/limit 10
     // would sleep through the queue SLA); limit 25 matches the batch size.
     autoRun: [{ cron: '*/30 * * * * *', queue: 'default', limit: 25 }],

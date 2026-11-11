@@ -64,7 +64,8 @@ const installFakeResend = (): { calls: Array<{ to: string; subject: string }>; r
 }
 
 const joinViaService = async (phone: string, email: string, name = 'WL User', serviceId?: string): Promise<number> => {
-  const { joinWaitlist } = await import('@/lib/waitlist/waitlistService')
+  const { joinWaitlist, confirmWaitlistEntry } = await import('@/lib/waitlist/waitlistService')
+  const { computeOptinToken } = await import('@/lib/waitlist/claimToken')
   const res = await joinWaitlist(payload, {
     customerName: name,
     customerPhone: phone,
@@ -72,6 +73,9 @@ const joinViaService = async (phone: string, email: string, name = 'WL User', se
     serviceId: serviceId ?? svcId,
     resourceId: '1',
   })
+  // Double-opt-in (spec 007 FR-704): confirm immediately — matching only sees
+  // `waiting` entries, so the 006 matching/claim suites opt in up front.
+  await confirmWaitlistEntry(payload, { entryId: String(res.entryId), token: computeOptinToken(res.entryId) })
   return res.entryId
 }
 
@@ -92,22 +96,27 @@ const seedBookableService = async (): Promise<string> => {
 }
 
 describe('T610 — join matrix (FR-601, TC-006-001..003)', () => {
-  it('happy join → waiting + audit waitlist.join (TC-006-001)', async () => {
+  it('happy join → pending (007 double-opt-in) → confirm → waiting + audits (TC-006-001)', async () => {
     const svc = await seedBookableService()
     const entryId = await joinViaService('+70000009001', 'wl1@example.com')
+    void svc
     const db: any = payload.db
     const row = await db.execute({
       drizzle: db.drizzle,
       sql: sql`SELECT status, service_id_id AS service_id, resource_id_id AS resource_id FROM waitlist_entries WHERE id = ${entryId}`,
     })
     const r = row.rows[0] as { status: string; service_id: number; resource_id: number }
-    expect(r.status).toBe('waiting')
-    void svc
+    expect(r.status).toBe('waiting') // joinViaService confirms the opt-in
     const audit = await db.execute({
       drizzle: db.drizzle,
       sql: sql`SELECT count(*) AS n FROM audit_events WHERE action = 'waitlist.join' AND aggregate_id = ${String(entryId)}`,
     })
     expect(Number((audit.rows[0] as { n: number }).n)).toBe(1)
+    const optinAudit = await db.execute({
+      drizzle: db.drizzle,
+      sql: sql`SELECT count(*) AS n FROM audit_events WHERE action = 'waitlist.optin' AND aggregate_id = ${String(entryId)}`,
+    })
+    expect(Number((optinAudit.rows[0] as { n: number }).n)).toBe(1)
   })
 
   it('cap 3 active per phone: 4th → 409 WAITLIST_CAP_REACHED (TC-006-002, BVA)', async () => {
@@ -137,13 +146,34 @@ describe('T610 — join matrix (FR-601, TC-006-001..003)', () => {
   })
 
   it('duplicate (phone+service+resource) → 409 WAITLIST_DUPLICATE; missing email → 400 (TC-006-003)', async () => {
-    await joinViaService('+70000009003', 'wl3@example.com')
-    await expect(joinViaService('+70000009003', 'wl3-other@example.com')).rejects.toMatchObject({
+    // Unconfirmed (pending) repeat join RESENDS the opt-in on the same entry
+    // (spec 007 review F9) — WAITLIST_DUPLICATE only fires for a CONFIRMED
+    // (waiting) entry.
+    const { joinWaitlist, confirmWaitlistEntry } = await import('@/lib/waitlist/waitlistService')
+    const { computeOptinToken } = await import('@/lib/waitlist/claimToken')
+    const first = await joinWaitlist(payload, {
+      customerName: 'Dup User',
+      customerPhone: '+70000009003',
+      customerEmail: 'wl3@example.com',
+      serviceId: svcId,
+      resourceId: '1',
+    })
+    const resent = await joinWaitlist(payload, {
+      customerName: 'Dup User',
+      customerPhone: '+70000009003',
+      customerEmail: 'wl3-other@example.com',
+      serviceId: svcId,
+      resourceId: '1',
+    })
+    expect(resent.entryId).toBe(first.entryId)
+    expect(resent.optIn).toBe('resent')
+    await confirmWaitlistEntry(payload, { entryId: String(first.entryId), token: computeOptinToken(first.entryId) })
+    await expect(joinViaService('+70000009003', 'wl3-yet@example.com')).rejects.toMatchObject({
       code: 'WAITLIST_DUPLICATE',
     })
-    const { joinWaitlist } = await import('@/lib/waitlist/waitlistService')
+    const { joinWaitlist: join } = await import('@/lib/waitlist/waitlistService')
     await expect(
-      joinWaitlist(payload, {
+      join(payload, {
         customerName: 'No Email',
         customerPhone: '+70000009004',
         customerEmail: '',
@@ -181,7 +211,10 @@ describe('T620 — FIFO matching + campaign cap (FR-602, TC-006-004..006)', () =
         slotEnd: new Date(new Date(slotStart).getTime() + 60 * 60 * 1000).toISOString(),
       })
       expect(out.notified).toBe(5)
-      expect(fake.calls.length).toBe(5)
+      // Since 007 each join also sends an opt-in email — count ONLY the
+      // slot-freed notifications by subject.
+      const notifiedMails = fake.calls.filter((c) => c.subject.startsWith('Освободился слот'))
+      expect(notifiedMails.length).toBe(5)
       const db: any = payload.db
       const rows = await db.execute({
         drizzle: db.drizzle,
@@ -211,7 +244,8 @@ describe('T620 — FIFO matching + campaign cap (FR-602, TC-006-004..006)', () =
     try {
       // Dedicated service: matching must only see THIS test's entry.
       const own = await seedBookableService()
-      const { matchFreedSlot, joinWaitlist } = await import('@/lib/waitlist/waitlistService')
+      const { matchFreedSlot, joinWaitlist, confirmWaitlistEntry } = await import('@/lib/waitlist/waitlistService')
+      const { computeOptinToken } = await import('@/lib/waitlist/claimToken')
       const joined = await joinWaitlist(payload, {
         customerName: 'Cap3',
         customerPhone: '+70000009201',
@@ -220,6 +254,8 @@ describe('T620 — FIFO matching + campaign cap (FR-602, TC-006-004..006)', () =
         resourceId: '1',
       })
       const entryId = joined.entryId
+      // 007 double-opt-in: confirm so the entry enters matching.
+      await confirmWaitlistEntry(payload, { entryId: String(entryId), token: computeOptinToken(entryId) })
       const slot = futureStart(70)
       // 3 campaigns: each notify → re-arm (simulated) → notify again
       for (let c = 0; c < 3; c++) {

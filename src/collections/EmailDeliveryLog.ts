@@ -19,7 +19,7 @@ export const EmailDeliveryLog: CollectionConfig = {
     defaultColumns: ['kind', 'status', 'bookingId', 'recipientHash', 'createdAt'],
   },
   fields: [
-    { name: 'kind', type: 'select', required: true, options: ['confirmation', 'reminder', 'waitlist'] },
+    { name: 'kind', type: 'select', required: true, options: ['confirmation', 'reminder', 'waitlist', 'intent', 'waitlist-optin'] },
     { name: 'status', type: 'select', required: true, options: ['sent', 'failed'] },
     { name: 'bookingId', type: 'number' },
     { name: 'recipientHash', type: 'text', required: true },

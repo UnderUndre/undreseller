@@ -84,7 +84,7 @@ function timingSafeHexMatch(a: string | null | undefined, b: string | null | und
   return timingSafeEqual(Buffer.from(a, 'utf-8'), Buffer.from(b, 'utf-8'))
 }
 
-async function findExistingByIdempotencyKey(
+export async function findBookingByIdempotencyKey(
   payload: Payload,
   idempotencyKey: string,
 ): Promise<BookingResult | null> {
@@ -121,7 +121,7 @@ export async function createBooking(
   }
 
   if (input.idempotencyKey) {
-    const existing = await findExistingByIdempotencyKey(payload, input.idempotencyKey)
+    const existing = await findBookingByIdempotencyKey(payload, input.idempotencyKey)
     if (existing) return existing
   }
 
@@ -342,7 +342,7 @@ export async function createBooking(
       throw new BookingError('SLOT_TAKEN', 409, 'The slot has just been taken')
     }
     if (pgCode === '23505' && input.idempotencyKey) {
-      const existing = await findExistingByIdempotencyKey(payload, input.idempotencyKey)
+      const existing = await findBookingByIdempotencyKey(payload, input.idempotencyKey)
       if (existing) return existing
     }
     throw err

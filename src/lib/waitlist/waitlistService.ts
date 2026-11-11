@@ -2,12 +2,22 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 
 import { isBlacklisted } from '@/lib/telegram/blacklist'
-import { computeClaimToken, computeUnsubscribeToken, verifyClaimToken, verifyUnsubscribeToken } from '@/lib/waitlist/claimToken'
+import {
+  computeClaimToken,
+  computeOptinToken,
+  computeUnsubscribeToken,
+  verifyClaimToken,
+  verifyOptinToken,
+  verifyUnsubscribeToken,
+} from '@/lib/waitlist/claimToken'
 
 /**
- * Waitlist service (spec 006 rev 1.2): join (T610), slot-freed notifications
- * (T620), claim (T621 — FSM CREATE_BOOKING via bookingService), lifecycle
- * sweep (T630). All writes to `waitlist_entries` live here.
+ * Waitlist service (spec 006 rev 1.2; double-opt-in per spec 007 FR-704): join
+ * (T610 → now lands in `pending` until the client confirms via the opt-in
+ * email), slot-freed notifications (T620), claim (T621 — FSM CREATE_BOOKING
+ * via bookingService), lifecycle sweep (T630). All writes to
+ * `waitlist_entries` live here. Matching NEVER sees `pending` rows — our
+ * Resend is not a relay for unconfirmed addresses (anti-relay C2).
  */
 
 export class WaitlistError extends Error {
@@ -20,7 +30,8 @@ export class WaitlistError extends Error {
   }
 }
 
-const ACTIVE_STATUSES_SQL = "('waiting', 'notified')"
+/** `pending` counts against the cap too — unconfirmed joins must not bypass it. */
+const ACTIVE_STATUSES_SQL = "('pending', 'waiting', 'notified')"
 const CAP_PER_PHONE = 3
 const CAMPAIGN_TTL_MIN = 30
 const CAMPAIGN_CAP = 3
@@ -41,6 +52,8 @@ export interface JoinInput {
 export interface JoinResult {
   entryId: number
   expiresAt: string
+  /** `sent` = fresh pending entry + opt-in email; `resent` = repeat join on an existing pending entry (review F9). */
+  optIn: 'sent' | 'resent'
 }
 
 export async function joinWaitlist(payload: Payload, input: JoinInput): Promise<JoinResult> {
@@ -84,7 +97,7 @@ export async function joinWaitlist(payload: Payload, input: JoinInput): Promise<
   }
 
   const db: any = payload.db
-  return await db.drizzle.transaction(async (trx: any) => {
+  const outcome = await db.drizzle.transaction(async (trx: any) => {
     // Race-safe cap/duplicate checks — hashtext canon (004 F6 lesson, re-check R2).
     await trx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('waitlist_join_' || ${input.customerPhone}))`)
 
@@ -96,11 +109,21 @@ export async function joinWaitlist(payload: Payload, input: JoinInput): Promise<
     }
 
     const dup = await trx.execute(sql`
-      SELECT 1 FROM waitlist_entries
+      SELECT id, status, expires_at FROM waitlist_entries
       WHERE customer_phone = ${input.customerPhone} AND service_id_id = ${input.serviceId}::numeric
         AND resource_id_id = ${input.resourceId}::numeric AND status IN ${sql.raw(ACTIVE_STATUSES_SQL)}
       LIMIT 1`)
-    if (dup.rows.length > 0) {
+    const dupRow = dup.rows?.[0] as { id: number; status: string; expires_at: string } | undefined
+    if (dupRow) {
+      if (dupRow.status === 'pending') {
+        // Review F9: a repeat join on an UNCONFIRMED entry re-sends the opt-in
+        // email on the EXISTING row (no duplicates, no extra rows).
+        return {
+          entryId: Number(dupRow.id),
+          expiresAt: new Date(dupRow.expires_at).toISOString(),
+          optIn: 'resent' as const,
+        }
+      }
       throw new WaitlistError('WAITLIST_DUPLICATE', 409, 'You are already on the waitlist for this service')
     }
 
@@ -110,17 +133,28 @@ export async function joinWaitlist(payload: Payload, input: JoinInput): Promise<
          expires_at, status, campaign_count, created_at, updated_at)
       VALUES (${input.customerName}, ${input.customerPhone}, ${input.customerEmail},
               ${input.serviceId}::numeric, ${input.resourceId}::numeric,
-              ${expiresAt.toISOString()}, 'waiting', 0, now(), now())
+              ${expiresAt.toISOString()}, 'pending', 0, now(), now())
       RETURNING id, expires_at`)
 
     const row = inserted.rows[0] as { id: number; expires_at: string }
     await trx.execute(sql`
       INSERT INTO audit_events (action, actor_id, aggregate_type, aggregate_id, metadata_json, created_at, updated_at)
       VALUES ('waitlist.join', 'CUSTOMER', 'WAITLIST', ${String(row.id)},
-              ${JSON.stringify({ serviceId: input.serviceId, resourceId: input.resourceId })}::jsonb, now(), now())`)
+              ${JSON.stringify({ serviceId: input.serviceId, resourceId: input.resourceId, optIn: 'pending' })}::jsonb, now(), now())`)
 
-    return { entryId: Number(row.id), expiresAt: new Date(row.expires_at).toISOString() }
+    return { entryId: Number(row.id), expiresAt: new Date(row.expires_at).toISOString(), optIn: 'sent' as const }
   })
+
+  // Opt-in email AFTER the commit (a network call never holds the trx open).
+  // Best-effort: a failed email never fails the join — the F9 repeat-join
+  // resend is the recovery path.
+  await sendOptinEmail(payload, {
+    to: input.customerEmail,
+    customerName: input.customerName,
+    entryId: outcome.entryId,
+  }).catch(() => undefined)
+
+  return outcome
 }
 
 export interface FreedSlot {
@@ -295,6 +329,105 @@ export async function sendWaitlistExpiredEmail(
       errorDetail: err instanceof Error ? err.name : 'UNKNOWN',
     })
   }
+}
+
+export const OPTIN_TTL_HOURS = 48
+
+/**
+ * Double-opt-in email (spec 007 FR-704): the link leads to the scanner-safe
+ * landing (GET = view only; the explicit POST button confirms — review F9).
+ */
+export async function sendOptinEmail(
+  payload: Payload,
+  input: { to: string; customerName: string; entryId: number },
+): Promise<void> {
+  const { sendEmail, logDelivery } = await import('@/lib/email/resendAdapter')
+  const { getServerSideURL } = await import('@/utilities/getURL')
+  const host = getServerSideURL().replace(/\/$/, '')
+  const confirmUrl = `${host}/book/waitlist-confirm?entry=${input.entryId}&token=${computeOptinToken(input.entryId)}`
+  try {
+    await sendEmail(payload, {
+      to: input.to,
+      subject: 'Подтвердите подписку на уведомления о свободных слотах',
+      html: `<p>${escapeHtml(input.customerName)}, подтвердите подписку на уведомления, чтобы мы могли сообщить вам о свободных слотах.</p>
+<p><a href="${confirmUrl}">Подтвердить подписку</a> (ссылка действует ${OPTIN_TTL_HOURS} часа).</p>
+<p style="font-size:12px;color:#888">Если вы не оставляли заявку — просто проигнорируйте это письмо, подписка не активируется.</p>`,
+    })
+    await logDelivery(payload, { kind: 'waitlist-optin', status: 'sent', email: input.to })
+  } catch (err: unknown) {
+    await logDelivery(payload, {
+      kind: 'waitlist-optin',
+      status: 'failed',
+      email: input.to,
+      errorDetail: err instanceof Error ? err.name : 'UNKNOWN',
+    })
+    throw err
+  }
+}
+
+export interface ConfirmOptinInput {
+  entryId: string
+  token: string
+  now?: Date
+}
+
+export interface ConfirmOptinResult {
+  status: 'waiting' | 'already_confirmed'
+}
+
+/**
+ * Double-opt-in confirm (spec 007 FR-704): token verify → TTL 48h (from the
+ * entry's creation; the sweep expires pends at the same horizon) → CAS
+ * pending→waiting. Only AFTER this does the entry enter matching — until
+ * then our Resend stays a zero-relay (anti-relay C2).
+ */
+export async function confirmWaitlistEntry(
+  payload: Payload,
+  input: ConfirmOptinInput,
+): Promise<ConfirmOptinResult> {
+  const now = input.now ?? new Date()
+  const db: any = payload.db
+  const entryId = Number(input.entryId)
+  if (!Number.isInteger(entryId) || entryId <= 0) {
+    throw new WaitlistError('WAITLIST_NOT_FOUND', 404, 'Waitlist entry not found')
+  }
+
+  const res = await db.execute({
+    drizzle: db.drizzle,
+    sql: sql`SELECT id, status, created_at FROM waitlist_entries WHERE id = ${entryId} LIMIT 1`,
+  })
+  const entry = res.rows?.[0] as { id: number; status: string; created_at: string } | undefined
+  if (!entry) throw new WaitlistError('WAITLIST_NOT_FOUND', 404, 'Waitlist entry not found')
+
+  if (!verifyOptinToken(entryId, input.token)) {
+    throw new WaitlistError('WAITLIST_TOKEN_INVALID', 403, 'Invalid opt-in token')
+  }
+  if (entry.status === 'waiting') {
+    return { status: 'already_confirmed' }
+  }
+  if (entry.status !== 'pending') {
+    throw new WaitlistError('WAITLIST_TOKEN_INVALID', 403, 'This opt-in link is no longer active')
+  }
+  if (now.getTime() - new Date(entry.created_at).getTime() > OPTIN_TTL_HOURS * 60 * 60 * 1000) {
+    throw new WaitlistError('WAITLIST_TOKEN_INVALID', 403, `Opt-in window expired (${OPTIN_TTL_HOURS}h)`)
+  }
+
+  const cas = await db.execute({
+    drizzle: db.drizzle,
+    sql: sql`UPDATE waitlist_entries SET status = 'waiting', updated_at = now()
+             WHERE id = ${entryId} AND status = 'pending'
+             RETURNING id`,
+  })
+  if ((cas.rows ?? []).length === 0) {
+    // A concurrent confirm won — same link, same effect.
+    return { status: 'already_confirmed' }
+  }
+  await db.execute({
+    drizzle: db.drizzle,
+    sql: sql`INSERT INTO audit_events (action, actor_id, aggregate_type, aggregate_id, metadata_json, created_at, updated_at)
+             VALUES ('waitlist.optin', 'CUSTOMER', 'WAITLIST', ${String(entryId)}, '{}'::jsonb, now(), now())`,
+  })
+  return { status: 'waiting' }
 }
 
 function escapeHtml(s: string): string {

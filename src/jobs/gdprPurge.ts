@@ -4,7 +4,8 @@ import type { Payload } from 'payload'
 /**
  * GDPR purge (spec 004 FR-404, research D6): nightly — TgLinks whose order is
  * terminal > 90 days are deleted (BVA ±1 day, TC-004-018); outbox rows older
- * than 30 days lose text/metaJson (PII minimal-retention).
+ * than 30 days lose text/metaJson (PII minimal-retention). Since spec 007
+ * (review F7) it also purges booking intents: dead/expired 30d, consumed 90d.
  */
 
 const PURGE_AFTER_DAYS = 90
@@ -12,6 +13,7 @@ const PURGE_AFTER_DAYS = 90
 export interface GdprPurgeResult {
   tgLinksPurged: number
   outboxMetaCleared: number
+  intentsPurged: number
 }
 
 export async function runGdprPurge(payload: Payload): Promise<GdprPurgeResult> {
@@ -40,6 +42,17 @@ export async function runGdprPurge(payload: Payload): Promise<GdprPurgeResult> {
                AND updated_at < now() - interval '90 days'`,
   })
 
+  // Booking intents (spec 007 review F7): dead/expired 30d, consumed 90d —
+  // consumed rows are the 90d retention source of the trust-cookie era.
+  const deadIntents = await db.execute({
+    drizzle: db.drizzle,
+    sql: sql`DELETE FROM booking_intents
+             WHERE (status IN ('dead', 'expired') AND updated_at < now() - interval '30 days')
+                OR (status = 'consumed' AND updated_at < now() - interval '90 days')
+             RETURNING id`,
+  })
+  const intentsPurged = (deadIntents.rows ?? []).length
+
   // Outbox minimal retention: strip PII-bearing text/markup/meta older than 30 days.
   const meta = await db.execute({
     drizzle: db.drizzle,
@@ -50,7 +63,7 @@ export async function runGdprPurge(payload: Payload): Promise<GdprPurgeResult> {
   })
   const outboxMetaCleared = meta.rowCount ?? 0
 
-  return { tgLinksPurged, outboxMetaCleared }
+  return { tgLinksPurged, outboxMetaCleared, intentsPurged }
 }
 
 export const gdprPurgeTask = {

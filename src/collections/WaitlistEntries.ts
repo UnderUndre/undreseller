@@ -33,10 +33,10 @@ export const WaitlistEntries: CollectionConfig = {
       name: 'status',
       type: 'select',
       required: true,
-      defaultValue: 'waiting',
-      options: ['waiting', 'notified', 'converted', 'expired', 'cancelled'],
+      defaultValue: 'pending',
+      options: ['pending', 'waiting', 'notified', 'converted', 'expired', 'cancelled'],
       access: { create: () => false, update: () => false },
-      admin: { readOnly: true, position: 'sidebar' },
+      admin: { readOnly: true, position: 'sidebar', description: 'pending = double-opt-in not confirmed (spec 007 FR-704) — never enters matching' },
     },
     {
       name: 'campaignCount',

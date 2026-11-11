@@ -12,6 +12,11 @@ import { computeClaimToken } from '@/lib/waitlist/claimToken'
  * Confirm button posts to the claim endpoint (review F9 — no auto-book on
  * view; 409 renders an honest refusal). Scanner-safe: GET never mutates.
  */
+function campaignExpired(activeCampaignAt: string): boolean {
+  // Campaign TTL canon: 30 minutes (waitlistService CAMPAIGN_TTL_MIN).
+  return Date.now() - new Date(activeCampaignAt).getTime() > 30 * 60 * 1000
+}
+
 export default async function WaitlistClaimPage(props: {
   searchParams: Promise<{ entry?: string; token?: string }>
 }) {

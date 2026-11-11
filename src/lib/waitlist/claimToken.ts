@@ -34,3 +34,20 @@ export function verifyUnsubscribeToken(
   if (!provided) return false
   return verifyTokenHash(`waitlist-unsub:${entryId}`, provided)
 }
+
+/**
+ * Double-opt-in token (spec 007 FR-704): binds entryId; freshness is enforced
+ * OUTSIDE the MAC — the 48h window is checked against the entry's created_at
+ * at confirm time (a MAC with an embedded clock would break on retries).
+ */
+export function computeOptinToken(entryId: string | number): string {
+  return hashToken(`waitlist-optin:${entryId}`)
+}
+
+export function verifyOptinToken(
+  entryId: string | number,
+  provided: string | null | undefined,
+): boolean {
+  if (!provided) return false
+  return verifyTokenHash(`waitlist-optin:${entryId}`, provided)
+}

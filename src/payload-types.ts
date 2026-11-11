@@ -99,6 +99,7 @@ export interface Config {
     'tg-links': TgLink;
     blacklist: Blacklist;
     'waitlist-entries': WaitlistEntry;
+    'booking-intents': BookingIntent;
     forms: Form;
     'form-submissions': FormSubmission;
     addresses: Address;
@@ -145,6 +146,7 @@ export interface Config {
     'tg-links': TgLinksSelect<false> | TgLinksSelect<true>;
     blacklist: BlacklistSelect<false> | BlacklistSelect<true>;
     'waitlist-entries': WaitlistEntriesSelect<false> | WaitlistEntriesSelect<true>;
+    'booking-intents': BookingIntentsSelect<false> | BookingIntentsSelect<true>;
     forms: FormsSelect<false> | FormsSelect<true>;
     'form-submissions': FormSubmissionsSelect<false> | FormSubmissionsSelect<true>;
     addresses: AddressesSelect<false> | AddressesSelect<true>;
@@ -191,6 +193,7 @@ export interface Config {
       'gdpr-purge': TaskGdprPurge;
       'waitlist-match': TaskWaitlistMatch;
       'waitlist-sweep': TaskWaitlistSweep;
+      'intent-sweep': TaskIntentSweep;
       inline: {
         input: unknown;
         output: unknown;
@@ -1271,7 +1274,7 @@ export interface PaymentEvent {
  */
 export interface EmailDeliveryLog {
   id: number;
-  kind: 'confirmation' | 'reminder' | 'waitlist';
+  kind: 'confirmation' | 'reminder' | 'waitlist' | 'intent' | 'waitlist-optin';
   status: 'sent' | 'failed';
   bookingId?: number | null;
   recipientHash: string;
@@ -1374,7 +1377,10 @@ export interface WaitlistEntry {
   serviceId: number | Product;
   resourceId: number | Resource;
   expiresAt: string;
-  status: 'waiting' | 'notified' | 'converted' | 'expired' | 'cancelled';
+  /**
+   * pending = double-opt-in not confirmed (spec 007 FR-704) — never enters matching
+   */
+  status: 'pending' | 'waiting' | 'notified' | 'converted' | 'expired' | 'cancelled';
   /**
    * Campaign cap = 3 (spec 006 audit M1)
    */
@@ -1385,6 +1391,35 @@ export interface WaitlistEntry {
    */
   notifiedSlotStart?: string | null;
   notifiedSlotEnd?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "booking-intents".
+ */
+export interface BookingIntent {
+  id: number;
+  email: string;
+  customerName: string;
+  customerPhone: string;
+  serviceId: number | Product;
+  resourceId: number | Resource;
+  /**
+   * Slot coordinates — phase 2 hydrates from HERE, never from the request body (review F5)
+   */
+  slotStart: string;
+  slotEnd: string;
+  /**
+   * HMAC(code | intentId | email) — plaintext code is never persisted (audit C1)
+   */
+  codeHash: string;
+  expiresAt: string;
+  /**
+   * Wrong-code counter; >= 5 → dead (SC-001)
+   */
+  attempts?: number | null;
+  status: 'pending' | 'consumed' | 'dead' | 'expired';
   updatedAt: string;
   createdAt: string;
 }
@@ -1482,7 +1517,8 @@ export interface PayloadJob {
           | 'outbox-dispatch'
           | 'gdpr-purge'
           | 'waitlist-match'
-          | 'waitlist-sweep';
+          | 'waitlist-sweep'
+          | 'intent-sweep';
         taskID: string;
         input?:
           | {
@@ -1525,6 +1561,7 @@ export interface PayloadJob {
         | 'gdpr-purge'
         | 'waitlist-match'
         | 'waitlist-sweep'
+        | 'intent-sweep'
       )
     | null;
   queue?: string | null;
@@ -1612,6 +1649,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'waitlist-entries';
         value: number | WaitlistEntry;
+      } | null)
+    | ({
+        relationTo: 'booking-intents';
+        value: number | BookingIntent;
       } | null)
     | ({
         relationTo: 'forms';
@@ -2098,6 +2139,25 @@ export interface WaitlistEntriesSelect<T extends boolean = true> {
   activeCampaignAt?: T;
   notifiedSlotStart?: T;
   notifiedSlotEnd?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "booking-intents_select".
+ */
+export interface BookingIntentsSelect<T extends boolean = true> {
+  email?: T;
+  customerName?: T;
+  customerPhone?: T;
+  serviceId?: T;
+  resourceId?: T;
+  slotStart?: T;
+  slotEnd?: T;
+  codeHash?: T;
+  expiresAt?: T;
+  attempts?: T;
+  status?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -2782,6 +2842,14 @@ export interface TaskWaitlistMatch {
  * via the `definition` "TaskWaitlist-sweep".
  */
 export interface TaskWaitlistSweep {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskIntent-sweep".
+ */
+export interface TaskIntentSweep {
   input?: unknown;
   output?: unknown;
 }

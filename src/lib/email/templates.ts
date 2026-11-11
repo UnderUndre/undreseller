@@ -48,6 +48,27 @@ export function reminderEmail(params: {
   }
 }
 
+/**
+ * OTP verification email (spec 007 T711): code + service + slot + TTL warning.
+ * NOTHING else — no name, no phone, no links (NFR-704 PII; a verification
+ * email has exactly one job: deliver the code).
+ */
+export function otpEmail(params: {
+  code: string
+  serviceName: string
+  startTime: string
+  ttlMin: number
+}): { subject: string; html: string } {
+  return {
+    subject: `Код подтверждения брони — ${params.serviceName}`,
+    html: `<p>Ваш код подтверждения:</p>
+<p style="font-size:28px;letter-spacing:4px"><strong>${escapeHtml(params.code)}</strong></p>
+<p>Услуга: ${escapeHtml(params.serviceName)}<br>
+Время: ${escapeHtml(new Date(params.startTime).toLocaleString('ru-RU', { timeZone: 'UTC', hour12: false }))} (UTC)</p>
+<p style="font-size:12px;color:#888">Код действует ${params.ttlMin} минут. Никому его не сообщайте — мы никогда не спрашиваем код по телефону.</p>`,
+  }
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
