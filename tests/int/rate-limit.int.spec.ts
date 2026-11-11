@@ -28,9 +28,10 @@ describe('clientIpFrom — trusted proxy extraction (antigravity F9)', () => {
     expect(ip).toBe('203.0.113.9')
   })
 
-  it('falls back to cf-connecting-ip / x-real-ip / unknown', () => {
+  it('falls back to cf-connecting-ip / x-real-ip / loopback (test) and null (prod fail-closed)', () => {
     expect(clientIpFrom(reqWith({ 'cf-connecting-ip': '198.51.100.7' }))).toBe('198.51.100.7')
     expect(clientIpFrom(reqWith({ 'x-real-ip': '198.51.100.8' }))).toBe('198.51.100.8')
-    expect(clientIpFrom(reqWith({}))).toBe('unknown')
+    expect(clientIpFrom(reqWith({}))).toBe('127.0.0.1')
+    expect(clientIpFrom(reqWith({}), 'production')).toBeNull()
   })
 })

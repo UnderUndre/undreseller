@@ -48,7 +48,8 @@ export async function sendOrderAccessEmail({
         <p>This link will give you access to view your order details.</p>
       `
 
-    console.log('[sendOrderAccessEmail] Email body:', emailBody)
+    // 008 T842 (SEC-A-02 / Antigravity F3): Do NOT log accessToken to stdout.
+    payload.logger.info({ msg: 'Order access email prepared', orderId: order.id })
 
     await payload.sendEmail({
       to: email,

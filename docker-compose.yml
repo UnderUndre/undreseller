@@ -25,10 +25,11 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (fail-closed)}
       POSTGRES_DB: ${POSTGRES_DB:-undreseller}
     ports:
-      - "5432:5432"
+      # 008 T840 (SEC-B-01): Bind strictly to loopback — never publish 0.0.0.0 to the WAN.
+      - "127.0.0.1:5432:5432"
     volumes:
       - undreseller_pgdata:/var/lib/postgresql/data
     healthcheck:

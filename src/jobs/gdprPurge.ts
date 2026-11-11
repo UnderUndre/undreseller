@@ -63,6 +63,29 @@ export async function runGdprPurge(payload: Payload): Promise<GdprPurgeResult> {
   })
   const outboxMetaCleared = meta.rowCount ?? 0
 
+  // 008 T842 (SEC-B-08): Anonymize PII in terminal orders and slot_reservations older than 90 days
+  // (data minimization per GDPR Art. 5(1)(e) and 152-FZ). Audit events retain financial history.
+  await db.execute({
+    drizzle: db.drizzle,
+    sql: sql`UPDATE orders
+             SET customer_email = 'anonymized@gdpr.local', updated_at = now()
+             WHERE status IN ('cancelled', 'refunded', 'completed', 'refund_rejected')
+               AND updated_at < now() - interval '90 days'
+               AND customer_email IS NOT NULL
+               AND customer_email <> 'anonymized@gdpr.local'`,
+  })
+
+  await db.execute({
+    drizzle: db.drizzle,
+    sql: sql`UPDATE slot_reservations
+             SET customer_name = 'Anonymized Client',
+                 customer_phone = '••••••',
+                 updated_at = now()
+             WHERE status = 'RELEASED'
+               AND updated_at < now() - interval '90 days'
+               AND customer_name <> 'Anonymized Client'`,
+  })
+
   return { tgLinksPurged, outboxMetaCleared, intentsPurged }
 }
 

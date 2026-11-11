@@ -113,7 +113,8 @@ export default async function ProductPage({ params }: Args) {
     <React.Fragment>
       <script
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(productJsonLd),
+          // 008 T842 (SEC-B-09): escape </script> to prevent stored XSS from product metadata
+          __html: JSON.stringify(productJsonLd).replace(/</g, '\\u003c'),
         }}
         type="application/ld+json"
       />

@@ -304,7 +304,7 @@ export async function createBooking(
         result.paymentIntentId = intent.id
         result.clientSecret = intent.clientSecret
       } catch (piErr: unknown) {
-        console.error('[003-debug] PI block error:', piErr)
+        payload.logger.error({ err: piErr, message: 'PaymentIntent initialization failed' })
         if (piErr instanceof BookingError) {
           await releaseAfterPaymentInitFailure(payload, result.reservationId, result.orderId)
           throw piErr

@@ -33,7 +33,7 @@ import { checkRateLimit, clientIpFrom } from '@/lib/security/rateLimiter'
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const ip = clientIpFrom(req)
-  const rl = checkRateLimit(`booking:${ip}`)
+  const rl = checkRateLimit(ip ? `booking:${ip}` : null)
   if (!rl.allowed) {
     return NextResponse.json(
       { error: 'RATE_LIMITED', retryAfterSec: rl.retryAfterSec },
@@ -167,7 +167,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       customerPhone,
       customerEmail,
       resourceId,
-      ip,
+      ip: ip!,
     })
     return NextResponse.json(
       {

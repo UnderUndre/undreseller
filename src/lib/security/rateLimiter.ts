@@ -16,11 +16,15 @@ export const RATE_LIMIT_MAX = 10
 export const RATE_LIMIT_WINDOW_MS = 60_000
 
 export function checkRateLimit(
-  key: string,
+  key: string | null | undefined,
   max = RATE_LIMIT_MAX,
   windowMs = RATE_LIMIT_WINDOW_MS,
   now = Date.now(),
 ): { allowed: boolean; retryAfterSec: number } {
+  // 008 T840 (Antigravity F9 / SEC-A-01): Fail-closed on missing IP or invalid key
+  if (!key || key.endsWith(':null') || key.endsWith(':unknown')) {
+    return { allowed: false, retryAfterSec: 60 }
+  }
   if (buckets.size > MAX_TRACKED_KEYS) {
     for (const [k, v] of buckets) {
       if (now - v.windowStart >= windowMs) buckets.delete(k)
@@ -53,7 +57,10 @@ export function assertSingleInstance(): void {
  * x-forwarded-for that is not loopback/internal, falling back to the socket
  * address only when the header chain is exhausted.
  */
-export function clientIpFrom(req: Request): string {
+export function clientIpFrom(req: Request, env = process.env.NODE_ENV): string | null {
+  const cf = req.headers.get('cf-connecting-ip')
+  if (cf && !isLoopbackOrInternal(cf)) return cf
+
   const xff = req.headers.get('x-forwarded-for')
   if (xff) {
     const hops = xff
@@ -65,11 +72,18 @@ export function clientIpFrom(req: Request): string {
       if (!isLoopbackOrInternal(hop)) return hop
     }
   }
-  return (
-    req.headers.get('cf-connecting-ip') ??
-    req.headers.get('x-real-ip') ??
-    'unknown'
-  )
+
+  const realIp = req.headers.get('x-real-ip')
+  if (realIp && !isLoopbackOrInternal(realIp)) return realIp
+
+  // 008 T840 (Antigravity F9 / SEC-A-01): Fail-closed in production.
+  // When no trusted IP header exists, return null so routes reject or fail-close.
+  // In development and test environments, local requests default to loopback.
+  if (env === 'test' || env === 'development') {
+    return '127.0.0.1'
+  }
+
+  return null
 }
 
 function isLoopbackOrInternal(ip: string): boolean {

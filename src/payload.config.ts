@@ -123,6 +123,11 @@ export default buildConfig({
   //email: nodemailerAdapter(),
   endpoints: [],
   globals: [Header, Footer, ShopSettings],
+  // 008 T841 (SEC-B-03): Disable public GraphQL introspection / playground in production
+  graphQL: {
+    disable: process.env.NODE_ENV === 'production',
+    disablePlaygroundInProduction: true,
+  },
   // Payload Jobs (spec 003 research D1, review F1): task declaration alone is
   // NOT enough — the background worker only starts with jobs.autoRun registered.
   jobs: {

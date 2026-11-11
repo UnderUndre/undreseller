@@ -34,7 +34,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
     return NextResponse.json({ ok: true })
   } catch (err: unknown) {
-    console.error('[telegram-client] webhook processing error (ACK 200):', err)
+    try {
+      const p = await getPayload({ config: configPromise })
+      p.logger.error({ err: err instanceof Error ? { message: err.message } : {}, message: '[telegram-client] webhook processing error (ACK 200)' })
+    } catch {
+      // payload not available
+    }
     return NextResponse.json({ ok: true })
   }
 }
