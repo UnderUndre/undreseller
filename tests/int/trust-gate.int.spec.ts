@@ -648,6 +648,16 @@ describe('T730 — waitlist double-opt-in relay-guard', () => {
       const slot = new Date(Date.now() + 74 * 60 * 60 * 1000).toISOString()
       const match = await matchFreedSlotFor(svc, slot)
       expect(match.notified).toBe(1)
+
+      // F-TQ-06: confirm with valid token after 48h TTL window is rejected with 403 WAITLIST_TOKEN_INVALID
+      const expiredEntry = await joinPending('+70000008509', 'tg-optin-exp@example.com', svc)
+      await db().execute({
+        drizzle: db().drizzle,
+        sql: sql`UPDATE waitlist_entries SET created_at = now() - interval '49 hours' WHERE id = ${expiredEntry.entryId}`,
+      })
+      await expect(
+        confirmWaitlistEntry(payload, { entryId: String(expiredEntry.entryId), token: computeOptinToken(expiredEntry.entryId) }),
+      ).rejects.toMatchObject({ code: 'WAITLIST_TOKEN_INVALID', status: 403 })
     } finally {
       fake.restore()
     }
