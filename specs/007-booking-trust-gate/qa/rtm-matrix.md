@@ -2,7 +2,7 @@
 
 | Req ID | Risk | Tier | Test Cases | Task |
 | :--- | :--- | :--- | :--- | :--- |
-| FR-701 | 12 | Sanity (EP+DT) | TC-007-001..003 | T710 |
+| FR-701 | 12 | Sanity (EP+DT) | TC-007-001..003 | T710, T720 |
 | FR-702 | **20** | **Critical (STM+DT+EG+UAT)** | TC-007-004..009 | T720 |
 | FR-703 | 9 | Sanity (DT) | TC-007-010..011 | T721 |
 | FR-704 | 12 | Regression (DT) | TC-007-012..014 | T730 |

@@ -11,7 +11,7 @@ Trust Gate: (1) коллекция `booking-intents` + двухфазный `POS
 
 ## Technical Context
 
-**Language/Version**: без изменений (001–006 фундамент). **Testing**: vitest int (OTP-матрица, brute-force guard, honeypot, double-opt-in, allowlist, PII) + fake-Resend наслоение (канон 006). **New deps**: 0. **Storage**: новая коллекция `booking-intents` (additions-only).
+**Language/Version**: без изменений (001–006 фундамент). **Testing**: vitest int (OTP-матрица, brute-force guard, honeypot, double-opt-in scanner-safe, trust-cookie, composite RL, PII) + fake-Resend наслоение (канон 006). **New deps**: 0. **Storage**: новая коллекция `booking-intents` (additions-only).
 
 ## Constitution Check
 
@@ -31,7 +31,13 @@ Trust Gate: (1) коллекция `booking-intents` + двухфазный `POS
 
 ```text
 src/collections/BookingIntents.ts        # NEW: slug booking-intents (F2-канон именования), adminOnly, system fields closed
-src/lib/waitlist/../intents/intentService.ts  # NEW: createIntent (future-guard, кап 2, advisory hashtext), verifyIntent (HMAC+attempts), consumeIntent
+src/collections/WaitlistEntries.ts       # MOD: select status += 'pending' (double-opt-in)
+src/collections/EmailDeliveryLog.ts      # MOD: kind += 'intent', 'waitlist-optin'
+src/lib/email/resendAdapter.ts           # MOD: logDelivery typing widening
+src/payload.config.ts                    # MOD: регистрация BookingIntents, intentSweepTask
+src/lib/booking/intentService.ts         # NEW: createIntent (future-guard, кап 2, advisory hashtext), verifyIntent (HMAC+attempts), consumeIntent
+src/lib/booking/trustCookie.ts           # NEW: HttpOnly trust-cookie HMAC (review F1)
+src/app/api/booking/resend/route.ts      # NEW: OTP resend — ротация codeHash на pending-интенте (review F2)
 src/lib/booking/otp.ts                   # NEW: генерация 6-значного кода + HMAC + timing-safe verify (канон tokens.ts)
 src/app/api/booking/route.ts             # MOD: two-phase (D3), honeypot check
 src/app/api/waitlist/route.ts            # MOD: honeypot check + join → pending
@@ -49,7 +55,7 @@ tests/int/trust-gate.int.spec.ts         # NEW: OTP-матрица/brute-force/h
 
 ## Threat Modeling (STRIDE)
 
-- **S**: OTP HMAC-only; интент-токены timing-safe; honeypot silent. **T**: attempts≤5 гейт; CAS consumed; слот-время строго из БД интента. **R**: audit `intent.created/consumed/dead`, `honeypot.hit`, `waitlist.optin`. **I**: коды HMAC; письма — код+услуга; purge 30d. **D**: rate limit фазы 1 (3/10min per email+IP); job-канон. **E**: гейт только на публичных роутах; Local API не тронут.
+- **S**: OTP HMAC-only с контекст-биндингом intentId+email (F6); HttpOnly trust-cookie (F1); интент-токены timing-safe; honeypot silent. **T**: attempts≤5 гейт; CAS consumed; слот-время строго из БД интента. **R**: audit `intent.created/consumed/dead`, `honeypot.hit`, `waitlist.optin`. **I**: коды HMAC; письма — код+услуга; purge 30d. **D**: rate limit фазы 1 (3/10min per email+IP); job-канон. **E**: гейт только на публичных роутах; Local API не тронут.
 
 ## Rollback
 
@@ -59,7 +65,8 @@ Additions-only: новая коллекция/роут-ветки/компоне
 
 | Риск | Вер-ть | Митигация |
 |---|---|---|
-| Двухфазность режет конверсию | средняя | allowlist repeat-client (FR-706); OTP-шаг в той же форме (без перехода письма→страницы) |
+| Двухфазность режет конверсию | средняя | trust-cookie 90d для repeat-client (FR-706, F1); OTP-шаг в той же форме; email-allowlist отвергнут как спуфируемый |
+| Email-бомбардировка через фазу 1 | низкая | композитный rate limit: per-IP 10/10min + per-email 3/10min независимыми бакетами (F3) |
 | Resend latency при OTP | низкая | TTL 10m; resend ≤3/10min; job-retry канон |
 | Concurrent verify | низкая | CAS consumed + advisory |
 | OTP-письмо в спаме | средняя | runbook: проверка папки; resend-кнопка; Resend-домен — qa-signoff |

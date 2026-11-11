@@ -49,3 +49,33 @@ low_count: 4
 ```
 
 Гейт VI: до implement — ≥2 внешних ревью PASS (или logged override).
+
+
+---
+
+## Run #2 (re-check, 2026-11-11) — PASS
+
+**Вход**: verify резолюций F1–F11 antigravity-ревью по рабочему дереву + собственный adversarial проход.
+
+| ID | Severity | Summary | Resolution |
+| --- | --- | --- | --- |
+| R1 | MEDIUM | Verify F1–F10: все подтверждены по диффам (trust-cookie FR-706, resend-контракт FR-702, композитный RL FR-701/702, CAS-after-createBooking, hydration-from-DB, HMAC context-binding, retention sync, plan structure completeness, scanner-safe opt-in, sweep scope) | RESOLVED |
+| R2 | LOW | F11 bizplan numbering — исправлено в undreplans (`d5f5af0`): 007 = booking-trust-gate, ЮKassa → 008 | RESOLVED |
+| R3 | LOW | Grace-окно verified-email токена при 409 (alternative #2 ревью) — осознанно отложено в enhancement (не блокер: клиент повторно проходит OTP за 15 c) | Deferred 007+ |
+| R4 | LOW | Trust-cookie TTL 90d vs кастомерская сессия — cookie переживает сессию осознанно (device-trust канон) | Зафиксировано в FR-706 |
+
+Coverage: 12/12, 20 TC, граф валиден.
+
+```yaml
+verdict: PASS
+reviewer: analyze
+run: 2
+reviewed_at: 2026-11-11T22:35:00Z
+spec_revision: "1.2"
+critical_count: 0
+high_count: 0
+medium_count: 0
+low_count: 4
+```
+
+Гейт VI: antigravity PASS (rev 1.2) — 1 внешний PASS; до implement нужна ещё ≥1 внешний PASS или logged override.

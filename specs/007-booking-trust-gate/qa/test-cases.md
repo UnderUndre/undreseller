@@ -4,10 +4,10 @@
 
 ## US1: Intents + OTP (FR-701)
 
-### TC-007-001: фаза 1 → 202 + intent `pending` + OTP-письмо (код ≠ plaintext в БД)
+### TC-007-001: фаза 1 → 202 + intent `pending` + OTP-письмо (код ≠ plaintext в БД; codeHash с контекст-биндингом intentId+email — F6)
 - **Priority**: P0 · **EP**
 
-### TC-007-002: future-slot guard — intent на прошедший слот → 422; кап 2 live/email → 3-й → 429 INTENT_CAP
+### TC-007-002: future-slot guard — intent на прошедший слот → 422; кап 2 live/email → 3-й → 429 INTENT_CAP; композитный RL — per-IP 10/10min и per-email 3/10min независимыми бакетами (F3)
 - **Priority**: P0 · **BVA**
 
 ### TC-007-003: TTL — verify по истечении 10m → 403; intent → `expired` свипом
@@ -15,7 +15,7 @@
 
 ## US1/FR-702: Two-phase gate (Risk 20)
 
-### TC-007-004: фаза 2 — верный OTP → FSM CREATE_BOOKING (FREE→CONFIRMED; PREPAID→HELD 15m) → intent `consumed`
+### TC-007-004: фаза 2 — верный OTP → **гидратация параметров строго из БД-интента (спуфинг тела игнорируется — F5)** → FSM CREATE_BOOKING (FREE→CONFIRMED; PREPAID→HELD 15m) → CAS consumed ПОСЛЕ успеха (F4)
 - **Priority**: P0 · **STM**
 
 ### TC-007-005: attempts-гейт — 5 неверных кодов → intent `dead` (403); 6-й верный код на dead-intent → 403 (брутфорс невозможен)
@@ -24,13 +24,13 @@
 ### TC-007-006: concurrent verify одного интента (×2) → CAS consumed → ровно 1 бронь, второй 409
 - **Priority**: P0 · **STM**
 
-### TC-007-007: занятый слот на фазе 2 → 409 SLOT_TAKEN + intent `dead` (никогда не re-arm — клиент выбирает заново)
+### TC-007-007: занятый слот на фазе 2 → 409 SLOT_TAKEN + intent `dead` (никогда не re-arm, БЕЗ auto-advance — F4); повтор при consumed → существующая бронь по idempotencyKey
 - **Priority**: P0 · **DT**
 
 ### TC-007-008: OTP-письмо — код в письме, услуги/время; plaintext-кода нет в БД (grep)
 - **Priority**: P0 · **PII-grep**
 
-### TC-007-009: rate limit фазы 1 — 4-е создание интента за 10 мин на один email+IP → 429
+### TC-007-009: resend — ротация codeHash на существующем pending-интенте (F2), ≤3/10 мин; композитный RL — per-IP и per-email независимые бакеты (F3)
 - **Priority**: P1 · **BVA**
 
 ## US2: Honeypot (FR-703)
@@ -43,10 +43,10 @@
 
 ## US3: Waitlist double-opt-in (FR-704)
 
-### TC-007-012: join → `pending` + opt-in письмо; матчинг не уведомляет pending (relay-guard)
+### TC-007-012: join → `pending` + opt-in письмо на лендинг (GET просмотр — scanner-safe F9); матчинг не уведомляет pending (relay-guard)
 - **Priority**: P0 · **DT**
 
-### TC-007-013: confirm по ссылке → `waiting` → попадает в матчинг; 48h-expiry → expired
+### TC-007-013: confirm явной кнопкой POST с лендинга → `waiting` → попадает в матчинг; 48h-expiry → expired; resend opt-in при повторном join (F9)
 - **Priority**: P0 · **BVA**
 
 ### TC-007-014: confirm с чужим/просроченным токеном → 403
@@ -57,10 +57,10 @@
 ### TC-007-015: sweep — expired интенты >10m; GDPR purge 30d
 - **Priority**: P0 · **EP**
 
-### TC-007-016: allowlist — email с consumed-историей → 201 без OTP (skip OTP-фазы)
+### TC-007-016: trust-cookie (F1) — OTP-успех выдаёт HttpOnly cookie; повторная бронь с cookie → 201 без OTP; без cookie → OTP-фаза
 - **Priority**: P0 · **EP**
 
-### TC-007-017: allowlist spoofing-негатив — без consumed-истории skip невозможен
+### TC-007-017: trust-cookie spoofing-негатив — чужой email без cookie → OTP обязателен (email-история без cookie не пропускает — F1)
 - **Priority**: P1 · **Negative**
 
 ## US6: Seams review

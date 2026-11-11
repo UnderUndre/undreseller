@@ -79,3 +79,50 @@ low_count: 0
 ```
 
 Business plan: **unchanged** (v2.7.1; trust gate не трогает ICP/цены/рельсы — защита инвентаря; VII-B.4 PASS, waiver не нужен).
+
+
+---
+
+## Run #3 (spec rev 1.2, post-antigravity review) — PASS
+
+Интеграция 11 находок состязательного аудита `antigravity` (F1–F10 + F11 синхронизация бизнес-плана):
+
+1. **F1 (HIGH) — Allowlist спуфинг**: email-история без доказательства владения отвергнута; **HttpOnly+Secure+SameSite=Lax trust-cookie `client_trust_token` (HMAC, TTL 90d)**, выдаётся при успешной OTP-верификации; без cookie → OTP обязателен. FR-706 переписан.
+2. **F2 (HIGH) — Resend-контракт**: resend = ротация codeHash + refresh expiresAt на **существующем** pending-интенте (без дублей-интенов), ≤3/10 мин на интент. FR-702 дополнен.
+3. **F3 (HIGH) — Email-бомбардировка**: композитный rate limit — **per-IP ≤10/10min + per-email ≤3/10min независимыми бакетами**. FR-701/FR-702 дополнены.
+4. **F4 (HIGH) — CAS-порядок**: `consumed` строго ПОСЛЕ успешного createBooking; при 409 SLOT_TAKEN → `dead`; повтор при consumed → существующая бронь по детерминированному idempotencyKey. FR-702 переписан.
+5. **F5 (MEDIUM) — Confused-deputy**: гидратация параметров брони строго из БД-интента; тело запроса кроме intentId/otp игнорируется. FR-702 дополнен.
+6. **F6 (MEDIUM) — HMAC контекст-биндинг**: `codeHash = HMAC('otp:'+intentId+':'+email+':'+code)`. FR-701 дополнен.
+7. **F7 (MEDIUM) — Retention sync**: consumed 90d (allowlist/trust-cookie источник), dead/expired 30d; терминальный успех строго `consumed`. FR-705 переписан.
+8. **F8 (MEDIUM) — Project Structure**: план дополнен payload.config.ts / WaitlistEntries.ts / EmailDeliveryLog.ts / resendAdapter.ts; опечатка пути исправлена (`src/lib/booking/intentService.ts`).
+9. **F9 (MEDIUM) — Scanner-safe opt-in**: лендинг GET-просмотр + явный POST-confirm; resend opt-in при повторном join. FR-704 дополнен.
+10. **F10 (LOW) — Sweep scope**: 5m intentSweep только expired pending→expired; purge → ночной GDPR. FR-705 переписан.
+11. **F11 (LOW) — Нумерация**: bizplan §2.4 — 007 = booking-trust-gate, ЮKassa → 008 (undreplans `d5f5af0`).
+
+### Risk-Based Testing Scoring (rev 1.2)
+
+| FR-701 (Intent) | 4 | 3 | 12 | EP + DT (кап/окно/HMAC-биндинг) |
+| FR-702 (Two-phase gate) | 5 | 4 | **20 (Critical)** | **STM + DT + EG + UAT** (спуфинг/гонки/брутфорс) |
+| FR-703 (Honeypot) | 3 | 3 | 9 | DT (silent/audit/a11y) |
+| FR-704 (Double-opt-in) | 4 | 3 | 12 | DT (pending/scanner-safe/resend) |
+| FR-705 (Lifecycle) | 3 | 2 | 6 | EP (retention-матрица) |
+| FR-706 (Trust cookie) | 3 | 3 | 9 | EP + spoofing-негатив |
+| FR-707 (Seams review) | 3 | 2 | 6 | Отчёт в evidence |
+
+### 5. Верdict run #3
+
+**PASS** — 0 блокеров. Все 11 находок устранены в спецификации rev 1.2.
+
+```yaml
+verdict: PASS
+audit: requirements-audit
+run: 3
+audited_at: 2026-11-11T22:30:00Z
+spec_revision: "1.2"
+critical_count: 0
+high_count: 0
+medium_count: 0
+low_count: 0
+```
+
+Business plan: **v2.7.1 + renumber sync** (`d5f5af0`, undreplans): 007 = booking-trust-gate, ЮKassa → 008. VII-B.4 PASS.

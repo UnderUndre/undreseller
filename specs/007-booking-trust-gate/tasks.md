@@ -1,22 +1,22 @@
 # Tasks: 007 (007-booking-trust-gate)
 
-**Input**: spec rev 1.1, plan.md, research.md (D1–D7), requirements-audit PASS (run #2)
+**Input**: spec rev 1.2, plan.md, research.md (D1–D7), requirements-audit PASS (run #3), antigravity review fixes F1–F10
 **Organization**: Phase 1 intents+OTP → Phase 2 two-phase route+honeypot → Phase 3 waitlist opt-in → Phase 4 seams review → closeout.
 
 ## Phase 1: Intents + OTP (US1)
 
-- [ ] T710 [BE] [US1] FR-701: `BookingIntents` коллекция (слаг `booking-intents`, adminOnly, системные поля closed); `src/lib/booking/otp.ts` (6-значный криптоРНГ, `codeHash = HMAC(code, PAYLOAD_SECRET)`, timing-safe verify); `intentService.createIntent` (future-slot guard 422, кап ≤2 live/email → 429 INTENT_CAP, advisory `hashtext('booking_intent_'||email)`); `intentService.verifyIntent` (attempts≤5 → dead, timing-safe); `intentService.consumeIntent` (CAS pending→consumed); sweep-job `intentSweep` (5m: expired >10m → expired; GDPR purge 30d); generate:types
+- [ ] T710 [BE] [US1] FR-701: `BookingIntents` коллекция (слаг `booking-intents`, adminOnly, системные поля closed); `src/lib/booking/otp.ts` (6-значный криптоРНГ, `codeHash = HMAC('otp:'+intentId+':'+email+':'+code, PAYLOAD_SECRET)` — контекст-биндинг F6, timing-safe verify); `intentService.createIntent` (future-slot guard 422, кап ≤2 live/email → 429 INTENT_CAP, advisory `hashtext('booking_intent_'||email)`, **композитный rate limit: per-IP 10/10min + per-email 3/10min независимыми бакетами (F3)**); `intentService.verifyIntent` (attempts≤5 → dead, timing-safe, **HMAC контекст-биндинг intentId+email (F6)**); `intentService.consumeIntent` (CAS pending→consumed); sweep-job `intentSweep` (5m: только expired pending→expired (F10), purge → ночной GDPR); generate:types
 - [ ] T711 [BE] [US1] OTP-письмо (шаблон: код + услуга + слот, TTL-предупреждение) через resend-канон + `EmailDeliveryLog.kind += 'intent'`; rate limit create 3/10min per email+IP; EP/DT-тесты: TTL-матрица, кап, attempts, future-guard
 
 ## Phase 2: Two-phase route + honeypot (US1/US2 — Risk 20)
 
-- [ ] T720 [BE] [US1] FR-702/D3: `POST /api/booking` двухфазный (фаза 1 → 202 intent; фаза 2 intentId+otp → verify → CAS consumed → FSM createBooking детерминированным idempotencyKey `booking-intent-<intentId>`; занятый слот → 409 SLOT_TAKEN + intent dead); **STM-тест: concurrent verify одного интента → ровно 1 бронь (CAS), 0 double-booking; brute-force ×5 → dead** (Risk 20); token/attempt-матрица
+- [ ] T720 [BE] [US1] FR-702/D3: `POST /api/booking` двухфазный (фаза 1 → 202 intent + композитный RL (F3); **resend = ротация codeHash/refresh expiresAt на существующем pending-интенте (F2), ≤3/10 мин на интент**; фаза 2 intentId+otp → verify attempts≤5 → **гидратация параметров строго из БД-интента (F5)** → createBooking детерминированным idempotencyKey `booking-intent-<intentId>` → **CAS consumed строго после успеха (F4)**; занятый слот → 409 SLOT_TAKEN + intent dead; повтор при consumed → существующая бронь по idempotencyKey); **STM-тесты: concurrent verify одного интента → ровно 1 бронь; brute-force ×5 → dead; спуфинг тела фазы 2 игнорируется** (Risk 20); token/attempt-матрица
 - [ ] T721 [BE] [US2] FR-703/D5: honeypot-поле на booking + waitlist формах (a11y: aria-hidden/tabindex/-1/autocomplete=off); роут-гварды (заполнено → silent 200 + audit `honeypot.hit`); DT-тесты: silent-reject ×2 формы, человек-не-видит, audit
 
 ## Phase 3: Waitlist opt-in (US3)
 
-- [ ] T730 [BE] [US3] FR-704/D6: join → `pending` + opt-in письмо (HMAC `waitlist-optin:<entryId>`, TTL 48h) → `POST /api/waitlist/[entryId]/confirm` → `waiting`; матчинг фильтрует строго `waiting` (relay-guard); sweep pending>48h → expired; landing `/book/waitlist-confirm`; DT-тесты: pending-не-уведомляется, confirm→матчинг, 48h-expiry
-- [ ] T731 [BE] [US4/US5] FR-705/706: intent sweep 5m (expired/purge 30d) + кап 2 live/email → 429 INTENT_CAP; allowlist `hasVerifiedEmail` (consumed ≤90d) → skip OTP; EP-тесты: allowlist happy, spoofing-негатив, purge
+- [ ] T730 [BE] [US3] FR-704/D6: join → `pending` + opt-in письмо → **лендинг `/book/waitlist-confirm` (GET просмотр, подтверждение явной кнопкой POST — scanner-safe против SafeLinks (F9))** → `waiting`; **повторный join того же телефона/сервиса в pending → resend opt-in-письма (F9)**; матчинг фильтрует строго `waiting` (relay-guard); sweep pending>48h → expired; DT-тесты: pending-не-уведомляется, confirm→матчинг, scanner-safe GET, 48h-expiry, resend
+- [ ] T731 [BE] [US4/US5] FR-705/706: intent sweep 5m (только expired pending→expired (F10); purge → ночной GDPR); **trust-cookie (F1): HttpOnly+Secure+SameSite=Lax `client_trust_token` (HMAC email+issuedAt, TTL 90d), выдаётся при успешной OTP-верификации; booking с валидным cookie → skip OTP; без cookie → OTP**; EP-тесты: cookie happy, без-cookie OTP, spoofing-негатив, purge
 
 ## Phase 4: Seams review + closeout (US6)
 

@@ -2,7 +2,7 @@
 
 **Slug:** `007-booking-trust-gate`
 **Репозиторий:** `UnderUndre/undreseller` · **База:** 001 (`980bc32`) + 002 (`c5f3bf1`) + 003 (`3697b3d`) + 004 (`9efe76a`) + 005 (`3a576e4`) + 006 (`a66eed5`) + QA-фиксы (`4c0d1ab`)
-**Статус:** **DRAFT — REVISION 1.1 (2026-11-11; clarify по audit run#1: C1 OTP хранится только как HMAC + attempts≤5→dead (брутфорс невозможен), C2 waitlist double-opt-in pending→waiting (анти-релей/GDPR), M1 intent lifecycle sweep+кап 2 live/email, M2 honeypot a11y+audit, M3 future-slot guard; статус-машина интента зафиксирована)**
+**Статус:** **DRAFT — REVISION 1.2 (2026-11-11; ревью antigravity F1–F10: F1 allowlist через HttpOnly trust-cookie вместо email-спуфинга, F2 resend-контракт на существующем интенте, F3 композитный rate limit IP+email раздельно, F4 CAS consumed строго после createBooking + идемпотентный повтор, F5 гидратация Фазы 2 строго из БД, F6 codeHash с контекстом intentId+email, F7 retention consumed 90d / dead+expired 30d, F8 полнота Project Structure, F9 opt-in scanner-safe + resend, F10 purge делегирован ночному GDPR)**
 **Source of truth по бизнесу:** план v2.7.1 (без дельты — trust gate не меняет ICP/цены/рельсы; это защита инвентаря календаря) · **research:** dossier 2026-11-11 (OWASP Bot Management Cheat Sheet; honeypot-канон Auth0; manual-QA `4c0d1ab` — 3 живых бага класса швов)
 
 ---
@@ -43,19 +43,19 @@
 
 ### US3 — Waitlist double-opt-in (P0 — анти-релей)
 
-`POST /api/waitlist` → статус **`pending`** + письмо «подтвердите подписку» (ссылка HMAC, TTL 48h) → подтверждение → `waiting` (вступает в матчинг). Матчинг фильтрует строго `status='waiting'` — `pending` не уведомляется никогда (анти-релей). Sweep: `pending` > 48h → `expired`.
+`POST /api/waitlist` → статус **`pending`** + opt-in письмо со ссылкой на **лендинг** `/book/waitlist-confirm?entry=<id>&token=<HMAC>` (GET — просмотр; **подтверждение — явная кнопка POST**, scanner-safe против SafeLinks — review F9) → `waiting` (вступает в матчинг). Матчинг фильтрует строго `status='waiting'` — `pending` не уведомляется никогда (анти-релей). Повторный join того же телефона с тем же сервисом в статусе `pending` → **resend opt-in-письма** на существующую запись (review F9). Sweep: `pending` > 48h → `expired`.
 
 **Acceptance**: join → pending, 0 писем-уведомлений до подтверждения; confirm → waiting → попадает в матчинг; pending > 48h → expired.
 
 ### US4 — Intent lifecycle (P1)
 
-`BookingIntent`-sweep (в составе job-канона, крон 5m): expired >10m → `expired`; verified intents хранятся 30d (allowlist-источник FR-706) → purge; **live (pending) intents на один email ≤ 2 → 429 INTENT_CAP**.
+`BookingIntent`-sweep **крон 5m: только перевод `pending` с `expires_at < now()` → `expired`** (review F10 — purge старых записей делегирован ночному `gdprPurgeTask`). Retention (review F7): **`consumed` хранится 90 дней** (trust-cookie/allowlist источник), **`dead`/`expired` чистятся через 30 дней**. Live (pending) intents на один email ≤ 2 → 429 INTENT_CAP.
 
 **Acceptance**: sweep-матрица expired/purged; 3-й live intent на email → 429 INTENT_CAP.
 
 ### US5 — Repeat-client allowlist (P1)
 
-Email с хотя бы одним `verifiedAt` в прошлом → пропуск OTP-фазы (бронь сразу 201). Спуфинг недоступен: allowlist = «владел почтой хотя бы раз».
+Успешная OTP-верификация (фаза 2 → 201) выдаёт **`client_trust_token` — подписанный HMAC HttpOnly+Secure+SameSite=Lax cookie, TTL 90d** (review F1). Последующие брони с этим cookie → **skip OTP-фазы** (сразу 201). Без cookie/с чужого устройства → обязательный OTP. Спуфинг = кража cookie с устройства клиента (не подмена поля формы) — канон trust-the-device, не trust-the-claim.
 
 **Acceptance**: повторная бронь того же email → 201 без OTP; новый email → 202 OTP-фаза.
 
@@ -81,11 +81,11 @@ Email с хотя бы одним `verifiedAt` в прошлом → пропу�
 
 ### Functional Requirements
 - **FR-701 (BookingIntent)**: коллекция `booking-intents` (email, name, phone, serviceId, resourceId, slotStart/End, codeHash HMAC, expiresAt 10m, attempts, status pending|consumed|dead|expired); кап ≤2 live/email; создание только на future slot.
-- **FR-702 (Two-phase booking)**: `POST /api/booking` фаза 1 (без otp) → 202 intent + OTP-письмо; фаза 2 (intentId+otp) → verify (timing-safe, ≤5 attempts → dead) → FSM CREATE_BOOKING → intent consumed → 201; занятый слот → 409 + dead.
+- **FR-702 (Two-phase booking + resend)**: фаза 1 → intent + OTP-письмо; **resend = ротация codeHash/refresh expiresAt на существующем pending-интенте, ≤3/10 мин на интент (review F2)**; фаза 2 — **гидратация параметров строго из БД-интента (review F5), attempts ≤5 → dead, OTP verify timing-safe** → FSM CREATE_BOOKING → **CAS consumed строго после успеха (review F4)**; повтор с тем же intentId при consumed → существующая бронь по idempotencyKey; занятый слот → 409 + dead.
 - **FR-703 (Honeypot)**: скрытые поля на booking/waitlist формах; заполнено → silent 200 + audit `honeypot.hit`; a11y-атрибуты (aria-hidden, tabindex=-1).
 - **FR-704 (Waitlist double-opt-in)**: join → `pending` + confirm-письмо (HMAC, TTL 48h) → `waiting`; матчинг строго `waiting`; sweep pending>48h → expired.
 - **FR-705 (Intent lifecycle)**: sweep expired intents; allowlist-источник — verified intents 30d.
-- **FR-706 (Repeat-client allowlist)**: email с verified-историей → skip OTP (конфиг-флаг, default on).
+- **FR-706 (Device trust cookie)**: HttpOnly+Secure+SameSite=Lax cookie `client_trust_token` (HMAC, TTL 90d), выдаётся при успешной OTP-верификации; booking с валидным cookie → skip OTP; **без cookie → OTP обязателен (review F1 — email-история без доказательства владения не считается)**.
 - **FR-707 (Seams code review)**: документированный ревью-проход швов + фиксы, отчёт в evidence.
 
 ### Non-Functional Requirements
@@ -108,5 +108,5 @@ Email с хотя бы одним `verifiedAt` в прошлом → пропу�
 | Q1: Канал верификации | **Email OTP** (6-значный, TTL 10m) | Ноль deps/денег; SMS — табу Scope Knife |
 | Q2: Момент захвата слота | **После верификации** (intent → FSM) | Инвентарь календаря не отравляется unverified-бронями |
 | Q3: Waitlist | **Double-opt-in** (pending → waiting) | Анти-релей Resend + GDPR-согласие |
-| Q4: Repeat-client | **Allowlist по verified-истории** | Конверсия-first для настоящих клиентов |
+| Q4: Repeat-client | **HttpOnly trust-cookie 90d** (не email-история) | Review F1: email-allowlist спуфится в гостевой модели; cookie = trust-the-device |
 | Q5: CAPTCHA | **Нет** (honeypot + OTP) | OWASP: CAPTCHA только на подозрительном трафике |
