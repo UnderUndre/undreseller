@@ -14,7 +14,7 @@ export interface PaymentGateway {
     currency: string
     bookingId: number
   }): Promise<{ id: string; clientSecret: string | null }>
-  createRefund(params: { paymentIntentId: string }): Promise<{ id: string }>
+  createRefund(params: { paymentIntentId: string; idempotencyKey?: string }): Promise<{ id: string }>
 }
 
 let client: Stripe | null = null
@@ -44,8 +44,11 @@ export const stripeGateway: PaymentGateway = {
     return { id: intent.id, clientSecret: intent.client_secret }
   },
 
-  async createRefund({ paymentIntentId }) {
-    const refund = await getStripe().refunds.create({ payment_intent: paymentIntentId })
+  async createRefund({ paymentIntentId, idempotencyKey }) {
+    const refund = await getStripe().refunds.create(
+      { payment_intent: paymentIntentId },
+      idempotencyKey ? { idempotencyKey } : undefined,
+    )
     return { id: refund.id }
   },
 }

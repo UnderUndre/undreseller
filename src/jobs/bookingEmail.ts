@@ -26,6 +26,11 @@ export const bookingEmailTask = {
   slug: 'booking-email',
   label: 'Send booking confirmation email (spec 003 FR-305)',
   retries: 5,
+  // 008 T811 (antigravity F1 / F-BE-05): the input carries RAW one-time tokens
+  // (cancel/reschedule/access) needed for the letter — they must not linger in
+  // payload_jobs after delivery. The tokens on the client's confirmation screen
+  // stay valid: hashes in slot_reservations are untouched.
+  deleteJobOnComplete: true,
   // Runtime contract verified in payload 3.93 dist: { inlineTask, input, job, req, tasks }.
   handler: async ({ req, input }: { req: { payload: Payload }; input: unknown }) => {
     const data = input as BookingEmailInput

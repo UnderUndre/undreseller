@@ -634,6 +634,8 @@ export interface GatewayEventInput {
   providerRef: string
   eventType: 'payment_intent.succeeded' | 'payment_intent.payment_failed' | 'charge.refunded'
   amountMinor?: number
+  /** charge.refunded: Stripe's CUMULATIVE `amount_refunded` (008 T810, SEC-A-15). */
+  amountRefundedMinor?: number
   currency?: string
   now?: Date
 }
@@ -703,6 +705,25 @@ export async function applyGatewayEvent(
     }
 
     if (input.eventType === 'charge.refunded') {
+      // 008 T810 (SEC-A-15): a partial refund must NOT mark the order fully
+      // refunded — compare the CUMULATIVE refunded amount (Stripe's
+      // amount_refunded) against the order total; partial → verifiable alert
+      // without a new FSM status (Via Negativa).
+      const orderAmount = Number(row.amount)
+      const refundedMinor = input.amountRefundedMinor
+      if (
+        Number.isFinite(orderAmount) &&
+        typeof refundedMinor === 'number' &&
+        refundedMinor < orderAmount
+      ) {
+        await ledger(`PARTIAL_REFUND:${refundedMinor}/${orderAmount}`)
+        await audit(trx, 'payment.alert', 'ORDER', String(row.order_id), {
+          reason: 'PARTIAL_REFUND',
+          refundedMinor,
+          orderAmount,
+        })
+        return { deduped: false, outcome: 'ignored' as const }
+      }
       await trx.execute(
         sql`UPDATE orders SET status = 'refunded', updated_at = now() WHERE id = ${row.order_id}`,
       )
@@ -728,31 +749,48 @@ export async function applyGatewayEvent(
         return { deduped: false, outcome: 'amount-mismatch' as const }
       }
 
-      if (row.res_status === 'HELD' || row.res_status === 'PAYMENT_PENDING') {
+      // 008 T810 (F-BE-03): CAS with rowCount check. A concurrent cancel/holdSweep
+      // between the SELECT and the UPDATE must NEVER end in `orders: completed`
+      // over a RELEASED slot — on CAS loss the row is re-read INSIDE the same
+      // transaction and re-classified (late-payment path or Stripe retry).
+      const current = await trx.execute(sql`
+        SELECT status, schedule_version FROM slot_reservations WHERE id = ${row.reservation_id} LIMIT 1`)
+      const cur = current.rows?.[0] as { status: string; schedule_version: number } | undefined
+
+      if (cur && (cur.status === 'HELD' || cur.status === 'PAYMENT_PENDING')) {
         const fsm = transitionBookingFsm(
-          DB_TO_SPEC_BOOKING_STATE[row.res_status as keyof typeof DB_TO_SPEC_BOOKING_STATE] as BookingFsmState,
+          DB_TO_SPEC_BOOKING_STATE[cur.status as keyof typeof DB_TO_SPEC_BOOKING_STATE] as BookingFsmState,
           'GATEWAY_FINISHED',
           { now },
         )
         if (fsm.ok) {
-          await trx.execute(sql`
+          const cas = await trx.execute(sql`
             UPDATE slot_reservations
             SET status = 'BOOKED', hold_expires_at = null, hold_frozen_at = null,
                 schedule_version = schedule_version + 1, updated_at = now()
-            WHERE id = ${row.reservation_id} AND schedule_version = ${row.schedule_version}`)
-          await trx.execute(
-            sql`UPDATE orders SET status = 'completed', updated_at = now() WHERE id = ${row.order_id}`,
-          )
-          await ledger('PROCESSED')
-          await audit(trx, 'payment.confirmed', 'BOOKING', String(row.reservation_id), { providerRef: input.providerRef })
-          return { deduped: false, outcome: 'confirmed' as const }
+            WHERE id = ${row.reservation_id} AND schedule_version = ${cur.schedule_version}
+            RETURNING schedule_version`)
+          if ((cas.rows ?? []).length > 0) {
+            await trx.execute(
+              sql`UPDATE orders SET status = 'completed', updated_at = now() WHERE id = ${row.order_id}`,
+            )
+            await ledger('PROCESSED')
+            await audit(trx, 'payment.confirmed', 'BOOKING', String(row.reservation_id), { providerRef: input.providerRef })
+            return { deduped: false, outcome: 'confirmed' as const }
+          }
+          // CAS lost — fall through to the late-payment re-evaluation below.
         }
       }
 
-      if (row.res_status === 'RELEASED') {
-        // Late payment (FR-444/FR-432): slot still free → atomic re-confirm;
-        // slot re-booked → PAID_REQUIRES_RESOLUTION + refund request. Never a
-        // silent PAID (NFR-303).
+      // Late payment (FR-444/FR-432): slot still free → atomic re-confirm;
+      // slot re-booked → PAID_REQUIRES_RESOLUTION + refund request. Never a
+      // silent PAID (NFR-303). Fresh state is read here — stale row.schedule_version
+      // would make the CAS meaningless.
+      const fresh = cur ?? (await trx.execute(sql`
+        SELECT status, schedule_version FROM slot_reservations WHERE id = ${row.reservation_id} LIMIT 1`)).rows?.[0] as
+        | { status: string; schedule_version: number }
+        | undefined
+      if (fresh && fresh.status === 'RELEASED') {
         const clash = await trx.execute(sql`
           SELECT 1 FROM slot_reservations
           WHERE resource_id = ${row.resource_id}
@@ -761,11 +799,18 @@ export async function applyGatewayEvent(
             AND tstzrange(start_time, end_time) && tstzrange(${row.start_time}, ${row.end_time})
           LIMIT 1`)
         if (clash.rows.length === 0) {
-          await trx.execute(sql`
+          const reconfirm = await trx.execute(sql`
             UPDATE slot_reservations
             SET status = 'BOOKED', hold_expires_at = null, hold_frozen_at = null,
                 schedule_version = schedule_version + 1, updated_at = now()
-            WHERE id = ${row.reservation_id} AND schedule_version = ${row.schedule_version}`)
+            WHERE id = ${row.reservation_id} AND schedule_version = ${fresh.schedule_version}
+            RETURNING schedule_version`)
+          if ((reconfirm.rows ?? []).length === 0) {
+            // Another concurrent winner between our clash check and the CAS —
+            // do NOT consume the dedupe: throw rolls the transaction (incl. the
+            // InboxEvent claim) back so Stripe's retry reprocesses cleanly.
+            throw new Error('GATEWAY_CAS_RETRY')
+          }
           await trx.execute(
             sql`UPDATE orders SET status = 'completed', updated_at = now() WHERE id = ${row.order_id}`,
           )
@@ -780,6 +825,11 @@ export async function applyGatewayEvent(
         await audit(trx, 'payment.late-resolution', 'ORDER', String(row.order_id), { providerRef: input.providerRef })
         return { deduped: false, outcome: 'paid-requires-resolution' as const }
       }
+      if (fresh && (fresh.status === 'HELD' || fresh.status === 'PAYMENT_PENDING')) {
+        // Still active but our FSM/CAS raced — do not consume the dedupe; the
+        // Stripe retry reprocesses against a settled state.
+        throw new Error('GATEWAY_CAS_RETRY')
+      }
 
       await ledger('PROCESSED')
       return { deduped: false, outcome: 'ignored' as const }
@@ -787,17 +837,23 @@ export async function applyGatewayEvent(
 
     // payment_intent.payment_failed: release only an unpaid hold (FSM GATEWAY_FAILED).
     if (row.res_status === 'HELD' || row.res_status === 'PAYMENT_PENDING') {
-      await trx.execute(sql`
+      // 008 T810: CAS with rowCount — a concurrently RELEASED hold is simply
+      // not released again (no orders mutation without winning the CAS).
+      const released = await trx.execute(sql`
         UPDATE slot_reservations
         SET status = 'RELEASED', schedule_version = schedule_version + 1, updated_at = now()
-        WHERE id = ${row.reservation_id} AND schedule_version = ${row.schedule_version}`)
-      await trx.execute(
-        sql`UPDATE orders SET status = 'cancelled', updated_at = now() WHERE id = ${row.order_id}`,
-      )
-      await ledger('PROCESSED')
-      await audit(trx, 'payment.failed-release', 'BOOKING', String(row.reservation_id), { providerRef: input.providerRef })
-      releasedSlot = { resourceId: String(row.resource_id), productId: row.item_id, slotStart: new Date(row.start_time), slotEnd: new Date(row.end_time) }
-      return { deduped: false, outcome: 'released' as const }
+        WHERE id = ${row.reservation_id} AND schedule_version = ${row.schedule_version}
+        RETURNING id`)
+      if ((released.rows ?? []).length > 0) {
+        await trx.execute(sql`
+          UPDATE orders SET status = 'cancelled', updated_at = now() WHERE id = ${row.order_id}`)
+        await ledger('PROCESSED')
+        await audit(trx, 'payment.failed-release', 'BOOKING', String(row.reservation_id), { providerRef: input.providerRef })
+        releasedSlot = { resourceId: String(row.resource_id), productId: row.item_id, slotStart: new Date(row.start_time), slotEnd: new Date(row.end_time) }
+        return { deduped: false, outcome: 'released' as const }
+      }
+      await ledger('ALREADY_RELEASED')
+      return { deduped: false, outcome: 'ignored' as const }
     }
 
     await ledger('PROCESSED')

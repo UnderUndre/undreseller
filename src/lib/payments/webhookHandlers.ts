@@ -45,6 +45,8 @@ async function handleEvent({ event, req }: WebhookEventArgs): Promise<void> {
         provider: 'STRIPE',
         providerRef: String(obj.payment_intent ?? obj.id),
         eventType: 'charge.refunded',
+        // 008 T810 (SEC-A-15): cumulative refunded amount for partial-refund detection.
+        amountRefundedMinor: typeof obj.amount_refunded === 'number' ? obj.amount_refunded : undefined,
       })
       return
     case 'checkout.session.completed': {
