@@ -223,11 +223,32 @@ export const ProductsCollection: CollectionOverride = ({ defaultCollection }) =>
               options: [
                 { label: 'No prepayment (pay on site)', value: 'NONE' },
                 { label: 'Full prepayment (Stripe)', value: 'FULL_PREPAYMENT' },
+                { label: 'Deposit to hold (Stripe)', value: 'DEPOSIT' },
               ],
               admin: {
                 condition: ({ bookable }) => bookable === true,
                 description:
-                  'Deposit policy (spec 003 FR-301). Read strictly server-side in bookingService — client input is never accepted.',
+                  'Deposit policy (spec 003 FR-301, spec 012). Read strictly server-side in bookingService — client input is never accepted.',
+              },
+            },
+            {
+              name: 'depositAmount',
+              type: 'number',
+              min: 0,
+              admin: {
+                condition: ({ bookable, paymentMode }) => bookable === true && paymentMode === 'DEPOSIT',
+                description: 'Deposit required to hold the booking in USD. Must be <= priceInUSD (spec 012 FR-1201).',
+              },
+              validate: (value: unknown, options: { data?: Record<string, unknown> | null }) => {
+                if (options.data?.paymentMode !== 'DEPOSIT') return true
+                if (typeof value !== 'number' || value <= 0) {
+                  return 'depositAmount must be greater than 0'
+                }
+                const price = options.data?.priceInUSD
+                if (typeof price === 'number' && price > 0 && value > price) {
+                  return 'depositAmount cannot exceed priceInUSD'
+                }
+                return true
               },
             },
             {

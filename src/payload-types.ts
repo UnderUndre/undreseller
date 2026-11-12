@@ -376,9 +376,13 @@ export interface Product {
    */
   outCallEnabled?: boolean | null;
   /**
-   * Deposit policy (spec 003 FR-301). Read strictly server-side in bookingService — client input is never accepted.
+   * Deposit policy (spec 003 FR-301, spec 012). Read strictly server-side in bookingService — client input is never accepted.
    */
-  paymentMode?: ('NONE' | 'FULL_PREPAYMENT') | null;
+  paymentMode?: ('NONE' | 'FULL_PREPAYMENT' | 'DEPOSIT') | null;
+  /**
+   * Deposit required to hold the booking in USD. Must be <= priceInUSD (spec 012 FR-1201).
+   */
+  depositAmount?: number | null;
   /**
    * Free-cancellation boundary in hours before start; strictly exclusive: now < start - cutoff auto-refunds (spec 003 FR-304)
    */
@@ -2405,6 +2409,7 @@ export interface ProductsSelect<T extends boolean = true> {
   bufferAfterMin?: T;
   outCallEnabled?: T;
   paymentMode?: T;
+  depositAmount?: T;
   cancellationCutoffHours?: T;
   meta?:
     | T

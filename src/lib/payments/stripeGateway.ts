@@ -52,3 +52,15 @@ export const stripeGateway: PaymentGateway = {
     return { id: refund.id }
   },
 }
+
+/**
+ * Retrieve client_secret for an existing PaymentIntent on server-rendered pages (spec 012).
+ */
+export async function retrieveClientSecret(paymentIntentId: string): Promise<string | null> {
+  try {
+    const intent = await getStripe().paymentIntents.retrieve(paymentIntentId)
+    return intent.client_secret
+  } catch {
+    return null
+  }
+}

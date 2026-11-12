@@ -44,7 +44,18 @@
     "appointment": "Appointment:",
     "status": "Status",
     "cancelButton": "Cancel this appointment",
-    "cancelNote": "This cancel link works exactly once. Keep this page if you might need to cancel."
+    "cancelNote": "This cancel link works exactly once. Keep this page if you might need to cancel.",
+    "deposit": {
+      "title": "Pay deposit to hold booking",
+      "depositNotice": "Deposit amount: {amount}.",
+      "remainingNotice": "Remaining balance ({remaining}) to be paid on site.",
+      "payDeposit": "Pay deposit {amount}",
+      "processing": "Processing…",
+      "depositReceived": "Deposit received! Booking confirmed.",
+      "refreshing": "Updating booking status…",
+      "paymentFailed": "Payment failed. Please try another card.",
+      "networkError": "Network error, please try again."
+    }
   },
   "waitlistConfirm": {
     "invalidLink": "Invalid link: entry and token are required.",

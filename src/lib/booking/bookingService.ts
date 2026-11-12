@@ -54,7 +54,7 @@ export interface CreateBookingInput {
   gateway?: PaymentGateway
 }
 
-export type PaymentMode = 'NONE' | 'FULL_PREPAYMENT'
+export type PaymentMode = 'NONE' | 'FULL_PREPAYMENT' | 'DEPOSIT'
 
 export interface BookingResult {
   reservationId: number
@@ -153,15 +153,38 @@ export async function createBooking(
   const bufferAfterMin = (product.bufferAfterMin as number) ?? 0
   const end = new Date(start.getTime() + durationMin * 60_000)
 
-  // Deposit policy (spec 003 FR-301): paymentMode is read STRICTLY from the
-  // Product on the server — the client API has no paymentMode field at all.
-  const paymentMode: PaymentMode = product.paymentMode === 'FULL_PREPAYMENT' ? 'FULL_PREPAYMENT' : 'NONE'
-  if (paymentMode === 'FULL_PREPAYMENT' && !input.customerEmail) {
-    throw new BookingError('EMAIL_REQUIRED', 422, 'Email is required for full-prepayment services')
+  // Deposit policy (spec 003 FR-301, spec 012 FR-1201/1202): paymentMode is read
+  // STRICTLY from the Product on the server — client input is never accepted.
+  const rawMode = product.paymentMode
+  const depositAmount = (product.depositAmount as number) ?? (product.deposit_amount as number) ?? 0
+  const paymentMode: PaymentMode =
+    rawMode === 'FULL_PREPAYMENT'
+      ? 'FULL_PREPAYMENT'
+      : rawMode === 'DEPOSIT' || (depositAmount > 0 && rawMode !== 'NONE')
+        ? 'DEPOSIT'
+        : 'NONE'
+
+  if ((paymentMode === 'FULL_PREPAYMENT' || paymentMode === 'DEPOSIT') && !input.customerEmail) {
+    throw new BookingError('EMAIL_REQUIRED', 422, 'Email is required for prepayment/deposit services')
   }
+
+  if (paymentMode === 'DEPOSIT') {
+    if (depositAmount <= 0) {
+      throw new BookingError('INVALID_DEPOSIT_AMOUNT', 422, 'Deposit amount must be greater than 0')
+    }
+    const priceInUSD = (product.priceInUSD as number) ?? 0
+    if (priceInUSD > 0 && depositAmount > priceInUSD) {
+      throw new BookingError('INVALID_DEPOSIT_AMOUNT', 422, 'Deposit amount cannot exceed service price')
+    }
+  }
+
   const amountMinor =
-    paymentMode === 'FULL_PREPAYMENT' ? toAmountMinor(product.priceInUSD as number) : 0
-  const track: BookingTrack = paymentMode === 'FULL_PREPAYMENT' ? 'PREPAID' : 'FREE'
+    paymentMode === 'FULL_PREPAYMENT'
+      ? toAmountMinor(product.priceInUSD as number)
+      : paymentMode === 'DEPOSIT'
+        ? toAmountMinor(depositAmount)
+        : 0
+  const track: BookingTrack = (paymentMode === 'FULL_PREPAYMENT' || paymentMode === 'DEPOSIT') ? 'PREPAID' : 'FREE'
 
   let resourceId: string | number | undefined = input.resourceId
   if (!resourceId) {
@@ -289,7 +312,7 @@ export async function createBooking(
     // (research D4) — no orphan payment without a reservation. On PI failure the
     // slot is released IMMEDIATELY (review F-PI: never marinate 15 min), and the
     // caller gets a 502 PAYMENT_INIT_FAILED.
-    if (paymentMode === 'FULL_PREPAYMENT') {
+    if (paymentMode === 'FULL_PREPAYMENT' || paymentMode === 'DEPOSIT') {
       const gateway = input.gateway ?? stripeGateway
       try {
         const intent = await gateway.createPaymentIntent({
@@ -484,7 +507,10 @@ export async function cancelBooking(
   if (refund === 'auto-refunded') {
     const gw = gateway ?? stripeGateway
     try {
-      await gw.createRefund({ paymentIntentId: row.stripe_payment_intent_id as string })
+      await gw.createRefund({
+        paymentIntentId: row.stripe_payment_intent_id as string,
+        idempotencyKey: `cancel-${row.order_id}`,
+      })
       await db.execute({
         drizzle: db.drizzle,
         sql: sql`UPDATE orders SET status = 'refunded', updated_at = now() WHERE id = ${row.order_id}`,
@@ -1246,7 +1272,10 @@ export async function cancelBookingByClientChat(
   if (refund === 'auto-refunded') {
     const gw = gateway ?? stripeGateway
     try {
-      await gw.createRefund({ paymentIntentId: row.stripe_payment_intent_id as string })
+      await gw.createRefund({
+        paymentIntentId: row.stripe_payment_intent_id as string,
+        idempotencyKey: `client-cancel-${row.order_id}`,
+      })
       await db.execute({
         drizzle: db.drizzle,
         sql: sql`UPDATE orders SET status = 'refunded', updated_at = now() WHERE id = ${row.order_id}`,

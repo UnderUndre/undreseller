@@ -20,7 +20,9 @@ export interface BotLike {
 const bots = new Map<BotName, BotLike | null>()
 
 function tokenFor(name: BotName): string | undefined {
-  return name === 'staff' ? process.env.STAFF_BOT_TOKEN : process.env.CLIENT_BOT_TOKEN
+  return name === 'staff'
+    ? process.env.STAFF_BOT_TOKEN ?? process.env.TELEGRAM_STAFF_BOT_TOKEN
+    : process.env.CLIENT_BOT_TOKEN ?? process.env.TELEGRAM_CLIENT_BOT_TOKEN
 }
 
 /** Returns the bot or null when unconfigured/degraded — callers MUST no-op safely. */
