@@ -89,16 +89,20 @@ export async function handleClientCallback(
       { orderId: cb.orderId, chatId: args.chatId, now: args.now },
       gateway,
     )
-    // Staff alert (outbox HIGH).
-    await enqueue(payload, {
-      bot: 'staff',
-      actionType: 'sendMessage',
-      toChatId: process.env.TELEGRAM_STAFF_CHAT_IDS?.split(',')[0]?.trim() ?? '',
-      text: `⚠️ Booking #${res.reservationId} cancelled via Telegram (refund: ${res.refund ?? 'n/a'})`,
-      priority: 50,
-      aggregateType: 'BOOKING',
-      aggregateId: String(res.reservationId),
-    })
+    // Staff alert (outbox HIGH). 008 F-BE-13: skip enqueue if no staff chat
+    // configured — an empty toChatId produces dead-letter rows + audit noise.
+    const staffChat = (process.env.TELEGRAM_STAFF_CHAT_IDS ?? '').split(',')[0]?.trim() ?? ''
+    if (staffChat) {
+      await enqueue(payload, {
+        bot: 'staff',
+        actionType: 'sendMessage',
+        toChatId: staffChat,
+        text: `⚠️ Booking #${res.reservationId} cancelled via Telegram (refund: ${res.refund ?? 'n/a'})`,
+        priority: 50,
+        aggregateType: 'BOOKING',
+        aggregateId: String(res.reservationId),
+      })
+    }
     return { status: 'cancelled', scheduleVersion: res.scheduleVersion, refund: res.refund }
   } catch (err) {
     const code = (err as { code?: string }).code

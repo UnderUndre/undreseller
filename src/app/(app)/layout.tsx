@@ -47,6 +47,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       suppressHydrationWarning
     >
       <head>
+        {/* 008 T830 (F-UX-15): noscript fallback for html opacity 0 anti-FOUC gate */}
+        <noscript><style dangerouslySetInnerHTML={{ __html: 'html { opacity: 1 !important; }' }} /></noscript>
         <InitTheme />
         <link href="/favicon.ico" rel="icon" sizes="32x32" />
         <link href="/favicon.svg" rel="icon" type="image/svg+xml" />

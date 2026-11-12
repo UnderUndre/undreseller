@@ -82,7 +82,11 @@ export default buildConfig({
   ],
   db: postgresAdapter({
     pool: {
-      connectionString: process.env.DATABASE_URL || '',
+      connectionString:
+      process.env.DATABASE_URL ||
+      (() => {
+        throw new Error('DATABASE_URL is required (fail-closed): set it in .env before booting')
+      })(),
     },
   }),
   editor: lexicalEditor({

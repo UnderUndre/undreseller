@@ -59,10 +59,10 @@ export function ReschedulePicker({ bookingId, token, productId }: { bookingId: s
     <div>
       <label>
         New date:{' '}
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <input type="date" value={date} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setDate(e.target.value)} />
       </label>
       {state === 'error' && <p role="alert">{message}</p>}
-      {slots.length === 0 && state !== 'loading' ? (
+      {date && slots.length === 0 && state !== 'loading' ? (
         <p>No slots for this date.</p>
       ) : (
         <ul>

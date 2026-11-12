@@ -56,9 +56,21 @@ export function WaitlistJoinForm({ serviceId }: { serviceId: string }) {
     <form onSubmit={submit} className="flex flex-col gap-3">
       <p>На эту дату слотов нет. Оставьте контакты — напишем, когда слот освободится.</p>
       {state === 'error' && <p role="alert">{message}</p>}
-      <input name="customerName" placeholder="Имя" required maxLength={200} />
-      <input name="customerPhone" placeholder="Телефон" required maxLength={50} />
-      <input name="customerEmail" type="email" placeholder="Email" required />
+      <div>
+        <label htmlFor="wl-name" className="mb-1 block text-sm font-medium">Имя</label>
+        <input id="wl-name" name="customerName" placeholder="Имя" required maxLength={200}
+          autoComplete="name" className="w-full rounded border border-neutral-300 px-3 py-2" />
+      </div>
+      <div>
+        <label htmlFor="wl-phone" className="mb-1 block text-sm font-medium">Телефон</label>
+        <input id="wl-phone" name="customerPhone" placeholder="Телефон" required maxLength={50}
+          autoComplete="tel" className="w-full rounded border border-neutral-300 px-3 py-2" />
+      </div>
+      <div>
+        <label htmlFor="wl-email" className="mb-1 block text-sm font-medium">Email</label>
+        <input id="wl-email" name="customerEmail" type="email" placeholder="Email" required
+          autoComplete="email" className="w-full rounded border border-neutral-300 px-3 py-2" />
+      </div>
       {/* Honeypot (FR-703): invisible to humans, a11y-safe, bots fill it. */}
       <input
         name="companyWebsite"
@@ -68,7 +80,8 @@ export function WaitlistJoinForm({ serviceId }: { serviceId: string }) {
         autoComplete="off"
         className="hidden"
       />
-      <button type="submit" disabled={state === 'working'}>
+      <button type="submit" disabled={state === 'working'}
+        className="rounded bg-primary px-4 py-2 text-white disabled:opacity-50">
         {state === 'working' ? 'Отправляем…' : 'Уведомить меня'}
       </button>
     </form>

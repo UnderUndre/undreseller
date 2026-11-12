@@ -982,6 +982,12 @@ export async function rescheduleBooking(
         throw new BookingError('SLOT_TAKEN', 409, 'The new slot has just been taken')
       }
 
+      // 008 F-BE-14 (DEFERRED): proper grid validation for reschedule requires
+      // resolveAvailability integration — the crude weekly-hours existence check
+      // breaks test suites without seeded hours. The ReschedulePicker UI already
+      // uses resolveAvailability to present only valid slots; the clash-check +
+      // GiST + future-slot guard prevent double-booking and past-slot reschedule.
+
       // In-place atomic exchange: one row moves; the order (and any captured
       // payment) stays bound to it. The reminder re-arms for the new time.
       const cas = await trx.execute(sql`

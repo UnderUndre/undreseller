@@ -409,7 +409,7 @@ export const CheckoutPage: React.FC = () => {
                     <div className="flex flex-col gap-1">
                       <p className="font-medium text-lg">{title}</p>
                       {variant && typeof variant === 'object' && (
-                        <p className="text-sm font-mono text-primary/50 tracking-widest">
+                        <p className="text-sm font-mono text-muted-foreground tracking-widest">
                           {variant.options
                             ?.map((option: { label?: string } | string | null | undefined) => {
                               if (typeof option === 'object' && option !== null) return option.label

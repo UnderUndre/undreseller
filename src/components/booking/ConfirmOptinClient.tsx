@@ -45,7 +45,17 @@ export function ConfirmOptinClient({ entryId, token }: { entryId: string; token:
   }
 
   if (state === 'done' || state === 'already') return <p role="status">{message}</p>
-  if (state === 'error') return <p role="alert">{message}</p>
+  if (state === 'error')
+    return (
+      <div role="alert" className="flex flex-col gap-2">
+        <p>{message}</p>
+        {message.includes('Сетевая') && (
+          <button type="button" onClick={() => void confirm()} className="text-sm underline text-neutral-500 hover:text-neutral-700">
+            Попробовать снова
+          </button>
+        )}
+      </div>
+    )
   return (
     <button type="button" onClick={() => void confirm()} disabled={state === 'working'} data-testid="optin-confirm">
       {state === 'working' ? 'Подтверждаем…' : 'Подтвердить подписку'}
