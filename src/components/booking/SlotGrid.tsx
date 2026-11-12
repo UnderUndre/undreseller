@@ -1,35 +1,31 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 import type { ComputedSlotDTO } from '@/components/booking/types'
 import { BookingFormOTP } from '@/components/booking/BookingFormOTP'
 import { WaitlistJoinForm } from '@/components/booking/WaitlistJoinForm'
 
 /**
- * Client slot grid (spec 002-booking-domain US7; two-phase trust gate per
- * spec 007): fetches availability for the selected date, renders the grid;
- * on booking conflict (409 SLOT_TAKEN) shows the conflict message and
- * refreshes the grid (race canon, TC-002-021). Since 007 the booking submit
- * is TWO-phase: phase 1 → 202 + email code (or a direct 201 with a valid
- * trust cookie); phase 2 → OTP step in the same form (BookingFormOTP).
+ * Client slot grid (spec 002 US7; two-phase trust gate per spec 007; i18n per
+ * spec 010): fetches availability for the selected date, renders the grid.
+ * All user-facing strings go through next-intl `t()`.
  */
 export function SlotGrid({
   serviceId,
   onBooked,
 }: {
   serviceId: string
-  /** Optional: defaults to navigating to the confirmation page. Server
-   * Components cannot pass function props — the navigation lives here. */
   onBooked?: (result: { reservationId: string; accessToken: string; cancelToken: string }) => void
 }) {
+  const t = useTranslations('booking')
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [slots, setSlots] = useState<ComputedSlotDTO[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerEmail, setCustomerEmail] = useState('')
-  // Honeypot (spec 007 FR-703): hidden field — humans never see or fill it.
   const [honeypot, setHoneypot] = useState('')
   const [otpPhase, setOtpPhase] = useState<
     { intentId: string; expiresAt: string; emailSent: boolean } | null
@@ -49,13 +45,12 @@ export function SlotGrid({
       const data = (await res.json()) as { slots?: ComputedSlotDTO[] }
       setSlots(data.slots ?? [])
     } catch {
-      setError('Failed to load availability')
-      // 008 T821 (F-UX-17 / Antigravity F11): availability failure clears stale slots
+      setError(t('networkError'))
       setSlots([])
     } finally {
       setLoading(false)
     }
-  }, [serviceId, date])
+  }, [serviceId, date, t])
 
   useEffect(() => {
     void loadSlots()
@@ -105,11 +100,9 @@ export function SlotGrid({
         setError(data.error ?? 'Booking failed')
         return
       }
-      // 201 — either the trust-cookie path or an idempotent replay: no OTP step.
       navigateToConfirmation((await res.json()) as { reservationId: string; accessToken: string; cancelToken: string })
     } catch {
-      // 008 T821 (F-UX-04 / Antigravity F11): submit failure displays error WITHOUT wiping slots
-      setError('Network error, please try again.')
+      setError(t('networkError'))
     } finally {
       setSubmitting(false)
     }
@@ -129,7 +122,7 @@ export function SlotGrid({
         <>
           <div>
             <label htmlFor="booking-date" className="mb-1 block text-sm font-medium">
-              Date
+              {t('date')}
             </label>
             <input
               id="booking-date"
@@ -145,10 +138,10 @@ export function SlotGrid({
           </div>
 
           {loading ? (
-            <p className="text-neutral-500">Loading slots…</p>
+            <p className="text-muted-foreground">{t('loadingSlots')}</p>
           ) : slots.length === 0 ? (
             <>
-              <p className="text-neutral-500">No available slots on this date.</p>
+              <p className="text-muted-foreground">{t('noSlotsAvailable')}</p>
               <WaitlistJoinForm serviceId={serviceId} />
             </>
           ) : (
@@ -176,7 +169,7 @@ export function SlotGrid({
             <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4">
               <div>
                 <label htmlFor="customer-name" className="mb-1 block text-sm font-medium">
-                  Name
+                  {t('name')}
                 </label>
                 <input
                   id="customer-name"
@@ -189,7 +182,7 @@ export function SlotGrid({
               </div>
               <div>
                 <label htmlFor="customer-phone" className="mb-1 block text-sm font-medium">
-                  Phone
+                  {t('phone')}
                 </label>
                 <input
                   id="customer-phone"
@@ -202,7 +195,7 @@ export function SlotGrid({
               </div>
               <div>
                 <label htmlFor="customer-email" className="mb-1 block text-sm font-medium">
-                  Email
+                  {t('email')}
                 </label>
                 <input
                   id="customer-email"
@@ -213,7 +206,6 @@ export function SlotGrid({
                   className="w-full rounded border border-neutral-300 px-3 py-2"
                 />
               </div>
-              {/* Honeypot (FR-703): invisible to humans, a11y-safe, bots fill it. */}
               <input
                 name="companyWebsite"
                 aria-hidden="true"
@@ -230,7 +222,7 @@ export function SlotGrid({
                 onClick={() => void submit()}
                 className="rounded bg-primary px-4 py-2 text-white disabled:opacity-50"
               >
-                {submitting ? 'Booking…' : 'Confirm booking'}
+                {submitting ? t('booking') : t('confirmBooking')}
               </button>
             </div>
           )}
@@ -239,7 +231,7 @@ export function SlotGrid({
 
       {conflict && (
         <p data-testid="booking-conflict" role="alert" className="text-error">
-          Sorry — this slot has just been taken. The grid below has been refreshed.
+          {t('slotTaken')}
         </p>
       )}
       {error && (

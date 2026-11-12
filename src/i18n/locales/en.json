@@ -1,0 +1,65 @@
+{
+  "booking": {
+    "date": "Date",
+    "name": "Name",
+    "phone": "Phone",
+    "email": "Email",
+    "confirmBooking": "Confirm booking",
+    "booking": "Booking…",
+    "slotTaken": "Sorry — this slot has just been taken. The grid below has been refreshed.",
+    "noSlotsAvailable": "No available slots on this date.",
+    "loadingSlots": "Loading slots…",
+    "networkError": "Network error, please try again.",
+    "otpStep": {
+      "codeSent": "A verification code has been sent to your email",
+      "emailDelayed": " (delivery delayed — use «Resend code»)",
+      "expiresAt": "Valid until {time}.",
+      "codeLabel": "Code from email",
+      "verify": "Verify & book",
+      "verifying": "Verifying…",
+      "resend": "Resend code",
+      "resending": "Sending…",
+      "resendNote": "A new code has been sent.",
+      "resendTooFrequent": "Too frequent — wait a few minutes.",
+      "back": "← Choose another slot",
+      "otpInvalid": "Invalid code. Check the email — no more than 5 attempts.",
+      "intentDead": "Code exhausted or expired. Pick a slot again.",
+      "slotTakenOnVerify": "Sorry — the slot has just been taken. Pick another one."
+    },
+    "waitlist": {
+      "title": "No slots on this date. Leave your contacts — we'll notify you when a slot opens.",
+      "name": "Name",
+      "phone": "Phone",
+      "email": "Email",
+      "submit": "Notify me",
+      "submitting": "Sending…",
+      "done": "We've sent a confirmation link — confirm your subscription to join the queue.",
+      "duplicate": "You are already on the waitlist for this service.",
+      "capReached": "Too many active subscriptions — cancel one of the previous ones.",
+      "error": "Failed: {error}"
+    }
+  },
+  "confirmation": {
+    "title": "Booking confirmed",
+    "appointment": "Appointment:",
+    "status": "Status",
+    "cancelButton": "Cancel this appointment",
+    "cancelNote": "This cancel link works exactly once. Keep this page if you might need to cancel."
+  },
+  "waitlistConfirm": {
+    "invalidLink": "Invalid link: entry and token are required.",
+    "notFound": "Waitlist entry not found.",
+    "expired": "This link is no longer valid — submit a new request.",
+    "alreadyConfirmed": "Subscription already confirmed",
+    "alreadyConfirmedText": "We'll let you know when a slot opens.",
+    "confirmTitle": "Confirm subscription",
+    "confirmText": "Click the button below to receive notifications about available slots.",
+    "confirmButton": "Confirm subscription",
+    "confirming": "Confirming…",
+    "confirmed": "Subscription confirmed — we'll notify you when a slot opens.",
+    "alreadyDone": "This subscription is already confirmed.",
+    "tokenInvalid": "Invalid link or the window has expired — submit a new request.",
+    "networkError": "Network error, try again.",
+    "failed": "Failed: {error}"
+  }
+}

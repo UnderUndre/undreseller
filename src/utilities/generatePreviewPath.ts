@@ -1,4 +1,4 @@
-import { PreviewSearchParams } from '@/app/(app)/next/preview/route'
+import { PreviewSearchParams } from '@/app/[locale]/next/preview/route'
 import { PayloadRequest, CollectionSlug } from 'payload'
 
 // Baseline fix (spec 001-reinit TC-001-001): template referenced a `(frontend)`
