@@ -14,6 +14,7 @@ import { assertProviderAmountMatch } from '@/lib/payments/invariants'
 import { stripeGateway, type PaymentGateway } from '@/lib/payments/stripeGateway'
 import { verifyTokenHash, hashToken } from '@/lib/booking/tokens'
 import { notifySlotFreed } from '@/lib/waitlist/waitlistService'
+import { resolveAvailability } from '@/lib/availability/resolver'
 
 /**
  * Booking domain service (spec 002-booking-domain US5/US6, research D4;
@@ -917,7 +918,7 @@ export async function rescheduleBooking(
   const rowRes = await db.execute({
     drizzle: db.drizzle,
     sql: sql`SELECT sr.id, sr.status, sr.schedule_version, sr.order_id, sr.resource_id,
-                    sr.start_time, sr.end_time, sr.total_duration_min,
+                    sr.start_time, sr.end_time, sr.total_duration_min, sr.item_id,
                     sr.buffer_before_min, sr.buffer_after_min, sr.reschedule_token_hash
              FROM slot_reservations sr WHERE sr.id = ${input.reservationId} LIMIT 1`,
   })
@@ -931,6 +932,7 @@ export async function rescheduleBooking(
         start_time: string
         end_time: string
         total_duration_min: number
+        item_id: string | null
         buffer_before_min: number
         buffer_after_min: number
         reschedule_token_hash: string | null
@@ -982,11 +984,30 @@ export async function rescheduleBooking(
         throw new BookingError('SLOT_TAKEN', 409, 'The new slot has just been taken')
       }
 
-      // 008 F-BE-14 (DEFERRED): proper grid validation for reschedule requires
-      // resolveAvailability integration — the crude weekly-hours existence check
-      // breaks test suites without seeded hours. The ReschedulePicker UI already
-      // uses resolveAvailability to present only valid slots; the clash-check +
-      // GiST + future-slot guard prevent double-booking and past-slot reschedule.
+      // 008 F-BE-14 (proper fix): validate the new slot against the availability
+      // grid. resolveAvailability handles working hours, breaks, exceptions, and
+      // busy intervals. If weekly-hours are not configured for the resource, the
+      // grid returns NOT OK and we skip validation (legacy/edge compatibility —
+      // the clash-check + GiST + future-slot guard still prevent double-booking).
+      if (row.item_id) {
+        const grid = await resolveAvailability(payload, {
+          productId: String(row.item_id),
+          date: start.toISOString().slice(0, 10),
+          resourceId: String(resourceId),
+          now,
+        })
+        if (grid.ok) {
+          const slot = grid.slots.find((s) => s.start === start.toISOString())
+          if (!slot) {
+            throw new BookingError(
+              'SLOT_NOT_AVAILABLE',
+              422,
+              'The new time is not an available slot (working hours, breaks, or exceptions)',
+            )
+          }
+        }
+        // grid NOT ok → skip validation, clash-check + GiST remain the backstop
+      }
 
       // In-place atomic exchange: one row moves; the order (and any captured
       // payment) stays bound to it. The reminder re-arms for the new time.

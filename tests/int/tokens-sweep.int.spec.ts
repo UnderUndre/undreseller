@@ -28,11 +28,19 @@ const payload = await getPayload({ config: configPromise })
 beforeAll(async () => {
   await resetBookingTables(payload)
   // The default-resource lookup needs exactly one active master after the truncate.
-  await payload.create({
+  const resource = await payload.create({
     collection: 'resources',
     data: { name: '003 Test Master', active: true },
     overrideAccess: true,
   })
+  // 008 F-BE-14: seed weekly-hours for reschedule grid validation
+  for (let weekday = 1; weekday <= 7; weekday++) {
+    await payload.create({
+      collection: 'weekly-hours',
+      data: { resourceId: Number(resource.id), weekday, startMin: 0, endMin: 1440 },
+      overrideAccess: true,
+    })
+  }
 })
 
 // Re-run safety: unique hour bucket per booking (DB is not truncated between runs).
@@ -83,7 +91,27 @@ describe('T340 — scanner-safe tokens + atomic reschedule (FR-306)', () => {
   it('reschedule consumes the token: old slot intact until commit; replay → TOKEN_ALREADY_CONSUMED (TC-003-016)', async () => {
     const svc = await createFreeService()
     const created = await createBookingWithToken(svc)
-    const newStart = futureStart(200)
+
+    // 008 F-BE-14: use a grid-computed slot for the reschedule target
+    const { resolveAvailability } = await import('@/lib/availability/resolver')
+    const targetDate = new Date(Date.now() + 200 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const weekday = ((new Date(targetDate + 'T00:00:00Z').getUTCDay() + 6) % 7) + 1
+    // Seed hours for the target date's weekday (may differ from beforeAll's — same resource)
+    const db0: any = payload.db
+    const whCheck = await db0.execute({
+      drizzle: db0.drizzle,
+      sql: sql`SELECT 1 FROM weekly_hours WHERE resource_id_id = 1 AND weekday = ${weekday} LIMIT 1`,
+    })
+    if ((whCheck.rows ?? []).length === 0) {
+      await payload.create({
+        collection: 'weekly-hours',
+        data: { resourceId: 1, weekday, startMin: 0, endMin: 1440 },
+        overrideAccess: true,
+      })
+    }
+    const grid = await resolveAvailability(payload, { productId: svc, date: targetDate })
+    if (!grid.ok || grid.slots.length === 0) throw new Error('No grid slots for reschedule target')
+    const newStart = grid.slots[0].start
 
     const moved = await rescheduleBooking(payload, {
       reservationId: String(created.reservationId),
