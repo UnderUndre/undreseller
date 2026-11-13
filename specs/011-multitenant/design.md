@@ -87,3 +87,9 @@ Middleware: Host header → tenant resolution → tenant_id injection
 | 10 | Second node | ~6 GB | ~€340 |
 
 Break-even: 3 клиента × $349/mo = $1,047/mo > €170/мес VPS. OК.
+
+## Clarifications
+
+### Session 2026-11-13
+- Q: Жизненный цикл и статус white-label архитектуры → A: Оставить как ADR / Design Doc (RFC) со статусом `FROZEN/DESIGN` до закрытия бизнес-гейта (≥3 платящих клиента). Спека `spec.md` не генерируется до выполнения условия.
+

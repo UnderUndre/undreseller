@@ -84,3 +84,12 @@ src/i18n/locales/en.json                    # MOD: deposit strings
 tests/int/deposit-flow.int.spec.ts          # NEW: deposit matrix
 .env.example                                # MOD: telegram tokens
 ```
+
+## Clarifications
+
+### Session 2026-11-13
+- Q: Интеграция с машиной состояний (FSM) → A: Режим DEPOSIT повторно использует трек PREPAID (HELD → webhook подтверждения оплаты → BOOKED); новых статусов в FSM не вводится.
+- Q: Политика возврата депозита при отмене → A: Возврат суммы deposit_amount при отмене до дедлайна (cutoff); после cutoff депозит удерживается бизнесом.
+- Q: Именование переменных окружения для Telegram-ботов → A: Поддержка `TELEGRAM_STAFF_BOT_TOKEN` и `TELEGRAM_CLIENT_BOT_TOKEN` с сохранением обратной совместимости для `TELEGRAM_BOT_TOKEN`.
+- Q: Порядок создания PaymentIntent в Stripe → A: PaymentIntent на сумму депозита создаётся строго ПОСЛЕ фиксации записи брони в БД со статусом HELD.
+

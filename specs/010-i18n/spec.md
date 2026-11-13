@@ -39,3 +39,12 @@ src/app/api/             → остаётся на root (API без i18n)
 - Telegram bot messages (P2)
 - Payload admin translations (built-in, отдельная задача)
 - Multi-tenant mode (отдельный дизайн-документ)
+
+## Clarifications
+
+### Session 2026-11-13
+- Q: Каскад определения локали → A: Cookie `NEXT_LOCALE` > заголовок `Accept-Language` > дефолт `ru`. Префикс URL обязателен (`localePrefix: 'always'`).
+- Q: Границы локализации маршрутов → A: Изоляция на клиенте; админка `/(payload)` и `/api/` не локализуются и не имеют префикса `[locale]`.
+- Q: Форматирование дат и времени на клиенте → A: Компонент `LocalTime` принимает проп `locale` из роута и форматирует через нативный `Intl.DateTimeFormat`.
+- Q: Область действия P0 → A: Только booking flow; переводы checkout/account/orders, сообщений Telegram-ботов и email-шаблонов отложены в P1/P2.
+
