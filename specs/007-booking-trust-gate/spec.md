@@ -2,7 +2,7 @@
 
 **Slug:** `007-booking-trust-gate`
 **Репозиторий:** `UnderUndre/undreseller` · **База:** 001 (`980bc32`) + 002 (`c5f3bf1`) + 003 (`3697b3d`) + 004 (`9efe76a`) + 005 (`3a576e4`) + 006 (`a66eed5`) + QA-фиксы (`4c0d1ab`)
-**Статус:** **DRAFT — REVISION 1.2 (2026-11-11; ревью antigravity F1–F10: F1 allowlist через HttpOnly trust-cookie вместо email-спуфинга, F2 resend-контракт на существующем интенте, F3 композитный rate limit IP+email раздельно, F4 CAS consumed строго после createBooking + идемпотентный повтор, F5 гидратация Фазы 2 строго из БД, F6 codeHash с контекстом intentId+email, F7 retention consumed 90d / dead+expired 30d, F8 полнота Project Structure, F9 opt-in scanner-safe + resend, F10 purge делегирован ночному GDPR)**
+**Статус:** **IMPLEMENTED — REVISION 1.2 (2026-11-11; ревью antigravity F1–F10: F1 allowlist через HttpOnly trust-cookie вместо email-спуфинга, F2 resend-контракт на существующем интенте, F3 композитный rate limit IP+email раздельно, F4 CAS consumed строго после createBooking + идемпотентный повтор, F5 гидратация Фазы 2 строго из БД, F6 codeHash с контекстом intentId+email, F7 retention consumed 90d / dead+expired 30d, F8 полнота Project Structure, F9 opt-in scanner-safe + resend, F10 purge делегирован ночному GDPR) · реализовано 2026-11-11: commit `b1d095b`, tag `implement/007-booking-trust-gate/v1`**
 **Source of truth по бизнесу:** план v2.7.1 (без дельты — trust gate не меняет ICP/цены/рельсы; это защита инвентаря календаря) · **research:** dossier 2026-11-11 (OWASP Bot Management Cheat Sheet; honeypot-канон Auth0; manual-QA `4c0d1ab` — 3 живых бага класса швов)
 
 ---

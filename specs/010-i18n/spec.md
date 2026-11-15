@@ -1,6 +1,7 @@
 # Спецификация: 010-i18n
 
 **Input**: F-UX-07 (deferred из 008 — нужна i18n-система), 68 лидов пайплайна (RU: ARM/GE, EN: CY/UAE), бизнес-план v20.3 (Multi-Staff ICP, международный контур)
+**Статус**: **IMPLEMENTED** — commit `4f8f5e0` (2026-11-12), tag `implement/010-i18n/v1`
 **Scope**: next-intl + URL-prefix locale routing для booking flow. Payload admin остаётся EN (можно включить admin i18n отдельно).
 
 ## Решения

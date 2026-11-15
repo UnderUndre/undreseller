@@ -1,7 +1,7 @@
 # 📚 undreseller — Documentation Hub
 
 **Repository**: `UnderUndre/undreseller`
-**Version**: v2.1.0 (Payload Rebaseline: 001-reinit + 002-booking-domain implemented; 003–005 drafted)
+**Version**: v3.0.0 (as-built 001–010 + 012 implemented; 011-multitenant frozen as design doc)
 **Product**: Sprint B (HERO) — white-label booking & commerce engine ($4,900 flat, 14 дней)
 **Methodology**: Diátaxis Framework
 **Compliance**: ISO/IEC/IEEE 29148:2018 · ISO/IEC/IEEE 12207:2017 · NIST SP 800-218 SSDF
@@ -15,17 +15,17 @@
             ┌──────────────────────────────┬──────────────────────────────┐
             │ 1. TUTORIALS (Обучение)      │ 4. EXPLANATION (Концепции)   │
             │                              │                              │
-ДЕЙСТВИЕ    │ • Быстрый старт (корневой    │ • Архитектура as-built v2.1  │
+ДЕЙСТВИЕ    │ • Быстрый старт (корневой    │ • Архитектура as-built v3.0  │
             │   README §Быстрый старт)     │   specs/main/architecture.md │
             │ • Bootstrap владельца        │ • Booking FSM (two-track)    │
-            │   (runbook §4.1)             │   kernel/bookingFsm          │
+            │   (runbook §4.1)             │   + trust gate (007)         │
             ├──────────────────────────────┼──────────────────────────────┤
             │ 2. HOW-TO GUIDES (Ранбуки)   │ 3. REFERENCE (Справочники)   │
             │                              │                              │
-ЗНАНИЕ      │ • Деплой на VPS (002-deploy) │ • Requirements map v2.1      │
-            │ • e2e/ручной прогон брони    │   specs/main/requirements.md │
-            │ • Payload migrate / push     │ • Коллекции и API-роуты      │
-            │ • Snapshot-теги спек         │ • Access-матрица ролей       │
+ЗНАНИЕ      │ • Деплой на VPS + migrate    │ • Requirements map v3.0      │
+            │ • Webhooks Stripe / TG-боты  │   specs/main/requirements.md │
+            │ • Calendar Feed (ротация)    │ • Коллекции и API-роуты      │
+            │ • GDPR purge / ручной QA     │ • Access-матрица ролей       │
             └──────────────────────────────┴──────────────────────────────┘
 ```
 
@@ -33,25 +33,28 @@
 
 ## 1. Tutorials
 - **Быстрый старт**: корневой [`README.md`](../../README.md) §Быстрый старт — install → Postgres → dev → первый OWNER.
-- **Bootstrap владельца**: [`architecture.md` §4.1](architecture.md) — регистрация OWNER до открытия ingress (fail-closed, до 003 setup-token).
-- **Тесты**: `pnpm test:int` (изолированная `undreseller_test`); bootstrap-команда в шапке `test.env`.
+- **Bootstrap владельца**: [`architecture.md` §4.1](architecture.md) — регистрация OWNER до открытия ingress (fail-closed `OWNER_BOOTSTRAP_TOKEN`).
+- **Тесты**: `pnpm test:int` (20 сьютов / 202 теста, изолированная `undreseller_test`); bootstrap-команда в шапке `test.env`.
 
 ## 2. How-To Guides (эксплуатация)
-- **Deploy на VPS заказчика**: docker image из тегированных коммитов; app ≤500 MB Memory Fencing; `payload migrate` на релизе (спека 002+ deploy).
-- **Регистрация webhook'ов Stripe**: `pnpm stripe-webhooks` (dev) / dashboard (prod) — обработчики приходят в 003.
-- **Ротация секретов**: `PAYLOAD_SECRET`, `OWNER_BOOTSTRAP_TOKEN` — env, fail-closed на буте.
-- **Аварийные процедуры**: см. дорожную карту 003+ (планировщик, sweeps); сейчас — single-instance, рестарт безопасен (DB-backed jobs).
+- **Deploy на VPS заказчика**: docker image из тегированных коммитов; app ≤500 MB Memory Fencing; `payload migrate` на релизе (4 миграции, Expand-only + down).
+- **Регистрация webhook'ов Stripe**: `pnpm stripe-webhooks` (dev) / dashboard (prod) — хендлеры live: initiate / confirm-order / webhooks (SDK-verify).
+- **Telegram-боты**: env `STAFF_BOT_TOKEN`/`CLIENT_BOT_TOKEN` (алиасы `TELEGRAM_*`), `TELEGRAM_{STAFF,CLIENT}_WEBHOOK_SECRET`, allow-list `ShopSettings.staffChatIds` или `TELEGRAM_STAFF_CHAT_IDS`; без токенов — no-op деградация.
+- **Calendar Feed**: webcal-URL у OWNER (`/api/admin/calendar-feed/[resourceId]`); утечка → ротация `feedTokenVersion++`.
+- **Ротация секретов**: `PAYLOAD_SECRET` (внимание: все HMAC/OTP/tokens keyed на него — ротация инвалидирует one-time ссылки, trust-cookies и ICS-токены фидов), `OWNER_BOOTSTRAP_TOKEN`, bot tokens — env, fail-closed.
+- **Аварийные процедуры**: single-instance (`REPLICA_COUNT=1` enforced); рестарт безопасен (durable outbox + DB-backed jobs); GDPR-чистка — nightly 3am автоматически.
 
 ## 3. Reference
-- **Architecture as-built**: [`architecture.md`](architecture.md) — топография, data flow, defense-слои, surfaces.
-- **Requirements map**: [`requirements.md`](requirements.md) — FR-группы 001/002, каноны, НФ-инварианты.
-- **API**: `/api/availability` (GET), `/api/booking` (POST), `/api/booking/[id]` (GET), `/api/booking/[id]/cancel` (POST), `/api/approvals` (GET/POST, OPERATOR+) — контракты в `specs/002-booking-domain/`.
-- **Коллекции Payload**: Products (+bookable), SlotReservations, Resources, WeeklyHours, AvailabilityExceptions, AuditEvents, Users, Orders/Carts/Transactions (плагин).
-- **Роли**: `OWNER` (админка + всё) / `OPERATOR` (approvals API) / `PERFORMER` (003+) / `customer` (покупки).
+- **Architecture as-built**: [`architecture.md`](architecture.md) — топография, data flow (booking/waitlist/telegram/calendar), defense-слои, surfaces.
+- **Requirements map**: [`requirements.md`](requirements.md) — FR-группы 001–012, каноны, НФ-инварианты.
+- **API**: `/api/availability` (GET) · `/api/booking` (POST, двухфазный trust gate) · `/api/booking/[id]` (GET) · `/api/booking/[id]/cancel` (GET validation + POST) · `/api/booking/[id]/reschedule` (GET/POST) · `/api/booking/acknowledge` (POST) · `/api/booking/resend` (POST) · `/api/approvals` (GET/POST, OPERATOR+) · `/api/staff/refunds/[id]` (POST, OPERATOR+) · `/api/admin/calendar-feed/[resourceId]` (GET/POST, OWNER) · `/api/calendar/feed/[resourceId]` (GET+HEAD) · `/api/waitlist` (POST) + `[entryId]` (DELETE) + `claim`/`confirm` (POST) · `/api/telegram/{staff,client}/webhook` (POST) · `/api/payments/stripe/{initiate,confirm-order,webhooks}` (POST).
+- **Коллекции Payload (17)**: BookingIntents, SlotReservations, WaitlistEntries, TelegramOutbox, TgLink, Blacklist, InboxEvent, PaymentEvents, EmailDeliveryLog, AuditEvents, Resources, WeeklyHours, AvailabilityExceptions, Products (+Booking-вкладка: paymentMode/depositAmount), Users, Media/Pages/Categories; + orders/carts/transactions (ecommerce-плагин).
+- **Роли**: `OWNER` (админка + всё) / `OPERATOR` (approvals, refunds) / `PERFORMER` (app-API) / `customer` (покупки).
 
 ## 4. Explanation
-- **Payload Rebaseline**: почему и как — [`specs/001-reinit-from-payload-ecommerce-template/spec.md`](../001-reinit-from-payload-ecommerce-template/spec.md) §1.4 + бизнес-план v2.5.0 (`undreplans/docs/projects/undreseller/`).
+- **Payload Rebaseline**: почему и как — [`specs/001-.../spec.md`](../001-reinit-from-payload-ecommerce-template/spec.md) §1.4 + бизнес-план (`undreplans/docs/projects/undreseller/`).
 - **Legacy port map**: [`specs/001-.../legacy-port-map.md`](../001-reinit-from-payload-ecommerce-template/legacy-port-map.md) — 11 доменов, crown jewels vs dead weight.
+- **Multitenant ADR (frozen)**: [`specs/011-multitenant/design.md`](../011-multitenant/design.md) — tenant-per-database vs shared DB.
 - **SpecKit governance**: [`.specify/memory/constitution.md`](../../.specify/memory/constitution.md) — VI (×2 external), X (Expand/Contract), XII (QA contour).
 
 ---
@@ -60,8 +63,16 @@
 
 | Спека | Статус | Документ |
 | --- | --- | --- |
-| 001-reinit | implemented | [`specs/001-.../`](../001-reinit-from-payload-ecommerce-template/spec.md) |
-| 002-booking-domain | implemented (override-gate) | [`specs/002-.../`](../002-booking-domain/spec.md) |
-| 003-no-show-protection | drafted | [`specs/003-.../spec.md`](../003-no-show-protection/spec.md) |
-| 004-telegram-bots | drafted | [`specs/004-.../spec.md`](../004-telegram-bots/spec.md) |
-| 005-google-calendar-sync | drafted | [`specs/005-.../spec.md`](../005-google-calendar-sync/spec.md) |
+| 001-reinit | implemented (rev 1.3) | [`specs/001-.../`](../001-reinit-from-payload-ecommerce-template/spec.md) |
+| 002-booking-domain | implemented → accepted (rev 1.2) | [`specs/002-.../`](../002-booking-domain/spec.md) |
+| 003-no-show-protection | implemented | [`specs/003-.../spec.md`](../003-no-show-protection/spec.md) |
+| 004-telegram-bots | implemented | [`specs/004-.../spec.md`](../004-telegram-bots/spec.md) |
+| 005-calendar-feed (ex google-calendar-sync) | implemented (rev 2.1) | [`specs/005-.../spec.md`](../005-google-calendar-sync/spec.md) |
+| 006-waitlist-autofill | implemented | [`specs/006-.../spec.md`](../006-waitlist-autofill/spec.md) |
+| 007-booking-trust-gate | implemented | [`specs/007-.../spec.md`](../007-booking-trust-gate/spec.md) |
+| 008-audit-hardening | implemented | [`specs/008-.../spec.md`](../008-audit-hardening/spec.md) |
+| 009-ux-hygiene | implemented (light) | [`specs/009-.../spec.md`](../009-ux-hygiene/spec.md) |
+| 010-i18n | implemented (light) | [`specs/010-.../spec.md`](../010-i18n/spec.md) |
+| 011-multitenant | ❄️ frozen (design.md) | [`specs/011-.../design.md`](../011-multitenant/design.md) |
+| 012-deposit-telegram | implemented (light) | [`specs/012-.../spec.md`](../012-deposit-telegram/spec.md) |
+| qa | manual-qa 2026-11-10 | [`specs/qa/manual-qa-2026-11-10.md`](../qa/manual-qa-2026-11-10.md) |

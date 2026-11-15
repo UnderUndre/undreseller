@@ -1,6 +1,7 @@
 # Спецификация: 012-deposit-telegram
 
 **Input**: Voice of Pain #1 (no-shows → deposits, 9 threads), бизнес-план v20.3 (Product 2 Sprint B), FR-BK (011 multitenant design, telegram wiring deferred from 004)
+**Статус**: **IMPLEMENTED** — commit `30b0072` (2026-11-13), tag `implement/012-deposit-telegram/v1`
 **Organization**: Phase 1 deposit flow (P0) → Phase 2 telegram wiring (P1) → closeout.
 
 ## 1. Via Negativa (Strict Taboos)

@@ -2,7 +2,7 @@
 
 **Slug:** `004-telegram-bots`
 **Репозиторий:** `UnderUndre/undreseller` · **База:** 001 (`980bc32`) + 002 as-built (`c5f3bf1`) + 003 as-built (`3697b3d`)
-**Статус:** **DRAFT — REVISION 1.2 (2026-11-08; review fixes: F1 Outbox primitives [bot/actionType/messageId/replyMarkup/sentMessageId], F2 createBooking pager enqueue & GDPR redaction tracking, F3 cancelBookingByClientChat seam, F4 staffChatIds field access control, F5 CTE SKIP LOCKED, F6 autoRun 30s limit 25, F7 two-press confirm barrier, F8 TgLink composite uniqueness & callback routing, F9 Blacklist phone/chatId schema, F10 partial queue index, F11 complete status guards, F12 reschedule unlinked fallback)**
+**Статус:** **IMPLEMENTED — REVISION 1.2 (2026-11-08; review fixes: F1 Outbox primitives [bot/actionType/messageId/replyMarkup/sentMessageId], F2 createBooking pager enqueue & GDPR redaction tracking, F3 cancelBookingByClientChat seam, F4 staffChatIds field access control, F5 CTE SKIP LOCKED, F6 autoRun 30s limit 25, F7 two-press confirm barrier, F8 TgLink composite uniqueness & callback routing, F9 Blacklist phone/chatId schema, F10 partial queue index, F11 complete status guards, F12 reschedule unlinked fallback) · реализовано 2026-11-09: commit `9efe76a`, tag `implement/004-telegram-bots/v1`**
 **Source of truth по бизнесу:** план v2.5.0 §2.2 (уведомление в Telegram — финал сквозного процесса); ICP-канал №1
 **Grounding (002+003 as-built):** grammY нет в deps; Blacklist/TgLink/TelegramOutbox отсутствуют; `ShopSettings` без staffChatIds/defaultLocale; reschedule-токен выдаётся один раз при бронировании; FSM без FULFILLED (orders: processing/completed/cancelled/refunded + 4 статуса 003); email-канал 003 не зависит от outbox
 

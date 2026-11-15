@@ -2,7 +2,7 @@
 
 **Slug:** `003-no-show-protection`
 **Репозиторий:** `UnderUndre/undreseller` · **База:** 001 (`980bc32`) + 002-booking-domain as-built (`c5f3bf1`)
-**Статус:** **DRAFT — REVISION 1.2 (2026-11-08; review fixes: F1–F14 прочистка — устранено противоречие §1.3 vs FR-304 по возвратам, атомарный reschedule без потери слота/депозита, защита HMAC-токенов от почтовых сканеров, Postgres 23505 вместо Prisma P2002, строгий server-side paymentMode, cutoff BVA)**
+**Статус:** **IMPLEMENTED — REVISION 1.2 (2026-11-08; review fixes: F1–F14 прочистка — устранено противоречие §1.3 vs FR-304 по возвратам, атомарный reschedule без потери слота/депозита, защита HMAC-токенов от почтовых сканеров, Postgres 23505 вместо Prisma P2002, строгий server-side paymentMode, cutoff BVA) · реализовано 2026-11-08: commit `3697b3d`, tag `implement/003-no-show-protection/v1`**
 **Source of truth по бизнесу:** план v2.5.0 §2.2 (холд/оплата — часть сквозного процесса) · **prior research:** legacy 004 research (deposit-решение владельца FR-407), competitors-research.md
 **Grounding (002 as-built):** FSM PREPAID-трек в kernel (`bookingFsm.ts`), `invariants.ts` в репо, Payload Jobs framework включён (`jobs.tasks: []`), плагин монтирует `/api/payments/stripe/webhooks` (SDK-верификация есть, хендлеров нет), `customerEmail` на Order — nullable
 

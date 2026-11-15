@@ -2,7 +2,7 @@
 
 **Slug:** `006-waitlist-autofill`
 **Репозиторий:** `UnderUndre/undreseller` · **База:** 001 (`980bc32`) + 002 (`c5f3bf1`) + 003 (`3697b3d`) + 004 (`9efe76a`) + 005 (`3a576e4`) + QA-фиксы (`4c0d1ab`)
-**Статус:** **DRAFT — REVISION 1.2 (2026-11-10; устранение находок F1–F13 ревью antigravity: F1 привязка `notifiedSlotStart/End` в БД и HMAC, F2 слаг `waitlist-entries` против route shadowing, F3 обязательный `email` в MVP, F4 запрет ложного `auto-advance` на занятый слот `409`, F5 вычистка хвостов rev 1.0, F6 все 6 точек `RELEASED`, F7 крон sweep 5m, F8 окно `expiresAt` и слоты в прошлом, F9 разделение с `AcknowledgeClient`, F10 раздельные `claimToken`/`unsubscribeToken`, F11 `Blacklist` и GDPR 90d, F12 синхронизация нумерации плана, F13 индексы)**
+**Статус:** **IMPLEMENTED — REVISION 1.2 (2026-11-10; устранение находок F1–F13 ревью antigravity: F1 привязка `notifiedSlotStart/End` в БД и HMAC, F2 слаг `waitlist-entries` против route shadowing, F3 обязательный `email` в MVP, F4 запрет ложного `auto-advance` на занятый слот `409`, F5 вычистка хвостов rev 1.0, F6 все 6 точек `RELEASED`, F7 крон sweep 5m, F8 окно `expiresAt` и слоты в прошлом, F9 разделение с `AcknowledgeClient`, F10 раздельные `claimToken`/`unsubscribeToken`, F11 `Blacklist` и GDPR 90d, F12 синхронизация нумерации плана, F13 индексы) · реализовано 2026-11-11: commit `a66eed5`, tag `implement/006-waitlist-autofill/v1`**
 **Source of truth по бизнесу:** план v2.7.0 (без дельты — waitlist не меняет ICP/цены/рельсы; нумерация: 006 waitlist, 007 ЮKassa-адаптер) · **research:** dossier 2026-11-10 (Starta: waitlist рекаверит 40–60% отмен [L3]; Bookeo: 62% no-show = забывчивость; категория строит продукты вокруг smart-waitlist)
 
 ---

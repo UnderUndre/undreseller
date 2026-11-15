@@ -1,6 +1,7 @@
 # Спецификация: 009-ux-hygiene
 
 **Input**: FR-BK бэклог 008 (13 UX-находок F-UX-07..20, не вошедших в P0)
+**Статус**: **IMPLEMENTED** — commit `03ce933` (2026-11-12) + F-BE-14 `41d8cfb`, tag `implement/009-ux-hygiene/v1`
 **Organization**: код-фиксы одним контуром, без спек-pipeline (все находки verified в code-review, готовые решения в таблице)
 
 ## Сводная таблица фиксов
