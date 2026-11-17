@@ -51,13 +51,15 @@ undreseller/
 │   │   ├── waitlist/            # waitlistService (join/notify/match/claim/unsubscribe) + claimToken.ts
 │   │   ├── calendar/            # feedToken.ts (versioned HMAC) + ics.ts (RFC 5545)
 │   │   ├── email/               # resendAdapter.ts (fetch REST, БЕЗ SDK) + templates.ts
+│   │   ├── ai/                  # 013: sanitizePii.ts + triagePolicy.ts (PURE) + localLlmClient.ts (LM Studio fetch + SSRF guard)
 │   │   └── security/            # rateLimiter.ts (fixed window, fail-closed; clientIpFrom;
 │   │                            #   assertSingleInstance) + honeypot.ts
 │   ├── plugins/index.ts         # ecommerce (orders accessToken) + seo + form-builder
 │   │                            #   + stripeWebhookHandlers (SDK-verify)
 │   ├── jobs/                    # holdSweep 1m · bookingEmail (retries 5) · reminderSweep 5m (CAS) ·
 │   │                            #   outboxDispatch 30s (batch 25) · gdprPurge 3am ·
-│   │                            #   waitlistMatch (событийный) + waitlistSweep 5m · intentSweep 5m
+│   │                            #   waitlistMatch (событийный) + waitlistSweep 5m · intentSweep 5m ·
+│   │                            #   aiTriage (013, retries 0, deleteJobOnComplete)
 │   ├── i18n/                    # next-intl: ru/en (default ru), словари locales/*.json
 │   ├── middleware.ts            # locale detect (cookie → Accept-Language → ru); security headers — в next.config
 │   ├── instrumentation.ts       # assertSingleInstance (REPLICA_COUNT≠1 → throw)
@@ -70,9 +72,9 @@ undreseller/
 │   │                            #   calendar/feed/[resourceId] · waitlist (+claim/confirm/unsubscribe) ·
 │   │                            #   telegram/{staff,client}/webhook
 │   └── app/(payload)/           # Payload admin (OWNER-only)
-├── src/migrations/              # 4 миграции: booking_gist (base+GiST+btree_gist) ·
+├── src/migrations/              # 5 миграций: booking_gist (base+GiST+btree_gist) ·
 │                                #   order_enum_values (003) · complete_domain_schema (12 таблиц, 008) ·
-│                                #   deposit_payment_mode (enum, 012)
+│                                #   deposit_payment_mode (enum, 012) · local_ai_triage (Expand-only, 013)
 ├── tests/
 │   ├── int/                     # 20 сьютов / 202 теста: booking-fsm 43, trust-gate 23,
 │   │                            #   payments-invariants 13, calendar-feed 12, booking-service 12,
@@ -184,6 +186,7 @@ GET/POST /api/admin/calendar-feed/[resourceId] (OWNER)  # URL / ротация f
 | i18n | 010 | ✅ | next-intl ru/en, `[locale]`-сегмент |
 | Multitenant | 011 | ❄️ frozen | design.md: tenant-per-database (A) / shared DB (B) |
 | Deposit flow | 012 | ✅ | paymentMode DEPOSIT + DepositPayment (Stripe Elements) |
+| Local AI Triage (LM Studio) | 013 | ✅ | async Payload Job + PII sanitizer + LM Studio fetch + deterministic delegation |
 | Stars / NOWPayments | — | roadmap | PaymentGateway-интерфейс готов (`stripeGateway.ts`), адаптеры не писаны |
 
 ## 6. Governance
@@ -209,4 +212,5 @@ GET/POST /api/admin/calendar-feed/[resourceId] (OWNER)  # URL / ротация f
 | 010-i18n | ✅ implemented | next-intl, [locale], ru/en словари |
 | 011-multitenant | ❄️ frozen | design.md (подход A/B), кода нет |
 | 012-deposit-telegram | ✅ implemented | deposit flow, DepositPayment, bot token env |
+| 013-local-ai-triage | ✅ implemented | `src/lib/ai/*`, `src/jobs/aiTriage.ts`, `tests/eval/` (LM Studio на GPU хоста) |
 | Легаси 001–007 (v1.x) | archived (`../undreseller-legacy`) | port-map: `specs/001-.../legacy-port-map.md` |

@@ -81,6 +81,12 @@
 - Stripe Elements `DepositPayment` на confirmation; botManager поддерживает `TELEGRAM_*_BOT_TOKEN` env naming.
 - Migration `deposit_payment_mode` (enum).
 
+### 013-local-ai-triage (as-built)
+- `customerNotes` (`0..2000` chars) на `SlotReservations` + `BookingIntents` (007 DB-гидратация) + `SlotGrid.tsx` (`ru/en` i18n); `hasNotes` в `enqueueStaffCard`.
+- `src/lib/ai/*`: чистый PII-санитайзер (`sanitizeForLlm`, маски `[PHONE]`/`[EMAIL]`/`[ID]`, XML escape), строгий парсер `parseTriageExtraction` + детерминированный `routeTriageDecision` (5 условий → `DELEGATE_OPERATOR` vs `ESCALATE_OWNER`), zero-deps LM Studio `fetch` клиент с SSRF-гвардом (`redirect: 'error'`, `REMOTE_LLM_FORBIDDEN`).
+- Async Payload Job `ai-triage` (`retries: 0`, `deleteJobOnComplete: true`, atomic CAS claim + post-cancel guard); `GET /api/approvals` (OPERATOR+) выдаёт `aiTriage`; `gdprPurge` обнуляет `customer_notes` / `ai_triage_json` > 90d.
+- Live eval suite (`tests/eval/triage-dataset.json`, 26 кейсов, `pnpm eval:ai`); Expand-only миграция `20261118_000001_local_ai_triage`.
+
 ### 011-multitenant — ❄️ FROZEN
 - Только `design.md` (tenant-per-database Approach A для ≤5 клиентов / shared DB Approach B для масштаба); кода нет.
 
@@ -104,4 +110,4 @@
 - Тест-изоляция: int-тесты никогда не трогают dev-БД (`test.env` delete-then-load — dotenv@8 не умеет override).
 - Чистые вычисления: FSM/availability/invariants/amounts — pure-модули с БД-фетчерами отдельно (урок легаси).
 - **GDPR-контур**: nightly gdprPurge + Telegram redaction + EmailDeliveryLog recipientHash + AuditEvents PII-redact append-only.
-- Регрессия: `pnpm validate && pnpm lint && pnpm test:int && pnpm build` перед done; **202 int-тестов / 20 сьютов** — текущая база (+ e2e: admin / booking two-phase OTP / frontend).
+- Регрессия: `pnpm validate && pnpm lint && pnpm test:int && pnpm build` перед done; **211 int-тестов / 21 сьют** — текущая база (+ e2e: admin / booking two-phase OTP / frontend).
