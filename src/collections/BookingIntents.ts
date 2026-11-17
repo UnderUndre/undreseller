@@ -27,6 +27,12 @@ export const BookingIntents: CollectionConfig = {
     { name: 'email', type: 'email', required: true },
     { name: 'customerName', type: 'text', required: true, maxLength: 200 },
     { name: 'customerPhone', type: 'text', required: true, maxLength: 50 },
+    {
+      name: 'customerNotes',
+      type: 'text',
+      maxLength: 2000,
+      admin: { description: 'Optional customer booking notes hydrated into SlotReservation on phase 2 (spec 013)' },
+    },
     { name: 'serviceId', type: 'relationship', relationTo: 'products', required: true },
     { name: 'resourceId', type: 'relationship', relationTo: 'resources', required: true },
     {

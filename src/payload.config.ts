@@ -40,6 +40,7 @@ import { holdSweepTask } from '@/jobs/holdSweep'
 import { intentSweepTask } from '@/jobs/intentSweep'
 import { waitlistMatchTask, waitlistSweepTask } from '@/jobs/waitlistJobs'
 import { outboxDispatchTask } from '@/jobs/outboxDispatch'
+import { aiTriageTask } from '@/jobs/aiTriage'
 import { plugins } from './plugins'
 
 const filename = fileURLToPath(import.meta.url)
@@ -135,7 +136,7 @@ export default buildConfig({
   // Payload Jobs (spec 003 research D1, review F1): task declaration alone is
   // NOT enough — the background worker only starts with jobs.autoRun registered.
   jobs: {
-    tasks: [holdSweepTask, bookingEmailTask, reminderSweepTask, outboxDispatchTask, gdprPurgeTask, waitlistMatchTask, waitlistSweepTask, intentSweepTask],
+    tasks: [holdSweepTask, bookingEmailTask, reminderSweepTask, outboxDispatchTask, gdprPurgeTask, waitlistMatchTask, waitlistSweepTask, intentSweepTask, aiTriageTask],
     // 004 review F6: outbox dispatch needs the 30s cadence (default 60s/limit 10
     // would sleep through the queue SLA); limit 25 matches the batch size.
     autoRun: [{ cron: '*/30 * * * * *', queue: 'default', limit: 25 }],

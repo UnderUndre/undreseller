@@ -15,6 +15,7 @@ import { stripeGateway, type PaymentGateway } from '@/lib/payments/stripeGateway
 import { verifyTokenHash, hashToken } from '@/lib/booking/tokens'
 import { notifySlotFreed } from '@/lib/waitlist/waitlistService'
 import { resolveAvailability } from '@/lib/availability/resolver'
+import { isLocalLlmConfigured } from '@/lib/ai/localLlmClient'
 
 /**
  * Booking domain service (spec 002-booking-domain US5/US6, research D4;
@@ -44,6 +45,7 @@ export interface CreateBookingInput {
   customerName: string
   customerPhone: string
   customerEmail?: string
+  customerNotes?: string | null
   idempotencyKey?: string
   now?: Date
   /**
@@ -129,6 +131,18 @@ export async function createBooking(
   if (input.idempotencyKey) {
     const existing = await findBookingByIdempotencyKey(payload, input.idempotencyKey, input.customerEmail)
     if (existing) return existing
+  }
+
+  let normalizedNotes: string | null = null
+  if (input.customerNotes !== undefined && input.customerNotes !== null) {
+    if (typeof input.customerNotes !== 'string') {
+      throw new BookingError('VALIDATION_FAILED', 400, 'customerNotes must be a string')
+    }
+    const trimmed = input.customerNotes.trim()
+    if (trimmed.length > 2000) {
+      throw new BookingError('VALIDATION_FAILED', 400, 'customerNotes must be at most 2000 characters')
+    }
+    normalizedNotes = trimmed.length > 0 ? trimmed : null
   }
 
   let product: Record<string, unknown>
@@ -255,13 +269,15 @@ export async function createBooking(
           (order_id, resource_id, item_id, start_time, end_time, total_duration_min,
            status, schedule_version, hold_expires_at, hold_frozen_at,
            buffer_before_min, buffer_after_min,
-           customer_name, customer_phone, idempotency_key, cancel_token_hash, reschedule_token_hash,
+           customer_name, customer_phone, customer_notes, ai_triage_status,
+           idempotency_key, cancel_token_hash, reschedule_token_hash,
            created_at, updated_at)
         VALUES
           (${orderId}, ${resourceId}, ${input.productId}, ${start.toISOString()}, ${end.toISOString()},
            ${durationMin}, ${dbStatus}, 1, ${holdExpiresAt ? holdExpiresAt.toISOString() : null}, null,
            ${bufferBeforeMin}, ${bufferAfterMin},
-           ${input.customerName}, ${input.customerPhone}, ${input.idempotencyKey ?? null},
+           ${input.customerName}, ${input.customerPhone}, ${normalizedNotes}, 'skipped',
+           ${input.idempotencyKey ?? null},
            ${cancelTokenHash}, ${rescheduleTokenHash}, now(), now())
         RETURNING id, schedule_version`)
 
@@ -338,6 +354,30 @@ export async function createBooking(
       }
     }
 
+    const settings = (await payload
+      .findGlobal({ slug: 'shop-settings', depth: 0 })
+      .catch(() => null)) as { timeZone?: string; aiTriageEnabled?: boolean } | null
+
+    // Local AI triage (spec 013 FR-1302): scheduled strictly AFTER payment init
+    // succeeds (so a 502 PAYMENT_INIT_FAILED release never triggers triage).
+    if (normalizedNotes !== null && isLocalLlmConfigured() && settings?.aiTriageEnabled !== false) {
+      try {
+        await payload.db.execute({
+          drizzle: db.drizzle,
+          sql: sql`UPDATE slot_reservations
+                   SET ai_triage_status = 'pending', updated_at = now()
+                   WHERE id = ${result.reservationId}
+                     AND status IN ('HELD', 'BOOKED', 'PENDING_APPROVAL')`,
+        })
+        await payload.jobs.queue({
+          task: 'ai-triage',
+          input: { reservationId: result.reservationId },
+        })
+      } catch (triageErr: unknown) {
+        payload.logger.error({ err: triageErr, message: 'ai-triage queueing failed (booking itself is fine)' })
+      }
+    }
+
     // Staff pager (spec 004 FR-402/D9): card to every staff chat via outbox.
     // Booking flow never blocks on Telegram (enqueue is best-effort).
     try {
@@ -350,10 +390,11 @@ export async function createBooking(
           scheduleVersion: result.scheduleVersion,
           customerName: input.customerName,
           customerPhone: input.customerPhone,
+          hasNotes: Boolean(normalizedNotes),
           serviceName: (product.title as string) ?? null,
           durationMin,
           startTime: start.toISOString(),
-          timeZone: ((await payload.findGlobal({ slug: 'shop-settings', depth: 0 })) as { timeZone?: string } | null)?.timeZone || 'UTC',
+          timeZone: settings?.timeZone || 'UTC',
           fulfillment,
         },
         await staffChatTargets(payload),

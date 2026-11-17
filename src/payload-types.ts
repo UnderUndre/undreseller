@@ -194,6 +194,7 @@ export interface Config {
       'waitlist-match': TaskWaitlistMatch;
       'waitlist-sweep': TaskWaitlistSweep;
       'intent-sweep': TaskIntentSweep;
+      'ai-triage': TaskAiTriage;
       inline: {
         input: unknown;
         output: unknown;
@@ -1157,6 +1158,26 @@ export interface SlotReservation {
    * CAS claim of the reminder sweep (spec 003 US3) — exactly-once send
    */
   reminderSentAt?: string | null;
+  /**
+   * Optional customer booking notes (spec 013 FR-1301/1302, max 2000 chars)
+   */
+  customerNotes?: string | null;
+  /**
+   * Local AI triage job lifecycle (spec 013 FR-1301/1306)
+   */
+  aiTriageStatus?: ('pending' | 'processing' | 'done' | 'skipped' | 'failed') | null;
+  /**
+   * Structured AI extraction & deterministic delegation decision (spec 013)
+   */
+  aiTriageJson?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -1407,6 +1428,10 @@ export interface BookingIntent {
   email: string;
   customerName: string;
   customerPhone: string;
+  /**
+   * Optional customer booking notes hydrated into SlotReservation on phase 2 (spec 013)
+   */
+  customerNotes?: string | null;
   serviceId: number | Product;
   resourceId: number | Resource;
   /**
@@ -1522,7 +1547,8 @@ export interface PayloadJob {
           | 'gdpr-purge'
           | 'waitlist-match'
           | 'waitlist-sweep'
-          | 'intent-sweep';
+          | 'intent-sweep'
+          | 'ai-triage';
         taskID: string;
         input?:
           | {
@@ -1566,6 +1592,7 @@ export interface PayloadJob {
         | 'waitlist-match'
         | 'waitlist-sweep'
         | 'intent-sweep'
+        | 'ai-triage'
       )
     | null;
   queue?: string | null;
@@ -1993,6 +2020,9 @@ export interface SlotReservationsSelect<T extends boolean = true> {
   cancelTokenHash?: T;
   rescheduleTokenHash?: T;
   reminderSentAt?: T;
+  customerNotes?: T;
+  aiTriageStatus?: T;
+  aiTriageJson?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -2154,6 +2184,7 @@ export interface BookingIntentsSelect<T extends boolean = true> {
   email?: T;
   customerName?: T;
   customerPhone?: T;
+  customerNotes?: T;
   serviceId?: T;
   resourceId?: T;
   slotStart?: T;
@@ -2687,6 +2718,31 @@ export interface ShopSetting {
    * Bot strings locale (spec 004 US3, botStrings without per-staff override)
    */
   defaultLocale?: ('ru' | 'en') | null;
+  /**
+   * Enable async local LLM triage for bookings with customerNotes (spec 013)
+   */
+  aiTriageEnabled?: boolean | null;
+  /**
+   * Max estimated amount delegable to OPERATOR without OWNER escalation (spec 013)
+   */
+  aiDelegationLimit?: number | null;
+  /**
+   * Exact currency matched against aiDelegationLimit (spec 013)
+   */
+  aiDelegationCurrency?: ('AED' | 'USD' | 'RUB' | 'EUR') | null;
+  /**
+   * Minimum extraction confidence (0..1) required for OPERATOR delegation (spec 013)
+   */
+  aiMinConfidence?: number | null;
+  /**
+   * Dedicated Telegram chat ids for OWNER AI triage escalations (spec 013)
+   */
+  ownerChatIds?:
+    | {
+        chatId: string;
+        id?: string | null;
+      }[]
+    | null;
   updatedAt?: string | null;
   createdAt?: string | null;
 }
@@ -2770,6 +2826,16 @@ export interface ShopSettingsSelect<T extends boolean = true> {
         id?: T;
       };
   defaultLocale?: T;
+  aiTriageEnabled?: T;
+  aiDelegationLimit?: T;
+  aiDelegationCurrency?: T;
+  aiMinConfidence?: T;
+  ownerChatIds?:
+    | T
+    | {
+        chatId?: T;
+        id?: T;
+      };
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;
@@ -2855,6 +2921,14 @@ export interface TaskWaitlistSweep {
  * via the `definition` "TaskIntent-sweep".
  */
 export interface TaskIntentSweep {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskAi-triage".
+ */
+export interface TaskAiTriage {
   input?: unknown;
   output?: unknown;
 }

@@ -2,6 +2,7 @@ import * as migration_20261107_003147_booking_gist from './20261107_003147_booki
 import * as migration_20261112_000001_order_enum_values from './20261112_000001_order_enum_values';
 import * as migration_20261112_000002_complete_domain_schema from './20261112_000002_complete_domain_schema';
 import * as migration_20261113_000001_deposit_payment_mode from './20261113_000001_deposit_payment_mode';
+import * as migration_20261118_000001_local_ai_triage from './20261118_000001_local_ai_triage';
 
 export const migrations = [
   {
@@ -23,5 +24,10 @@ export const migrations = [
     up: migration_20261113_000001_deposit_payment_mode.up,
     down: migration_20261113_000001_deposit_payment_mode.down,
     name: '20261113_000001_deposit_payment_mode',
+  },
+  {
+    up: migration_20261118_000001_local_ai_triage.up,
+    down: migration_20261118_000001_local_ai_triage.down,
+    name: '20261118_000001_local_ai_triage',
   },
 ];

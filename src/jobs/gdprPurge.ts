@@ -80,10 +80,16 @@ export async function runGdprPurge(payload: Payload): Promise<GdprPurgeResult> {
     sql: sql`UPDATE slot_reservations
              SET customer_name = 'Anonymized Client',
                  customer_phone = '••••••',
+                 customer_notes = NULL,
+                 ai_triage_json = NULL,
                  updated_at = now()
              WHERE status = 'RELEASED'
                AND updated_at < now() - interval '90 days'
-               AND customer_name <> 'Anonymized Client'`,
+               AND (
+                 customer_name <> 'Anonymized Client'
+                 OR customer_notes IS NOT NULL
+                 OR ai_triage_json IS NOT NULL
+               )`,
   })
 
   return { tgLinksPurged, outboxMetaCleared, intentsPurged }

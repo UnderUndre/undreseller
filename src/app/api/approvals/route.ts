@@ -37,6 +37,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       customerName: d.customerName,
       customerPhone: d.customerPhone,
       scheduleVersion: d.scheduleVersion,
+      customerNotes: d.customerNotes ?? null,
+      aiTriageStatus: d.aiTriageStatus ?? 'skipped',
+      aiTriage: d.aiTriageJson ?? null,
     })),
   })
 }

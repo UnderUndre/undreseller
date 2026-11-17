@@ -106,6 +106,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (customerName.length > 200 || customerPhone.length > 50) {
     return NextResponse.json({ error: 'VALIDATION_FAILED' }, { status: 400 })
   }
+  let customerNotes: string | null = null
+  if (body.customerNotes !== undefined && body.customerNotes !== null) {
+    if (typeof body.customerNotes !== 'string') {
+      return NextResponse.json({ error: 'VALIDATION_FAILED' }, { status: 400 })
+    }
+    const trimmedNotes = body.customerNotes.trim()
+    if (trimmedNotes.length > 2000) {
+      return NextResponse.json({ error: 'VALIDATION_FAILED' }, { status: 400 })
+    }
+    customerNotes = trimmedNotes.length > 0 ? trimmedNotes : null
+  }
 
   // F1 trust cookie: valid cookie for the SAME email → skip the OTP phase.
   // A valid cookie authorizes ONLY its own email — mismatch → OTP flow.
@@ -146,6 +157,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         customerName,
         customerPhone,
         customerEmail,
+        customerNotes,
         idempotencyKey: serverIdempotencyKey,
       })
       const res = bookingResponse(result, 201)
@@ -166,6 +178,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       customerName,
       customerPhone,
       customerEmail,
+      customerNotes,
       resourceId,
       ip: ip!,
     })

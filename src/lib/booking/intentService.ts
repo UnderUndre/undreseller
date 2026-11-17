@@ -53,6 +53,7 @@ export interface CreateIntentInput {
   customerName: string
   customerPhone: string
   customerEmail: string
+  customerNotes?: string | null
   resourceId?: string | number
   ip: string
   now?: Date
@@ -82,6 +83,17 @@ export async function createIntent(payload: Payload, input: CreateIntentInput): 
   }
   if (input.customerName.length > 200 || input.customerPhone.length > 50) {
     throw new IntentError('VALIDATION_FAILED', 400, 'customerName/customerPhone exceed length limits')
+  }
+  let normalizedNotes: string | null = null
+  if (input.customerNotes !== undefined && input.customerNotes !== null) {
+    if (typeof input.customerNotes !== 'string') {
+      throw new IntentError('VALIDATION_FAILED', 400, 'customerNotes must be a string')
+    }
+    const trimmedNotes = input.customerNotes.trim()
+    if (trimmedNotes.length > 2000) {
+      throw new IntentError('VALIDATION_FAILED', 400, 'customerNotes must be at most 2000 characters')
+    }
+    normalizedNotes = trimmedNotes.length > 0 ? trimmedNotes : null
   }
   if (Number.isNaN(start.getTime()) || start.getTime() <= now.getTime()) {
     throw new IntentError('SLOT_IN_PAST', 422, 'Booking start must be in the future')
@@ -146,9 +158,9 @@ export async function createIntent(payload: Payload, input: CreateIntentInput): 
 
     const inserted = await trx.execute(sql`
       INSERT INTO booking_intents
-        (email, customer_name, customer_phone, service_id_id, resource_id_id,
+        (email, customer_name, customer_phone, customer_notes, service_id_id, resource_id_id,
          slot_start, slot_end, code_hash, expires_at, attempts, status, created_at, updated_at)
-      VALUES (${input.customerEmail}, ${input.customerName}, ${input.customerPhone},
+      VALUES (${input.customerEmail}, ${input.customerName}, ${input.customerPhone}, ${normalizedNotes},
               ${input.productId}::numeric, ${grid.resourceId}::numeric,
               ${start.toISOString()}, ${slotEnd.toISOString()},
               ${computeOtpHash(0, input.customerEmail, code)}, ${expiresAt.toISOString()},
@@ -287,7 +299,7 @@ export async function verifyIntentBooking(payload: Payload, input: VerifyIntentI
 
   const rowRes = await db.execute({
     drizzle: db.drizzle,
-    sql: sql`SELECT id, email, customer_name, customer_phone, service_id_id AS service_id,
+    sql: sql`SELECT id, email, customer_name, customer_phone, customer_notes, service_id_id AS service_id,
                     resource_id_id AS resource_id, slot_start, code_hash, expires_at, attempts, status
              FROM booking_intents WHERE id = ${intentId} LIMIT 1`,
   })
@@ -297,6 +309,7 @@ export async function verifyIntentBooking(payload: Payload, input: VerifyIntentI
         email: string
         customer_name: string
         customer_phone: string
+        customer_notes: string | null
         service_id: string | number
         resource_id: string | number
         slot_start: string
@@ -370,6 +383,7 @@ export async function verifyIntentBooking(payload: Payload, input: VerifyIntentI
       customerName: intent.customer_name,
       customerPhone: intent.customer_phone,
       customerEmail: intent.email,
+      customerNotes: intent.customer_notes ?? null,
       idempotencyKey: `booking-intent-${intent.id}`,
       now,
       gateway: input.gateway,

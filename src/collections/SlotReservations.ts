@@ -183,6 +183,41 @@ export const SlotReservations: CollectionConfig = {
         description: 'CAS claim of the reminder sweep (spec 003 US3) — exactly-once send',
       },
     },
+    {
+      name: 'customerNotes',
+      type: 'text',
+      maxLength: 2000,
+      admin: {
+        description: 'Optional customer booking notes (spec 013 FR-1301/1302, max 2000 chars)',
+      },
+    },
+    {
+      name: 'aiTriageStatus',
+      type: 'select',
+      defaultValue: 'skipped',
+      options: ['pending', 'processing', 'done', 'skipped', 'failed'],
+      access: {
+        create: () => false,
+        update: () => false,
+      },
+      admin: {
+        position: 'sidebar',
+        readOnly: true,
+        description: 'Local AI triage job lifecycle (spec 013 FR-1301/1306)',
+      },
+    },
+    {
+      name: 'aiTriageJson',
+      type: 'json',
+      access: {
+        create: () => false,
+        update: () => false,
+      },
+      admin: {
+        readOnly: true,
+        description: 'Structured AI extraction & deterministic delegation decision (spec 013)',
+      },
+    },
   ],
   timestamps: true,
 }

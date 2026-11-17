@@ -70,5 +70,43 @@ export const ShopSettings: GlobalConfig = {
       ],
       admin: { description: 'Bot strings locale (spec 004 US3, botStrings without per-staff override)' },
     },
+    {
+      name: 'aiTriageEnabled',
+      type: 'checkbox',
+      defaultValue: true,
+      admin: { description: 'Enable async local LLM triage for bookings with customerNotes (spec 013)' },
+    },
+    {
+      name: 'aiDelegationLimit',
+      type: 'number',
+      defaultValue: 1500,
+      min: 0,
+      admin: { description: 'Max estimated amount delegable to OPERATOR without OWNER escalation (spec 013)' },
+    },
+    {
+      name: 'aiDelegationCurrency',
+      type: 'select',
+      defaultValue: 'AED',
+      options: ['AED', 'USD', 'RUB', 'EUR'],
+      admin: { description: 'Exact currency matched against aiDelegationLimit (spec 013)' },
+    },
+    {
+      name: 'aiMinConfidence',
+      type: 'number',
+      defaultValue: 0.8,
+      min: 0,
+      max: 1,
+      admin: { description: 'Minimum extraction confidence (0..1) required for OPERATOR delegation (spec 013)' },
+    },
+    {
+      name: 'ownerChatIds',
+      type: 'array',
+      access: {
+        read: adminOnlyFieldAccess,
+        update: adminOnlyFieldAccess,
+      },
+      admin: { description: 'Dedicated Telegram chat ids for OWNER AI triage escalations (spec 013)' },
+      fields: [{ name: 'chatId', type: 'text', required: true }],
+    },
   ],
 }

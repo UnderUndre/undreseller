@@ -26,6 +26,7 @@ export function SlotGrid({
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerEmail, setCustomerEmail] = useState('')
+  const [customerNotes, setCustomerNotes] = useState('')
   const [honeypot, setHoneypot] = useState('')
   const [otpPhase, setOtpPhase] = useState<
     { intentId: string; expiresAt: string; emailSent: boolean } | null
@@ -81,6 +82,7 @@ export function SlotGrid({
           customerName,
           customerPhone,
           customerEmail,
+          customerNotes: customerNotes.trim() || undefined,
           companyWebsite: honeypot,
         }),
       })
@@ -204,6 +206,21 @@ export function SlotGrid({
                   value={customerEmail}
                   onChange={(e) => setCustomerEmail(e.target.value)}
                   className="w-full rounded border border-neutral-300 px-3 py-2"
+                />
+              </div>
+              <div>
+                <label htmlFor="customer-notes" className="mb-1 block text-sm font-medium">
+                  {t('notes')}
+                </label>
+                <textarea
+                  id="customer-notes"
+                  data-testid="customer-notes"
+                  value={customerNotes}
+                  onChange={(e) => setCustomerNotes(e.target.value)}
+                  placeholder={t('notesPlaceholder')}
+                  className="w-full rounded border border-neutral-300 px-3 py-2"
+                  rows={3}
+                  maxLength={2000}
                 />
               </div>
               <input

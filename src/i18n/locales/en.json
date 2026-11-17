@@ -4,6 +4,8 @@
     "name": "Name",
     "phone": "Phone",
     "email": "Email",
+    "notes": "Booking notes (optional)",
+    "notesPlaceholder": "Describe the task, access details, or budget estimate",
     "confirmBooking": "Confirm booking",
     "booking": "Booking…",
     "slotTaken": "Sorry — this slot has just been taken. The grid below has been refreshed.",
