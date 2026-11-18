@@ -66,6 +66,7 @@ export function formatTriageFollowUp(
   policy: TriagePolicyConfig,
 ): string {
   const safeSummary = sanitizeForLlm(record.summary).sanitized
+  const safeMissing = record.missingInfo.map((item) => sanitizeForLlm(item).sanitized)
   const amountText =
     record.estimatedAmount !== null
       ? `${record.estimatedAmount}${record.currency ? ` ${record.currency}` : ''}`
@@ -78,8 +79,8 @@ export function formatTriageFollowUp(
       `📂 ${record.category} · 💰 ${amountText} · 🎯 ${pct}%`,
       `📝 ${safeSummary}`,
     ]
-    if (record.missingInfo.length > 0) {
-      lines.push(`❓ Missing: ${record.missingInfo.join(', ')}`)
+    if (safeMissing.length > 0) {
+      lines.push(`❓ Missing: ${safeMissing.join(', ')}`)
     }
     return lines.join('\n')
   }
@@ -90,8 +91,8 @@ export function formatTriageFollowUp(
     `📝 ${safeSummary}`,
     `📌 Reasons: ${record.reasons.join(', ')}`,
   ]
-  if (record.missingInfo.length > 0) {
-    lines.push(`❓ Missing: ${record.missingInfo.join(', ')}`)
+  if (safeMissing.length > 0) {
+    lines.push(`❓ Missing: ${safeMissing.join(', ')}`)
   }
   return lines.join('\n')
 }
@@ -109,13 +110,16 @@ export async function runAiTriageJob(
 ): Promise<AiTriageJobResult> {
   const db: any = payload.db
 
-  // Atomic CAS claim gated on active booking status (F3)
+  // Atomic CAS claim gated on active booking status (F3), with 4-minute stale processing recovery
   const claim = await db.execute({
     drizzle: db.drizzle,
     sql: sql`UPDATE slot_reservations
              SET ai_triage_status = 'processing', updated_at = now()
              WHERE id = ${reservationId}
-               AND ai_triage_status = 'pending'
+               AND (
+                 ai_triage_status = 'pending'
+                 OR (ai_triage_status = 'processing' AND updated_at < now() - interval '4 minutes')
+               )
                AND status IN ('HELD', 'BOOKED', 'PENDING_APPROVAL')
              RETURNING id, customer_notes, item_id`,
   })

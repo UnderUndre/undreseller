@@ -1,6 +1,6 @@
-# Requirements (map): undreseller on Payload — v3.0.0
+# Requirements (map): undreseller on Payload — v3.1.0
 
-**Date**: 2026-11-15 · Полные FR-спецификации живут в спеках фич (`specs/<slug>/spec.md`); этот документ — карта фундамента и канонов, актуализированная под as-built 001–010 + 012 (011 frozen).
+**Date**: 2026-11-18 · Полные FR-спецификации живут в спеках фич (`specs/<slug>/spec.md`); этот документ — карта фундамента и канонов, актуализированная под as-built 001–010 + 012–013 (011 frozen).
 
 ## 1. Реализованные FR-группы
 
@@ -100,7 +100,7 @@
 - Провайдер-нейтральные платежи: PaymentGateway-интерфейс (`src/lib/payments/stripeGateway.ts`); minor units — канон; инварианты — `src/lib/payments/invariants.ts`. Stars/NOWPayments — адаптеры не писаны (roadmap).
 - Telegram: все исходящие — через durable TelegramOutbox (прямых sendMessage из роутов нет).
 - Docker Memory Fencing: app ≤500 MB (doc-block).
-- Планировщик: **Payload Jobs** — 8 tasks (`schedule` per-task + autoRun */30s default queue); Inngest отвергнут (внешний сервис против white-label автономности).
+- Планировщик: **Payload Jobs** — 9 tasks (`schedule` per-task + autoRun */30s default queue); Inngest отвергнут (внешний сервис против white-label автономности).
 - Все HMAC/OTP/токены keyed на `PAYLOAD_SECRET` (отдельного секрета нет — сознательно).
 
 ## 3. НФ-инварианты
@@ -110,4 +110,4 @@
 - Тест-изоляция: int-тесты никогда не трогают dev-БД (`test.env` delete-then-load — dotenv@8 не умеет override).
 - Чистые вычисления: FSM/availability/invariants/amounts — pure-модули с БД-фетчерами отдельно (урок легаси).
 - **GDPR-контур**: nightly gdprPurge + Telegram redaction + EmailDeliveryLog recipientHash + AuditEvents PII-redact append-only.
-- Регрессия: `pnpm validate && pnpm lint && pnpm test:int && pnpm build` перед done; **211 int-тестов / 21 сьют** — текущая база (+ e2e: admin / booking two-phase OTP / frontend).
+- Регрессия: `pnpm validate && pnpm lint && pnpm test:int && pnpm build` перед done; **212 int-тестов / 21 сьют** — текущая база (+ e2e: admin / booking two-phase OTP / frontend).

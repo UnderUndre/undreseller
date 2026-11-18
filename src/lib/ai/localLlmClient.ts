@@ -104,7 +104,7 @@ function isPrivateIpv4(host: string): boolean {
 }
 
 function isUnconditionallyBlockedHost(host: string): boolean {
-  if (host === '0.0.0.0') return true
+  if (host === '0.0.0.0' || host === '::') return true
   if (host.startsWith('169.254.')) return true // Link-local / cloud metadata (169.254.169.254)
   if (host === 'fd00:ec2::254') return true // AWS IPv6 metadata
   if (/^fe[89ab][0-9a-f]:/i.test(host)) return true // IPv6 link-local fe80::/10
@@ -146,6 +146,10 @@ export function validateLocalLlmUrl(rawUrl: string, allowRemote = false): string
 
   if (parsed.username || parsed.password) {
     throw new LocalLlmError('INVALID_URL', 'Embedded URL credentials are not allowed in LOCAL_LLM_BASE_URL')
+  }
+
+  if (parsed.search || parsed.hash) {
+    throw new LocalLlmError('INVALID_URL', 'Query strings and fragments are not allowed in LOCAL_LLM_BASE_URL')
   }
 
   const normalizedHost = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase()
@@ -253,9 +257,38 @@ async function callChatCompletion(args: {
     throw new LocalLlmError('HTTP_ERROR', `LM Studio responded with HTTP ${res.status}`)
   }
 
+  const MAX_RESPONSE_BYTES = 65_536
+  const contentLength = Number(res.headers.get('content-length') ?? 0)
+  if (Number.isFinite(contentLength) && contentLength > MAX_RESPONSE_BYTES) {
+    throw new LocalLlmError('INVALID_SCHEMA', 'LM Studio response exceeded 64 KB limit')
+  }
+
+  let rawText = ''
+  if (res.body && typeof res.body.getReader === 'function') {
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let totalBytes = 0
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      totalBytes += value.byteLength
+      if (totalBytes > MAX_RESPONSE_BYTES) {
+        await reader.cancel().catch(() => {})
+        throw new LocalLlmError('INVALID_SCHEMA', 'LM Studio response exceeded 64 KB limit')
+      }
+      rawText += decoder.decode(value, { stream: true })
+    }
+    rawText += decoder.decode()
+  } else {
+    rawText = await res.text()
+    if (Buffer.byteLength(rawText, 'utf-8') > MAX_RESPONSE_BYTES) {
+      throw new LocalLlmError('INVALID_SCHEMA', 'LM Studio response exceeded 64 KB limit')
+    }
+  }
+
   let data: unknown
   try {
-    data = await res.json()
+    data = JSON.parse(rawText)
   } catch {
     throw new LocalLlmError('INVALID_SCHEMA', 'LM Studio response was not valid JSON')
   }

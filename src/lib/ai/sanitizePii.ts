@@ -16,9 +16,9 @@ export interface SanitizeResult {
 }
 
 const EMAIL_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g
-const IBAN_RE = /\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/g
+const IBAN_RE = /\b[A-Za-z]{2}\d{2}(?:[ -]?[A-Za-z0-9]){11,30}\b/g
 const CARD_4X4_RE = /\b(?:\d{4}[ -]){3}\d{4}\b/g
-const LONG_DIGITS_RE = /\b\d{8,30}\b/g
+const LONG_DIGITS_RE = /\b[A-Za-z]{0,3}\d{8,30}\b/g
 
 // Matches international (+...) and local dashed/spaced phone formats without capturing
 // ISO dates (2026-11-18), DMY dates (18.11.2026), 4x4 card groups, or price ranges (1000 - 1500).

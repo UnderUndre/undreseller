@@ -375,6 +375,16 @@ export async function createBooking(
         })
       } catch (triageErr: unknown) {
         payload.logger.error({ err: triageErr, message: 'ai-triage queueing failed (booking itself is fine)' })
+        try {
+          await payload.db.execute({
+            drizzle: db.drizzle,
+            sql: sql`UPDATE slot_reservations
+                     SET ai_triage_status = 'failed', updated_at = now()
+                     WHERE id = ${result.reservationId} AND ai_triage_status = 'pending'`,
+          })
+        } catch {
+          // best-effort status revert
+        }
       }
     }
 

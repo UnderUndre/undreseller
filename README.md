@@ -16,7 +16,18 @@
 
 A transferable white-label engine for service businesses: service catalog → slots → booking (OTP trust gate) → deposit/prepayment → notifications (email + Telegram). It attacks the No-Show problem (10–25% without protection; deposits/no-show fees cut it by ~54–69% — peer-reviewed clinical proxy + vendor studies). Scope Knife: exactly 3 staff roles (`OWNER` / `OPERATOR` / `PERFORMER` + `customer`), 1 end-to-end process, ≤1 external business integration (Calendar Feed ICS push, shipped; Google two-way sync — frozen).
 
-### Roadmap (as-built 2026-11-15)
+### What the app can do (in plain language)
+
+1. **Online booking & storefront in one app (`RU / EN`)** — customers pick a service, see only genuinely free slots (respecting staff weekly hours, exceptions, and before/after buffers), enter contact details, and optionally attach booking notes (`customerNotes`). PostgreSQL locks and exclusion constraints make double-booking impossible.
+2. **Bot & spam protection (Trust Gate)** — new bookings verify email ownership with a one-time 6-digit OTP code (returning customers with a signed trust cookie skip OTP), backed by a hidden honeypot field, rate limiting, and phone/Telegram blacklisting.
+3. **No-Show protection & partial deposits** — any service can require full prepayment or a partial deposit via Stripe: unpaid slots hold for 15 minutes and release automatically. Cancellation cutoff rules determine auto-refunds vs staff review, and customers get one-time self-service cancel/reschedule links by email.
+4. **Automatic waitlist autofill** — when a day is full, customers can join a double-opt-in waitlist. Whenever a booking is cancelled or an unpaid hold expires, the system automatically notifies the queue to claim the freed slot.
+5. **Dual Telegram bots (staff & clients)** — staff receive actionable booking cards (`Approve / Reject / Reschedule / Complete / Blacklist`), while clients can confirm or cancel via Telegram. All outbound messages go through a durable database outbox that survives network blips and Telegram rate limits.
+6. **One-click calendar subscription (ICS Feed)** — each staff resource gets a private signed `webcal://` feed for Google, Apple, or Outlook calendars without OAuth verification headaches; leaked tokens rotate with one click.
+7. **Optional Local AI Triage Copilot (host LM Studio)** — when a customer leaves free-text notes (repair details, call-out context, rough budget), a background worker masks phones, emails, IBANs, cards, and IDs locally, calls your local GPU model (zero cloud data leaks), extracts category/amount/urgency, and routes follow-ups deterministically: routine jobs within threshold (e.g. `≤ 1500 AED`) go to `🟢 OPERATOR`, while expensive/urgent/unclear ones escalate to `🔴 OWNER`. If LM Studio is offline or unconfigured, bookings continue untouched in manual-review mode.
+8. **Role-isolated operations & GDPR hygiene** — `OWNER` controls `/admin`, `OPERATOR` handles approvals and refunds via dedicated APIs without admin access, and nightly jobs automatically anonymize expired terminal bookings after 90 days.
+
+### Roadmap (as-built 2026-11-18)
 
 | Spec | Status | Contents |
 | :--- | :--- | :--- |
@@ -32,20 +43,33 @@ A transferable white-label engine for service businesses: service catalog → sl
 | **010-i18n** | ✅ implemented (`4f8f5e0`) | next-intl ru/en, `[locale]` routing, locale detect middleware |
 | **011-multitenant** | ❄️ frozen | design.md only (tenant-per-database vs shared DB) — awaiting demand |
 | **012-deposit-telegram** | ✅ implemented (`30b0072`) | `paymentMode DEPOSIT` (charge deposit only), DepositPayment (Stripe Elements), bot token env wiring |
+| **013-local-ai-triage** | ✅ implemented (`a2fd283`) | Async Local AI Triage (LM Studio on host GPU), PII sanitizer, deterministic delegation, 26-case eval suite |
 
 ---
 
 ## Quick start
 
 ```bash
-pnpm ii            # install (workspace settings live in pnpm-workspace.yaml)
+cp .env.example .env                     # set DATABASE_URL, POSTGRES_PASSWORD, PAYLOAD_SECRET (fail-closed)
+pnpm ii                                  # install (workspace settings live in pnpm-workspace.yaml)
 docker compose up -d                     # Postgres 16 (undreseller_db :5432)
 docker exec undreseller_db psql -U postgres -c \
   "CREATE DATABASE undreseller_test"     # once, for int tests
-pnpm dev           # dev server (schema push)
+pnpm dev                                 # dev server (schema push)
 ```
 
 > ⚠️ First user of the instance: on an empty DB, `Users.create` requires the `X-Bootstrap-Token` header (timing-safe vs `OWNER_BOOTSTRAP_TOKEN`, fail-closed). Register the OWNER **before opening public ingress** — takeover window is zero (runbook: `specs/main/architecture.md` §4.1).
+
+### Optional Local AI Triage (LM Studio on host GPU)
+
+```bash
+# 1. Start LM Studio Local Server on your GPU host (e.g. port 1235) with an instruction model loaded
+# 2. Add to .env (or export in shell; leave unset to skip AI triage with zero impact):
+LOCAL_LLM_BASE_URL=http://127.0.0.1:1235/v1
+LOCAL_LLM_MODEL=gemma-4-e2b-uncensored-hauhaucs-aggressive
+# 3. Run the 26-case live evaluation suite:
+pnpm eval:ai
+```
 
 ### Commands
 
@@ -54,7 +78,8 @@ pnpm dev           # dev server (schema push)
 | `pnpm validate` | tsc --noEmit |
 | `pnpm lint` | eslint (flat config) |
 | `pnpm build` | production Next build |
-| `pnpm test:int` | vitest — 20 integration suites (isolated `undreseller_test` via `test.env`) |
+| `pnpm test:int` | vitest — 21 integration suites (isolated `undreseller_test` via `test.env`) |
+| `pnpm eval:ai` | live 26-case AI triage benchmark against local LM Studio |
 | `pnpm test:e2e` | playwright (needs Stripe test keys + `pnpm stripe-webhooks`) |
 | `pnpm stripe-webhooks` | stripe CLI forward → `/api/payments/stripe/webhooks` (dev) |
 | `pnpm generate:types` | regenerate `src/payload-types.ts` (hand edits prohibited) |
@@ -89,7 +114,7 @@ pnpm dev           # dev server (schema push)
                     └── @payloadcms/db-postgres ──► PostgreSQL 16
                           │  GiST EXCLUDE + advisory locks (double-booking)
                           ▼
-                 Stripe PaymentIntent (checkout + deposits; Payload Jobs ×8 sweeps)
+                 Stripe PaymentIntent (checkout + deposits; Payload Jobs ×9 sweeps/tasks)
 ```
 
 - **Booking FSM** — pure kernel `src/lib/kernel/bookingFsm.ts` (two-track FREE/PREPAID, hold TTL 15m, UNDERPAID staff resolution); IO layer — `src/lib/booking/bookingService.ts` (the sole status writer, xact advisory lock).
@@ -101,9 +126,9 @@ pnpm dev           # dev server (schema push)
 
 ## Tests
 
-**20 suites / 202 tests** (vitest, isolated test DB — never touches dev):
+**21 suites / 212 tests** (vitest, isolated test DB — never touches dev):
 
-booking-fsm (43 scenarios) · trust-gate (23) · payments-invariants (13) · calendar-feed (12) · booking-service (12) · availability BVA (11) · waitlist (11) · prepaid-booking (10) · booking-route (10) · telegram-client/outbox (13) · tokens-sweep (6) · gist-race (100 concurrent inserts → 1/99×23P01) · refund-policy · deposit-flow · rate-limit · error-shapes · access-roles · bootstrap-token.
+booking-fsm (43 scenarios) · trust-gate (22) · payments-invariants (13) · calendar-feed (11) · booking-service (12) · availability BVA (11) · waitlist (11) · prepaid-booking (10) · booking-route (10) · local-ai-triage (10) · telegram-client/outbox (13) · tokens-sweep (6) · gist-race (100 concurrent inserts → 1/99×23P01) · refund-policy · deposit-flow · rate-limit · error-shapes · access-roles · bootstrap-token.
 
 Legacy regression baseline: 58 suites / 436 tests — the source of test design.
 
@@ -111,13 +136,13 @@ Legacy regression baseline: 58 suites / 436 tests — the source of test design.
 
 ## Documentation (Diátaxis hub: [`specs/main/README.md`](specs/main/README.md))
 
-- **Architecture (as-built v3.0.0)**: [`specs/main/architecture.md`](specs/main/architecture.md)
+- **Architecture (as-built v3.1.0)**: [`specs/main/architecture.md`](specs/main/architecture.md)
 - **Requirements map**: [`specs/main/requirements.md`](specs/main/requirements.md)
-- **Specs 001–010, 012 (implemented)**: see hub table · **011-multitenant**: [`specs/011-multitenant/design.md`](specs/011-multitenant/design.md) (frozen)
+- **Specs 001–010, 012–013 (implemented)**: see hub table · **011-multitenant**: [`specs/011-multitenant/design.md`](specs/011-multitenant/design.md) (frozen)
 - **SpecKit pipeline**: `/speckit.specify → .requirements-audit → .plan → .tasks → .test-design → .analyze → .review (×2) → .implement → .qa-signoff` — constitution [`.specify/memory/constitution.md`](.specify/memory/constitution.md) v1.10.1
 
 ## Infrastructure
 
 - Docker: `docker-compose.yml` — Postgres 16 (Memory Fencing 4096/2048M); app service ≤500 MB (deploy runbook)
-- Migrations: `payload migrate` (prod) — 4 migrations incl. domain schema (12 tables) + deposit enum; dev — push
+- Migrations: `payload migrate` (prod) — 5 migrations incl. domain schema (12 tables), deposit enum, and local AI triage; dev — push
 - Variables: see `.env.example` (`PAYLOAD_SECRET` fail-throw at boot; all HMAC/OTP tokens are keyed on it — rotation invalidates one-time links)

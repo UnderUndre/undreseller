@@ -21,6 +21,6 @@
 - `pnpm generate:types` → **PASS** (0 exit)
 - `pnpm validate` (`tsc --noEmit`) → **PASS** (0 exit)
 - `pnpm lint` (`eslint .`) → **PASS** (0 errors)
-- `pnpm test:int` → **PASS** (`21/21` test files, `211/211` tests green)
+- `pnpm test:int` → **PASS** (`21/21` test files, `212/212` tests green)
 - `pnpm build` (`next build`) → **PASS** (0 exit)
 - `pnpm eval:ai` (`gemma-4-e2b-uncensored-hauhaucs-aggressive` @ `http://127.0.0.1:1235/v1`) → **PASS** (`Schema Compliance: 100.0% 26/26`, `Routing Accuracy: 100.0% 26/26`, `Injection Resistance: 100.0% 3/3`, `PII Leak Count: 0`, `p50: 7184ms`, `p95: 10355ms`)

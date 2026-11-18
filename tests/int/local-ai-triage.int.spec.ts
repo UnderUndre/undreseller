@@ -129,6 +129,16 @@ describe('Spec 013 — Local AI Triage (Offline)', () => {
       expect(financial.sanitized).not.toContain('AE070331234567890123456')
       expect(financial.redactedCount).toBe(2)
 
+      // F-01 / SEC-013-01: lowercase/spaced IBAN and alpha-prefixed passport/ID numbers
+      const extraIds = sanitizeForLlm(
+        'IBAN ae07 0331 2345 6789 0123 456, паспорт N123456789, ID1234567890, сумма 1500 AED',
+      )
+      expect(extraIds.sanitized).not.toContain('ae07')
+      expect(extraIds.sanitized).not.toContain('N123456789')
+      expect(extraIds.sanitized).not.toContain('ID1234567890')
+      expect(extraIds.sanitized).toContain('1500 AED')
+      expect(extraIds.redactedCount).toBe(3)
+
       expect(sanitizeForLlm('')).toEqual({ sanitized: '', redactedCount: 0, types: [] })
     })
 
@@ -220,7 +230,25 @@ describe('Spec 013 — Local AI Triage (Offline)', () => {
       expect(() => validateLocalLlmUrl('http://[fe80::1]:1234/v1', true)).toThrow(LocalLlmError)
       expect(() => validateLocalLlmUrl('http://[::ffff:169.254.169.254]:1234/v1', true)).toThrow(LocalLlmError)
       expect(() => validateLocalLlmUrl('http://user:pass@127.0.0.1:1234/v1', true)).toThrow(LocalLlmError)
+      expect(() => validateLocalLlmUrl('http://[::]:1234/v1', true)).toThrow(LocalLlmError)
+      expect(() => validateLocalLlmUrl('http://127.0.0.1:1234/v1?foo=bar', false)).toThrow(LocalLlmError)
+      expect(() => validateLocalLlmUrl('http://127.0.0.1:1234/v1#frag', false)).toThrow(LocalLlmError)
       expect(() => validateLocalLlmUrl('file:///etc/passwd', true)).toThrow(LocalLlmError)
+    })
+
+    it('rejects oversized (>64KB) LM Studio responses before JSON.parse (F-02 / SEC-013-02)', async () => {
+      const oversizedFetch: FetchImpl = async () =>
+        new Response('x'.repeat(70_000), {
+          status: 200,
+          headers: { 'content-length': '70000' },
+        })
+      await expect(
+        analyzeBookingNote({
+          sanitizedNote: 'Test',
+          baseUrl: 'http://127.0.0.1:1234/v1',
+          fetchImpl: oversizedFetch,
+        }),
+      ).rejects.toMatchObject({ code: 'INVALID_SCHEMA' })
     })
 
     it('retries once with temperature 0 on invalid JSON and sets redirect: error (TC-013-012/013)', async () => {
@@ -498,12 +526,91 @@ describe('Spec 013 — Local AI Triage (Offline)', () => {
         sql: sql`SELECT id FROM telegram_outbox WHERE aggregate_id = ${String(b3.reservationId)} AND priority = 40`,
       })
       expect(b3FollowUps.rows).toHaveLength(0)
+
+      // F-03 / SEC-013-03: stale 'processing' (> 4 min) recovery + PII sanitization in missingInfo[]
+      const b4 = await createBooking(payload, {
+        productId: serviceId,
+        resourceId,
+        start: nextSlot(),
+        customerName: 'Stale Processing Client',
+        customerPhone: '+971504440000',
+        customerEmail: 'stale@example.com',
+        customerNotes: 'Проверка крана 350 AED',
+      })
+      await db.execute({
+        drizzle: db.drizzle,
+        sql: sql`UPDATE slot_reservations
+                 SET ai_triage_status = 'processing', updated_at = now() - interval '5 minutes'
+                 WHERE id = ${b4.reservationId}`,
+      })
+      const staleFetch: FetchImpl = async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    category: 'maintenance',
+                    estimatedAmount: 350,
+                    currency: 'AED',
+                    urgency: 'low',
+                    missingInfo: ['call +971 50 444 0000'],
+                    summary: 'Проверка крана',
+                    confidence: 0.9,
+                  }),
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        )
+      const staleRes = await runAiTriageJob(payload, b4.reservationId, { fetchImpl: staleFetch })
+      expect(staleRes.outcome).toBe('done')
+      const b4Outbox = await db.execute({
+        drizzle: db.drizzle,
+        sql: sql`SELECT text FROM telegram_outbox WHERE aggregate_id = ${String(b4.reservationId)} AND priority = 40`,
+      })
+      expect(String(b4Outbox.rows[0].text)).not.toContain('+971 50 444 0000')
+      expect(String(b4Outbox.rows[0].text)).toContain('[PHONE]')
     })
 
     it('exposes aiTriage in GET /api/approvals for OPERATOR+ only and scrubs >90d in gdprPurge (TC-013-022/023)', async () => {
       const { GET } = await import('@/app/api/approvals/route')
       const unauthRes = await GET(new NextRequest(new Request('http://localhost:3000/api/approvals')))
       expect(unauthRes.status).toBe(403)
+
+      // F-04: Positive 200 OK assertion for authenticated OPERATOR
+      const opEmail = `triage-op-${Date.now()}@example.com`
+      const opPassword = 'TestOperatorPassword123!'
+      await payload.create({
+        collection: 'users',
+        data: { email: opEmail, password: opPassword, roles: ['OPERATOR'] },
+        overrideAccess: true,
+      })
+      const loginRes = await payload.login({
+        collection: 'users',
+        data: { email: opEmail, password: opPassword },
+      })
+      expect(loginRes.token).toBeTruthy()
+      const opRes = await GET(
+        new NextRequest(
+          new Request('http://localhost:3000/api/approvals', {
+            headers: { cookie: `payload-token=${loginRes.token}` },
+          }),
+        ),
+      )
+      expect(opRes.status).toBe(200)
+      const opJson = (await opRes.json()) as {
+        approvals: Array<{
+          customerNotes: string | null
+          aiTriageStatus: string
+          aiTriage: { route?: string } | null
+        }>
+      }
+      const triagedItem = opJson.approvals.find((a) => a.aiTriageStatus === 'done')
+      expect(triagedItem).toBeDefined()
+      expect(triagedItem?.customerNotes).toContain('прорвало трубу')
+      expect(triagedItem?.aiTriage?.route).toBe('ESCALATE_OWNER')
 
       const { GET: getBookingById } = await import('@/app/api/booking/[id]/route')
       const db: any = payload.db

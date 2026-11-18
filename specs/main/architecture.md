@@ -1,6 +1,6 @@
-# Architecture (as-built): undreseller on Payload — v3.0.0
+# Architecture (as-built): undreseller on Payload — v3.1.0
 
-**Date**: 2026-11-15 · **Lineage**: 001-reinit (legacy v1.x architecture archived in `repos/undreseller-legacy/specs/main/`)
+**Date**: 2026-11-18 · **Lineage**: 001-reinit (legacy v1.x architecture archived in `repos/undreseller-legacy/specs/main/`)
 **Фундамент**: официальный Payload Ecommerce Template — pinned: payload 3.93.0 / Next 16.4.1 (GHSA-673q-mjm6-r5xr) / React 19.2.9 (GHSA-xqc2-xf4c-x3h3) / PG16 / Stripe 18.5 / grammY 1.46 / next-intl 4.15.
 
 ## 1. Topography
@@ -9,7 +9,7 @@
 undreseller/
 ├── src/
 │   ├── payload.config.ts        # 17 коллекций + 3 globals; db-postgres (DATABASE_URL fail-closed);
-│   │                            # jobs: 8 tasks (autoRun */30s, default queue, limit 25);
+│   │                            # jobs: 9 tasks (autoRun */30s, default queue, limit 25);
 │   │                            # endpoints: []; GraphQL disabled в production
 │   ├── collections/             # Template: Users (+roles/bootstrap), Pages, Categories, Media
 │   │   ├── Products/            # ecommerce override; Booking-вкладка: bookable, durationMin (≥5),
@@ -32,7 +32,8 @@ undreseller/
 │   │                            #   (+Resources.feedTokenVersion — ротация фида 005)
 │   ├── access/                  # roles.ts (OWNER>OPERATOR>PERFORMER>customer, max-rank) + adminOnly
 │   │   └── bootstrapToken.ts    # timing-safe X-Bootstrap-Token, fail-closed (002)
-│   ├── globals/ShopSettings.ts  # timeZone, quantumMin, fromEmail, staffChatIds (PII, OWNER-only)
+│   ├── globals/ShopSettings.ts  # timeZone, quantumMin, fromEmail, staffChatIds/ownerChatIds (PII, OWNER-only),
+│   │                            #   aiTriageEnabled, aiDelegationLimit/Currency, aiMinConfidence
 │   ├── lib/
 │   │   ├── kernel/              # bookingFsm.ts (pure two-track FSM) + reservationStatus.ts (SSOT enum)
 │   │   ├── booking/             # bookingService.ts — ЕДИНСТВЕННЫЙ status-writer (create/cancel/
@@ -76,17 +77,18 @@ undreseller/
 │                                #   order_enum_values (003) · complete_domain_schema (12 таблиц, 008) ·
 │                                #   deposit_payment_mode (enum, 012) · local_ai_triage (Expand-only, 013)
 ├── tests/
-│   ├── int/                     # 20 сьютов / 202 теста: booking-fsm 43, trust-gate 23,
-│   │                            #   payments-invariants 13, calendar-feed 12, booking-service 12,
+│   ├── int/                     # 21 сьют / 212 тестов: booking-fsm 43, trust-gate 22,
+│   │                            #   payments-invariants 13, calendar-feed 11, booking-service 12,
 │   │                            #   availability 11, waitlist 11, prepaid-booking 10, booking-route 10,
-│   │                            #   telegram-client 6 + telegram-outbox 7, tokens-sweep 6, ...
+│   │                            #   local-ai-triage 10, telegram-client 6 + telegram-outbox 7, ...
+│   ├── eval/                    # triage-dataset.json (26 кейсов) + scripts/eval-local-llm.ts (pnpm eval:ai)
 │   ├── e2e/                     # playwright: admin · booking (two-phase OTP + slot race 409) · frontend
-│   └── helpers/                 # seedUser.ts (explicit OWNER), reset003.ts
-├── specs/                       # 001–010 + 012 implemented · 011 frozen (design.md) · qa/manual-qa
+│   └── helpers/                 # seedUser.ts (explicit OWNER), tests/int/helpers/reset003.ts
+├── specs/                       # 001–010 + 012–013 implemented · 011 frozen (design.md) · qa/manual-qa
 └── docker-compose.yml           # Postgres 16 (fencing 4096/2048M) + app-сервис doc-block ≤500 MB
 ```
 
-## 2. Data flow (as-built 001–012)
+## 2. Data flow (as-built 001–013)
 
 ### Booking (двухфазный trust gate — 007; FREE track)
 ```text
@@ -152,6 +154,21 @@ GET+HEAD /api/calendar/feed/[resourceId]?token=   # HMAC calendar-feed:v<version
 GET/POST /api/admin/calendar-feed/[resourceId] (OWNER)  # URL / ротация feedTokenVersion++
 ```
 
+### Local AI Triage (013 — LM Studio на GPU хоста)
+```text
+POST /api/booking {..., customerNotes?} (≤2000 chars; 007 phase 1→2 DB-гидратация)
+       → createBooking (после успешного PaymentIntent): ai_triage_status = 'pending' + queue('ai-triage')
+       → aiTriageTask (retries: 0, deleteJobOnComplete: true):
+           CAS claim pending → processing (WHERE status IN ('HELD','BOOKED','PENDING_APPROVAL'))
+           sanitizeForLlm (EMAIL → IBAN → PHONE → ID + XML escape <customer_note>)
+           POST ${LOCAL_LLM_BASE_URL}/chat/completions (redirect: 'error', SSRF guard, timeout 60s, reasoning_effort: 'none')
+           parseTriageExtraction (strict null on bound violation, max 1 retry temp=0)
+           routeTriageDecision (5 условий: ≤ aiDelegationLimit, exact currency, urgency≠high, conf≥minConfidence)
+           → UPDATE ai_triage_status='done', ai_triage_json (если бронь не RELEASED) + AuditEvent (0 PII)
+           → TelegramOutbox follow-up (priority 40): ownerChatIds (ESCALATE_OWNER) | staffChatTargets (DELEGATE_OPERATOR)
+           [LM Studio offline / timeout / bad JSON → fail-open ai_triage_status='failed' + manual review alert]
+```
+
 ### Checkout (шаблонные продукты)
 `POST /api/payments/stripe/initiate` (PaymentIntent + transaction) → Elements → `confirm-order` (settlement-валидация + атомарный инвентарь) → Order по `accessToken` для гостей. Webhook `POST /api/payments/stripe/webhooks` (SDK-verify) → `stripeWebhookHandlers` + PaymentEvents журнал.
 
@@ -192,7 +209,7 @@ GET/POST /api/admin/calendar-feed/[resourceId] (OWNER)  # URL / ротация f
 ## 6. Governance
 
 - Constitution: `.specify/memory/constitution.md` v1.10.1 (app-repo adaptation: pnpm/vitest/playwright; clai-helpers/publish gates N/A).
-- Quality gates: `pnpm validate` · `pnpm lint` · `pnpm test:int` (202) · `pnpm build` · `pnpm generate:types` drift-free · `pnpm audit` 0 H/C · log-hygiene (PCI DSS Req 10).
+- Quality gates: `pnpm validate` · `pnpm lint` · `pnpm test:int` (212) · `pnpm build` · `pnpm generate:types` drift-free · `pnpm audit` 0 H/C · log-hygiene (PCI DSS Req 10).
 - Deploy: Docker image из тегированных коммитов на VPS заказчика; app ≤500 MB RAM (NFR-103); миграции — `payload migrate`; single-instance (`REPLICA_COUNT=1` enforced на буте).
 - Deployment runbook (bootstrap владельца до ingress): §4.1.
 
