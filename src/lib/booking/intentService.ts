@@ -13,6 +13,11 @@ import {
   findBookingByIdempotencyKey,
   type BookingResult,
 } from '@/lib/booking/bookingService'
+import {
+  MAX_ITEMS,
+  deriveComposite,
+  type CompositeProductRow,
+} from '@/lib/booking/compositeService'
 import { isBlacklisted } from '@/lib/telegram/blacklist'
 import { resolveAvailability } from '@/lib/availability/resolver'
 import { checkRateLimit } from '@/lib/security/rateLimiter'
@@ -47,8 +52,88 @@ const RL_WINDOW_MS = 10 * 60_000
 /** Resend cap on an existing pending intent (review F2). */
 const RESEND_MAX_PER_INTENT = 3
 
+/** Basket-fatal createBooking errors between phases → the intent dies (spec 014, AG-F7.1). */
+const COMPOSITE_FATAL_CODES = new Set([
+  'COMPOSITE_INVALID',
+  'ADDON_ONLY_BASKET',
+  'COMPOSITE_TOO_LONG',
+  'MIXED_PAYMENT_MODES',
+  'INVALID_DEPOSIT_AMOUNT',
+])
+
+/**
+ * Atomic intent death (fix AG-F7.1): a dead intent must NOT linger in
+ * `pending` (it would keep occupying the LIVE_CAP_PER_EMAIL budget). CAS
+ * UPDATE + audit BEFORE the caller throws INTENT_DEAD.
+ */
+async function markIntentDead(db: any, intentId: number, reason: string): Promise<void> {
+  const dead = await db.execute({
+    drizzle: db.drizzle,
+    sql: sql`UPDATE booking_intents SET status = 'dead', updated_at = now()
+             WHERE id = ${intentId} AND status = 'pending'`,
+  })
+  if ((dead.rowCount ?? 0) > 0) {
+    await db.execute({
+      drizzle: db.drizzle,
+      sql: sql`INSERT INTO audit_events (action, actor_id, aggregate_type, aggregate_id, metadata_json, created_at, updated_at)
+               VALUES ('intent.dead', 'SYSTEM', 'INTENT', ${String(intentId)},
+                       ${JSON.stringify({ reason })}::jsonb, now(), now())`,
+    })
+  }
+}
+
+/** Server-side basket fetch + derivation (the intent stores ids only — 007 F5). */
+async function deriveBasket(
+  payload: Payload,
+  itemIds: string[],
+): Promise<{ ok: true; composite: import('@/lib/booking/compositeService').DerivedComposite } | { ok: false; code: string; message: string }> {
+  const docs = await payload.find({
+    collection: 'products',
+    where: { id: { in: itemIds } },
+    limit: MAX_ITEMS,
+    overrideAccess: true,
+    depth: 0,
+  })
+  const byId = new Map<string, Record<string, unknown>>(
+    docs.docs.map((d) => [String(d.id), d as unknown as Record<string, unknown>]),
+  )
+  const rows: CompositeProductRow[] = []
+  for (const id of itemIds) {
+    const d = byId.get(String(id))
+    if (!d) {
+      return { ok: false, code: itemIds.length === 1 ? 'SERVICE_NOT_FOUND' : 'COMPOSITE_INVALID', message: 'Service not found' }
+    }
+    if (d.bookable !== true || (d as { deletedAt?: string | null }).deletedAt) {
+      return { ok: false, code: itemIds.length === 1 ? 'SERVICE_NOT_BOOKABLE' : 'COMPOSITE_INVALID', message: 'Service is not bookable' }
+    }
+    rows.push({
+      id: String(id),
+      title: (d.title as string) ?? '',
+      durationMin: (d.durationMin as number) ?? 0,
+      priceInUSD: (d.priceInUSD as number) ?? 0,
+      depositAmount: (d.depositAmount as number) ?? 0,
+      addOn: d.addOn === true,
+      paymentMode: (d.paymentMode as string) ?? 'NONE',
+      bufferBeforeMin: (d.bufferBeforeMin as number) ?? 0,
+      bufferAfterMin: (d.bufferAfterMin as number) ?? 0,
+      outCallEnabled: d.outCallEnabled === true,
+    })
+  }
+  const derived = deriveComposite(itemIds, rows)
+  if (!derived.ok) {
+    return { ok: false, code: derived.code, message: derived.message }
+  }
+  return { ok: true, composite: derived.composite }
+}
+
 export interface CreateIntentInput {
   productId: string
+  /**
+   * Composite basket ids (spec 014 FR-1402, phase 1): persisted into
+   * `booking_intents.items_json` as [{ productId }] — phase 2 hydrates from
+   * HERE (canon 007 F5). Absent for legacy single-product intents.
+   */
+  items?: string[]
   start: string
   customerName: string
   customerPhone: string
@@ -117,7 +202,34 @@ export async function createIntent(payload: Payload, input: CreateIntentInput): 
   // real computed slot of the resolved resource — past slots are filtered
   // inside resolveAvailability, junk times are rejected here.
   const date = start.toISOString().slice(0, 10)
-  const grid = await resolveAvailability(payload, { productId: input.productId, date, resourceId: input.resourceId ? String(input.resourceId) : undefined, now })
+
+  // 014 (FR-1402): composite basket is derived SERVER-SIDE before the grid —
+  // ids in, everything else from the products (STRIDE Tampering guard).
+  // Legacy parity (fix AG-F5.2): a single-element basket keeps 404/422 codes.
+  let composite: import('@/lib/booking/compositeService').DerivedComposite | null = null
+  if (input.items !== undefined && input.items.length > 0) {
+    const basket = await deriveBasket(payload, input.items)
+    if (!basket.ok) {
+      throw new IntentError(basket.code, basket.code === 'SERVICE_NOT_FOUND' ? 404 : 422, basket.message)
+    }
+    composite = basket.composite
+  }
+
+  const grid = await resolveAvailability(payload, {
+    productId: composite ? composite.primaryItemId : input.productId,
+    date,
+    resourceId: input.resourceId ? String(input.resourceId) : undefined,
+    now,
+    ...(composite
+      ? {
+          composite: {
+            durationMin: composite.totalDurationMin,
+            bufferBeforeMin: composite.bufferBeforeMin,
+            bufferAfterMin: composite.bufferAfterMin,
+          },
+        }
+      : {}),
+  })
   if (!grid.ok) {
     if (grid.code === 'SERVICE_NOT_FOUND') throw new IntentError('SERVICE_NOT_FOUND', 404, 'Service not found')
     if (grid.code === 'SERVICE_NOT_BOOKABLE') throw new IntentError('SERVICE_NOT_BOOKABLE', 422, 'Service is not bookable')
@@ -128,15 +240,25 @@ export async function createIntent(payload: Payload, input: CreateIntentInput): 
     throw new IntentError('SLOT_NOT_AVAILABLE', 422, 'The requested time is not an available slot')
   }
 
-  const product = (await payload
-    .findByID({ collection: 'products', id: input.productId, overrideAccess: true, depth: 0 })
-    .catch(() => null)) as unknown as { title?: string; durationMin?: number; deletedAt?: string | null } | null
-  if (!product || product.deletedAt) {
-    throw new IntentError('SERVICE_NOT_FOUND', 404, 'Service not found')
-  }
-  const durationMin = product.durationMin
-  if (typeof durationMin !== 'number' || durationMin < 5) {
-    throw new IntentError('SERVICE_NOT_BOOKABLE', 422, 'Service is missing durationMin')
+  let serviceName: string
+  let durationMin: number
+  if (composite) {
+    // Snapshot is primary-first (Clarifications #3) — the OTP email names the primary.
+    serviceName = composite.items[0]?.title?.trim() || 'Запись'
+    durationMin = composite.totalDurationMin
+  } else {
+    const product = (await payload
+      .findByID({ collection: 'products', id: input.productId, overrideAccess: true, depth: 0 })
+      .catch(() => null)) as unknown as { title?: string; durationMin?: number; deletedAt?: string | null } | null
+    if (!product || product.deletedAt) {
+      throw new IntentError('SERVICE_NOT_FOUND', 404, 'Service not found')
+    }
+    const legacyDuration = product.durationMin
+    if (typeof legacyDuration !== 'number' || legacyDuration < 5) {
+      throw new IntentError('SERVICE_NOT_BOOKABLE', 422, 'Service is missing durationMin')
+    }
+    serviceName = product.title?.trim() || 'Запись'
+    durationMin = legacyDuration
   }
   const slotEnd = new Date(start.getTime() + durationMin * 60_000)
 
@@ -159,12 +281,14 @@ export async function createIntent(payload: Payload, input: CreateIntentInput): 
     const inserted = await trx.execute(sql`
       INSERT INTO booking_intents
         (email, customer_name, customer_phone, customer_notes, service_id_id, resource_id_id,
-         slot_start, slot_end, code_hash, expires_at, attempts, status, created_at, updated_at)
+         slot_start, slot_end, code_hash, expires_at, attempts, status, items_json, created_at, updated_at)
       VALUES (${input.customerEmail}, ${input.customerName}, ${input.customerPhone}, ${normalizedNotes},
-              ${input.productId}::numeric, ${grid.resourceId}::numeric,
+              ${(composite ? composite.primaryItemId : input.productId)}::numeric, ${grid.resourceId}::numeric,
               ${start.toISOString()}, ${slotEnd.toISOString()},
               ${computeOtpHash(0, input.customerEmail, code)}, ${expiresAt.toISOString()},
-              0, 'pending', now(), now())
+              0, 'pending',
+              ${input.items !== undefined && input.items.length > 0 ? JSON.stringify(input.items.map((id) => ({ productId: id }))) : null}::jsonb,
+              now(), now())
       RETURNING id, expires_at`)
     const row = inserted.rows[0] as { id: number; expires_at: string }
     intentId = Number(row.id)
@@ -185,7 +309,7 @@ export async function createIntent(payload: Payload, input: CreateIntentInput): 
   const emailSent = await sendOtpEmail(payload, {
     email: input.customerEmail,
     code,
-    serviceName: product.title?.trim() || 'Запись',
+    serviceName,
     startTime: start.toISOString(),
   })
 
@@ -300,7 +424,7 @@ export async function verifyIntentBooking(payload: Payload, input: VerifyIntentI
   const rowRes = await db.execute({
     drizzle: db.drizzle,
     sql: sql`SELECT id, email, customer_name, customer_phone, customer_notes, service_id_id AS service_id,
-                    resource_id_id AS resource_id, slot_start, code_hash, expires_at, attempts, status
+                    resource_id_id AS resource_id, slot_start, slot_end, items_json, code_hash, expires_at, attempts, status
              FROM booking_intents WHERE id = ${intentId} LIMIT 1`,
   })
   const intent = rowRes.rows?.[0] as
@@ -313,6 +437,8 @@ export async function verifyIntentBooking(payload: Payload, input: VerifyIntentI
         service_id: string | number
         resource_id: string | number
         slot_start: string
+        slot_end: string
+        items_json: Array<{ productId?: string }> | null
         code_hash: string
         expires_at: string
         attempts: number
@@ -375,46 +501,87 @@ export async function verifyIntentBooking(payload: Payload, input: VerifyIntentI
   // structurally incapable of injecting slot/product/customer data here.
   const { BookingError: BookingErr } = await import('@/lib/booking/bookingService')
   let booking: BookingResult
-  try {
-    booking = await createBooking(payload, {
-      productId: String(intent.service_id),
-      resourceId: intent.resource_id,
-      start: new Date(intent.slot_start).toISOString(),
-      customerName: intent.customer_name,
-      customerPhone: intent.customer_phone,
-      customerEmail: intent.email,
-      customerNotes: intent.customer_notes ?? null,
-      idempotencyKey: `booking-intent-${intent.id}`,
-      now,
-      gateway: input.gateway,
-    })
-  } catch (err: unknown) {
-    if (err instanceof BookingErr && err.code === 'SLOT_TAKEN') {
-      // STM seam: a concurrent verify of the SAME intent may have just
-      // committed the booking under the SAME idempotency key — createBooking's
-      // clash-check fires before its own 23505 fallback, so re-check HERE
-      // before declaring the slot taken. No booking → a REAL take: honest 409
-      // and the intent dies (never re-armed).
-      const existing = await findBookingByIdempotencyKey(payload, `booking-intent-${intent.id}`, intent.email)
-      if (!existing) {
-        const dead = await db.execute({
-          drizzle: db.drizzle,
-          sql: sql`UPDATE booking_intents SET status = 'dead', updated_at = now()
-                   WHERE id = ${intent.id} AND status = 'pending'`,
-        })
-        if ((dead.rowCount ?? 0) > 0) {
-          await db.execute({
-            drizzle: db.drizzle,
-            sql: sql`INSERT INTO audit_events (action, actor_id, aggregate_type, aggregate_id, metadata_json, created_at, updated_at)
-                     VALUES ('intent.dead', 'SYSTEM', 'INTENT', ${String(intent.id)},
-                             ${JSON.stringify({ reason: 'SLOT_TAKEN' })}::jsonb, now(), now())`,
-          })
+
+  // 014 FR-1402 (fix AG-F7.1): composite intents hydrate their basket from
+  // `items_json` (ids only) — NEVER from the request body. Before booking, the
+  // basket is re-derived from LIVE products; a drift between the held slot
+  // (`slot_end − slot_start`) and the current Σ durationMin — or a basket that
+  // became invalid (deleted product / mode change) — kills the intent ATOMICALLY
+  // (status='dead' + audit) before the 403, so a zombie never occupies the
+  // LIVE_CAP_PER_EMAIL budget.
+  const intentItems = Array.isArray(intent.items_json)
+    ? (intent.items_json as Array<{ productId?: string }>)
+        .map((it) => String(it.productId ?? ''))
+        .filter((s) => s.length > 0)
+    : null
+  if (intentItems && intentItems.length > 0) {
+    const basket = await deriveBasket(payload, intentItems)
+    const slotStartMs = new Date(intent.slot_start).getTime()
+    const slotEndMs = new Date(intent.slot_end).getTime()
+    if (!basket.ok || slotEndMs - slotStartMs !== basket.composite.totalDurationMin * 60_000) {
+      await markIntentDead(db, intent.id, 'COMPOSITE_DRIFT')
+      throw new IntentError('INTENT_DEAD', 403, 'The basket no longer matches the held slot — please book again')
+    }
+    try {
+      booking = await createBooking(payload, {
+        productId: basket.composite.primaryItemId,
+        items: intentItems,
+        resourceId: intent.resource_id,
+        start: new Date(intent.slot_start).toISOString(),
+        customerName: intent.customer_name,
+        customerPhone: intent.customer_phone,
+        customerEmail: intent.email,
+        customerNotes: intent.customer_notes ?? null,
+        idempotencyKey: `booking-intent-${intent.id}`,
+        now,
+        gateway: input.gateway,
+      })
+    } catch (err: unknown) {
+      if (err instanceof BookingErr && err.code === 'SLOT_TAKEN') {
+        // STM seam: a concurrent verify of the SAME intent may have just
+        // committed the booking under the SAME idempotency key — createBooking's
+        // clash-check fires before its own 23505 fallback, so re-check HERE
+        // before declaring the slot taken. No booking → a REAL take: honest 409
+        // and the intent dies (never re-armed).
+        const existing = await findBookingByIdempotencyKey(payload, `booking-intent-${intent.id}`, intent.email)
+        if (!existing) {
+          await markIntentDead(db, intent.id, 'SLOT_TAKEN')
+          throw err
         }
+        booking = existing
+      } else if (err instanceof BookingErr && COMPOSITE_FATAL_CODES.has(err.code)) {
+        // Basket mutated between phases (price/mode/deletion) → dead, not a zombie.
+        await markIntentDead(db, intent.id, 'COMPOSITE_DRIFT')
+        throw new IntentError('INTENT_DEAD', 403, 'The basket no longer matches the held slot — please book again')
+      } else {
         throw err
       }
-      booking = existing
-    } else {
-      throw err
+    }
+  } else {
+    try {
+      booking = await createBooking(payload, {
+        productId: String(intent.service_id),
+        resourceId: intent.resource_id,
+        start: new Date(intent.slot_start).toISOString(),
+        customerName: intent.customer_name,
+        customerPhone: intent.customer_phone,
+        customerEmail: intent.email,
+        customerNotes: intent.customer_notes ?? null,
+        idempotencyKey: `booking-intent-${intent.id}`,
+        now,
+        gateway: input.gateway,
+      })
+    } catch (err: unknown) {
+      if (err instanceof BookingErr && err.code === 'SLOT_TAKEN') {
+        const existing = await findBookingByIdempotencyKey(payload, `booking-intent-${intent.id}`, intent.email)
+        if (!existing) {
+          await markIntentDead(db, intent.id, 'SLOT_TAKEN')
+          throw err
+        }
+        booking = existing
+      } else {
+        throw err
+      }
     }
   }
 

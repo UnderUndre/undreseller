@@ -218,6 +218,22 @@ export const SlotReservations: CollectionConfig = {
         description: 'Structured AI extraction & deterministic delegation decision (spec 013)',
       },
     },
+    {
+      name: 'itemsJson',
+      type: 'json',
+      // Spec 014 FR-1401: the itemized snapshot is written ONLY by bookingService
+      // inside the booking transaction (raw SQL path) — never by a client or the
+      // admin UI. Store-data only (titles/prices of the shop), zero customer PII.
+      access: {
+        create: () => false,
+        update: () => false,
+      },
+      admin: {
+        readOnly: true,
+        description:
+          'Composite basket snapshot at booking time [{productId,title,durationMin,priceInUSD,depositAmount,addOn}] (spec 014). NULL = legacy single-item row (read via itemId).',
+      },
+    },
   ],
   timestamps: true,
 }

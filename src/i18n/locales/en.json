@@ -39,7 +39,10 @@
       "duplicate": "You are already on the waitlist for this service.",
       "capReached": "Too many active subscriptions — cancel one of the previous ones.",
       "error": "Failed: {error}"
-    }
+    },
+    "addToVisit": "Add to your visit",
+    "includedInSlot": "included",
+    "basketTotal": "Total"
   },
   "confirmation": {
     "title": "Booking confirmed",

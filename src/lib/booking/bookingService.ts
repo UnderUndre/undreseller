@@ -16,6 +16,13 @@ import { verifyTokenHash, hashToken } from '@/lib/booking/tokens'
 import { notifySlotFreed } from '@/lib/waitlist/waitlistService'
 import { resolveAvailability } from '@/lib/availability/resolver'
 import { isLocalLlmConfigured } from '@/lib/ai/localLlmClient'
+import {
+  MAX_ITEMS,
+  compositeIdempotencySeed,
+  deriveComposite,
+  type CompositeProductRow,
+  type CompositeSnapshotItem,
+} from '@/lib/booking/compositeService'
 
 /**
  * Booking domain service (spec 002-booking-domain US5/US6, research D4;
@@ -40,6 +47,12 @@ const ACTIVE_STATUSES_SQL = "('HELD', 'BOOKED', 'PENDING_APPROVAL')"
 
 export interface CreateBookingInput {
   productId: string
+  /**
+   * Composite basket (spec 014 FR-1402): 1..6 productIds. When present it
+   * REPLACES the single-product semantics (mutual exclusion enforced by the
+   * route with a 400); a single-element array keeps the legacy 404/422 codes.
+   */
+  items?: string[]
   resourceId?: string | number
   start: string
   customerName: string
@@ -70,6 +83,13 @@ export interface BookingResult {
   paymentMode: PaymentMode
   paymentIntentId?: string | null
   clientSecret?: string | null
+  /** Composite basket snapshot (spec 014) — null for legacy single-item rows. */
+  items?: CompositeSnapshotItem[] | null
+  /** Container duration (Σ positions) — equals product.durationMin for legacy. */
+  totalDurationMin?: number
+  /** Full basket cost in USD (AG-F2 derived value — NOT orders.amount). */
+  totalPriceInUSD?: number
+  totalDepositInUSD?: number
 }
 
 /** drizzle 0.45 wraps pg errors in DrizzleQueryError — the PG code lives on `.cause`. */
@@ -94,18 +114,22 @@ export async function findBookingByIdempotencyKey(
 ): Promise<BookingResult | null> {
   const res = await payload.db.execute({
     drizzle: (payload.db as unknown as { drizzle: any }).drizzle,
-    sql: sql`SELECT sr.id AS reservation_id, sr.status, sr.schedule_version, sr.order_id, o.access_token, o.customer_email
+    sql: sql`SELECT sr.id AS reservation_id, sr.status, sr.schedule_version, sr.order_id,
+                    sr.items_json, sr.total_duration_min, o.access_token, o.customer_email
              FROM slot_reservations sr JOIN orders o ON o.id = sr.order_id
              WHERE sr.idempotency_key = ${idempotencyKey} LIMIT 1`,
   })
   const row = res.rows?.[0] as
-    | { reservation_id: number; status: string; schedule_version: number; order_id: number; access_token: string; customer_email: string | null }
+    | { reservation_id: number; status: string; schedule_version: number; order_id: number; access_token: string; customer_email: string | null; items_json: CompositeSnapshotItem[] | null; total_duration_min: number }
     | undefined
   if (!row) return null
   // 008 T812 (F-BE-02, antigravity): a known/sequential idempotency key must
   // never leak another customer's booking — without an owner match the
   // booking is invisible to this caller.
   if (ownerEmail !== undefined && (row.customer_email ?? '') !== ownerEmail) return null
+  // 014 (fix AG-F7.2): the idempotent replay keeps the itemized composition —
+  // the 201 body must not lose `items`/`totalDurationMin` on a repeat.
+  const items = Array.isArray(row.items_json) ? (row.items_json as CompositeSnapshotItem[]) : null
   return {
     reservationId: Number(row.reservation_id),
     orderId: Number(row.order_id),
@@ -115,6 +139,8 @@ export async function findBookingByIdempotencyKey(
     status: row.status,
     scheduleVersion: Number(row.schedule_version),
     paymentMode: 'NONE', // idempotent replay of the first call — original mode is not re-derived
+    items,
+    totalDurationMin: Number(row.total_duration_min),
   }
 }
 
@@ -128,8 +154,32 @@ export async function createBooking(
     throw new BookingError('SLOT_IN_PAST', 422, 'Booking start must be in the future')
   }
 
-  if (input.idempotencyKey) {
-    const existing = await findBookingByIdempotencyKey(payload, input.idempotencyKey, input.customerEmail)
+  // ---- Composite intake (spec 014 FR-1402) --------------------------------
+  let itemIds: string[]
+  if (input.items !== undefined) {
+    if (
+      !Array.isArray(input.items) ||
+      input.items.length === 0 ||
+      input.items.some((id) => typeof id !== 'string' || id.length === 0)
+    ) {
+      throw new BookingError('VALIDATION_FAILED', 400, 'items must be a non-empty array of product ids')
+    }
+    itemIds = input.items
+  } else {
+    itemIds = [input.productId]
+  }
+
+  // 014 (fix AG-F7.2): server-derived deterministic idempotency key with a
+  // fallback for direct callers that pass none — sorted ids WITH duplicates
+  // preserved (["A","A"] ≠ ["A"]). The legacy single-product seed is identical
+  // to the route-generated key (single-element sort is a no-op).
+  const effectiveIdempotencyKey =
+    input.idempotencyKey ??
+    (input.customerEmail
+      ? hashToken(`booking-idem:${input.customerEmail}:${compositeIdempotencySeed(itemIds)}:${start.toISOString()}`)
+      : undefined)
+  if (effectiveIdempotencyKey) {
+    const existing = await findBookingByIdempotencyKey(payload, effectiveIdempotencyKey, input.customerEmail)
     if (existing) return existing
   }
 
@@ -146,33 +196,90 @@ export async function createBooking(
   }
 
   let product: Record<string, unknown>
-  try {
-    product = (await payload.findByID({
+  let composite: import('@/lib/booking/compositeService').DerivedComposite | null = null
+  let itemsSnapshot: CompositeSnapshotItem[] | null = null
+  if (input.items !== undefined) {
+    // Composite path: fetch ALL basket products server-side (the client sends
+    // ids only — STRIDE Tampering guard). Legacy parity (fix AG-F5.2): a
+    // single-element basket keeps the 404/422 codes of the old endpoint.
+    const docs = await payload.find({
       collection: 'products',
-      id: input.productId,
+      where: { id: { in: itemIds } },
+      limit: MAX_ITEMS,
       overrideAccess: true,
       depth: 0,
-    })) as unknown as Record<string, unknown>
-  } catch {
-    throw new BookingError('SERVICE_NOT_FOUND', 404, 'Service not found')
+    })
+    const byId = new Map<string, Record<string, unknown>>(
+      docs.docs.map((d) => [String(d.id), d as unknown as Record<string, unknown>]),
+    )
+    const rows: CompositeProductRow[] = []
+    for (const id of itemIds) {
+      const d = byId.get(String(id))
+      if (!d) {
+        throw new BookingError(
+          itemIds.length === 1 ? 'SERVICE_NOT_FOUND' : 'COMPOSITE_INVALID',
+          itemIds.length === 1 ? 404 : 422,
+          'Service not found',
+        )
+      }
+      if (d.bookable !== true || (d as { deletedAt?: string | null }).deletedAt) {
+        throw new BookingError(
+          itemIds.length === 1 ? 'SERVICE_NOT_BOOKABLE' : 'COMPOSITE_INVALID',
+          422,
+          'Service is not bookable',
+        )
+      }
+      rows.push({
+        id: String(id),
+        title: (d.title as string) ?? '',
+        durationMin: (d.durationMin as number) ?? 0,
+        priceInUSD: (d.priceInUSD as number) ?? 0,
+        depositAmount: (d.depositAmount as number) ?? 0,
+        addOn: d.addOn === true,
+        paymentMode: (d.paymentMode as string) ?? 'NONE',
+        bufferBeforeMin: (d.bufferBeforeMin as number) ?? 0,
+        bufferAfterMin: (d.bufferAfterMin as number) ?? 0,
+        outCallEnabled: d.outCallEnabled === true,
+      })
+    }
+    const derived = deriveComposite(itemIds, rows)
+    if (!derived.ok) {
+      throw new BookingError(derived.code, 422, derived.message)
+    }
+    composite = derived.composite
+    itemsSnapshot = composite.items
+    product = byId.get(composite.primaryItemId) as Record<string, unknown>
+  } else {
+    try {
+      product = (await payload.findByID({
+        collection: 'products',
+        id: input.productId,
+        overrideAccess: true,
+        depth: 0,
+      })) as unknown as Record<string, unknown>
+    } catch {
+      throw new BookingError('SERVICE_NOT_FOUND', 404, 'Service not found')
+    }
+    if (!product || (product as { deletedAt?: string | null }).deletedAt || product.bookable !== true) {
+      throw new BookingError('SERVICE_NOT_BOOKABLE', 422, 'Service is not bookable')
+    }
   }
-  if (!product || (product as { deletedAt?: string | null }).deletedAt || product.bookable !== true) {
-    throw new BookingError('SERVICE_NOT_BOOKABLE', 422, 'Service is not bookable')
-  }
-  const durationMin = product.durationMin as number
-  if (typeof durationMin !== 'number' || durationMin < 5) {
+
+  const durationMin = composite ? composite.totalDurationMin : (product.durationMin as number)
+  if (typeof durationMin !== 'number' || (!composite && durationMin < 5)) {
     throw new BookingError('SERVICE_NOT_BOOKABLE', 422, 'Service is missing durationMin')
   }
-  const bufferBeforeMin = (product.bufferBeforeMin as number) ?? 0
-  const bufferAfterMin = (product.bufferAfterMin as number) ?? 0
+  const bufferBeforeMin = composite ? composite.bufferBeforeMin : ((product.bufferBeforeMin as number) ?? 0)
+  const bufferAfterMin = composite ? composite.bufferAfterMin : ((product.bufferAfterMin as number) ?? 0)
   const end = new Date(start.getTime() + durationMin * 60_000)
 
   // Deposit policy (spec 003 FR-301, spec 012 FR-1201/1202): paymentMode is read
   // STRICTLY from the Product on the server — client input is never accepted.
-  const rawMode = product.paymentMode
+  const rawMode = composite ? composite.paymentMode : (product.paymentMode as string)
   const depositAmount = (product.depositAmount as number) ?? (product.deposit_amount as number) ?? 0
-  const paymentMode: PaymentMode =
-    rawMode === 'FULL_PREPAYMENT'
+  const paymentMode: PaymentMode = composite
+    ? composite.paymentMode
+    : rawMode === 'FULL_PREPAYMENT'
       ? 'FULL_PREPAYMENT'
       : rawMode === 'DEPOSIT' || (depositAmount > 0 && rawMode !== 'NONE')
         ? 'DEPOSIT'
@@ -182,7 +289,7 @@ export async function createBooking(
     throw new BookingError('EMAIL_REQUIRED', 422, 'Email is required for prepayment/deposit services')
   }
 
-  if (paymentMode === 'DEPOSIT') {
+  if (!composite && paymentMode === 'DEPOSIT') {
     if (depositAmount <= 0) {
       throw new BookingError('INVALID_DEPOSIT_AMOUNT', 422, 'Deposit amount must be greater than 0')
     }
@@ -191,9 +298,16 @@ export async function createBooking(
       throw new BookingError('INVALID_DEPOSIT_AMOUNT', 422, 'Deposit amount cannot exceed service price')
     }
   }
+  // Composite zero-guard already enforced inside deriveComposite (AG-F4.3):
+  // DEPOSIT requires Σ deposit > 0, FULL_PREPAYMENT requires Σ price > 0.
 
-  const amountMinor =
-    paymentMode === 'FULL_PREPAYMENT'
+  // Money canon 003/012 (fix AG-F2): `amountMinor` is the CHARGEABLE amount —
+  // 0 for NONE, Σ depositAmount for DEPOSIT, Σ priceInUSD for FULL_PREPAYMENT —
+  // never the raw basket total. The full cost travels as a derived value
+  // (`totalPriceInUSD`) in the response and the itemized snapshot.
+  const amountMinor = composite
+    ? composite.chargeableAmountMinor
+    : paymentMode === 'FULL_PREPAYMENT'
       ? toAmountMinor(product.priceInUSD as number)
       : paymentMode === 'DEPOSIT'
         ? toAmountMinor(depositAmount)
@@ -271,22 +385,27 @@ export async function createBooking(
            buffer_before_min, buffer_after_min,
            customer_name, customer_phone, customer_notes, ai_triage_status,
            idempotency_key, cancel_token_hash, reschedule_token_hash,
+           items_json,
            created_at, updated_at)
         VALUES
-          (${orderId}, ${resourceId}, ${input.productId}, ${start.toISOString()}, ${end.toISOString()},
+          (${orderId}, ${resourceId}, ${composite ? composite.primaryItemId : input.productId}, ${start.toISOString()}, ${end.toISOString()},
            ${durationMin}, ${dbStatus}, 1, ${holdExpiresAt ? holdExpiresAt.toISOString() : null}, null,
            ${bufferBeforeMin}, ${bufferAfterMin},
            ${input.customerName}, ${input.customerPhone}, ${normalizedNotes}, 'skipped',
-           ${input.idempotencyKey ?? null},
-           ${cancelTokenHash}, ${rescheduleTokenHash}, now(), now())
+           ${effectiveIdempotencyKey ?? null},
+           ${cancelTokenHash}, ${rescheduleTokenHash},
+           ${itemsSnapshot ? JSON.stringify(itemsSnapshot) : null}::jsonb,
+           now(), now())
         RETURNING id, schedule_version`)
 
       const row = reservation.rows[0] as { id: number; schedule_version: number }
 
+      // 014 T1433 (fix AG-F7): itemsCount in the audit metadata — counts only,
+      // never the basket composition (plan STRIDE Repudiation/Privacy).
       await trx.execute(sql`
         INSERT INTO audit_events (action, actor_id, aggregate_type, aggregate_id, metadata_json, created_at, updated_at)
         VALUES ('booking.create', 'CUSTOMER', 'BOOKING', ${String(row.id)},
-                ${JSON.stringify({ fulfillment, resourceId })}::jsonb, now(), now())`)
+                ${JSON.stringify({ fulfillment, resourceId, itemsCount: itemsSnapshot ? itemsSnapshot.length : 1 })}::jsonb, now(), now())`)
 
       return {
         reservationId: Number(row.id),
@@ -297,6 +416,14 @@ export async function createBooking(
         status: dbStatus,
         scheduleVersion: Number(row.schedule_version),
         paymentMode,
+        items: itemsSnapshot,
+        totalDurationMin: durationMin,
+        ...(composite
+          ? {
+              totalPriceInUSD: Math.round(composite.totalPriceMinor) / 100,
+              totalDepositInUSD: Math.round(composite.totalDepositMinor) / 100,
+            }
+          : {}),
       }
     })
 
@@ -406,6 +533,9 @@ export async function createBooking(
           startTime: start.toISOString(),
           timeZone: settings?.timeZone || 'UTC',
           fulfillment,
+          // 014 T1420 (fix AG-F7.2): the itemized basket rides along — the card
+          // renders primary-first lines (≤4 + «+N ещё») from the snapshot.
+          items: itemsSnapshot ?? undefined,
         },
         await staffChatTargets(payload),
       )
@@ -996,7 +1126,8 @@ export async function rescheduleBooking(
     drizzle: db.drizzle,
     sql: sql`SELECT sr.id, sr.status, sr.schedule_version, sr.order_id, sr.resource_id,
                     sr.start_time, sr.end_time, sr.total_duration_min, sr.item_id,
-                    sr.buffer_before_min, sr.buffer_after_min, sr.reschedule_token_hash
+                    sr.buffer_before_min, sr.buffer_after_min, sr.reschedule_token_hash,
+                    sr.items_json
              FROM slot_reservations sr WHERE sr.id = ${input.reservationId} LIMIT 1`,
   })
   const row = rowRes.rows?.[0] as
@@ -1013,6 +1144,7 @@ export async function rescheduleBooking(
         buffer_before_min: number
         buffer_after_min: number
         reschedule_token_hash: string | null
+        items_json: unknown
       }
     | undefined
   if (!row) throw new BookingError('BOOKING_NOT_FOUND', 404, 'Booking not found')
@@ -1067,11 +1199,24 @@ export async function rescheduleBooking(
       // grid returns NOT OK and we skip validation (legacy/edge compatibility —
       // the clash-check + GiST + future-slot guard still prevent double-booking).
       if (row.item_id) {
+        // 014 (fix AG-F3.2): a composite container reschedules against the
+        // availability grid of its FULL duration (Σ + row buffers) — never the
+        // primary product's own 60-min grid, or a 120-min container could land
+        // in a 60-min window before a break or closing time. Legacy rows
+        // (items_json IS NULL) keep the exact old behavior.
+        const compositeOverride = Array.isArray(row.items_json)
+          ? {
+              durationMin: Number(row.total_duration_min),
+              bufferBeforeMin: Number(row.buffer_before_min ?? 0),
+              bufferAfterMin: Number(row.buffer_after_min ?? 0),
+            }
+          : undefined
         const grid = await resolveAvailability(payload, {
           productId: String(row.item_id),
           date: start.toISOString().slice(0, 10),
           resourceId: String(resourceId),
           now,
+          composite: compositeOverride,
         })
         if (grid.ok) {
           const slot = grid.slots.find((s) => s.start === start.toISOString())

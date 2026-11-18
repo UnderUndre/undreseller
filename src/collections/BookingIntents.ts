@@ -66,6 +66,15 @@ export const BookingIntents: CollectionConfig = {
       access: { create: () => false, update: () => false },
       admin: { readOnly: true, position: 'sidebar' },
     },
+    {
+      name: 'itemsJson',
+      type: 'json',
+      // Spec 014 FR-1401: [{ productId }] ONLY — ids without snapshot prices
+      // (phase 2 re-derives from live products, Clarifications Q1). Written
+      // exclusively by intentService raw SQL; NULL = legacy single-product intent.
+      access: { create: () => false, update: () => false },
+      admin: { readOnly: true, description: 'Composite basket ids for phase-2 hydration (spec 014, canon 007 F5)' },
+    },
   ],
   indexes: [
     // Live-cap check per email (FR-701) — composite with status.

@@ -3,6 +3,7 @@ import * as migration_20261112_000001_order_enum_values from './20261112_000001_
 import * as migration_20261112_000002_complete_domain_schema from './20261112_000002_complete_domain_schema';
 import * as migration_20261113_000001_deposit_payment_mode from './20261113_000001_deposit_payment_mode';
 import * as migration_20261118_000001_local_ai_triage from './20261118_000001_local_ai_triage';
+import * as migration_20261118_000002_composite_booking from './20261118_000002_composite_booking';
 
 export const migrations = [
   {
@@ -29,5 +30,10 @@ export const migrations = [
     up: migration_20261118_000001_local_ai_triage.up,
     down: migration_20261118_000001_local_ai_triage.down,
     name: '20261118_000001_local_ai_triage',
+  },
+  {
+    up: migration_20261118_000002_composite_booking.up,
+    down: migration_20261118_000002_composite_booking.down,
+    name: '20261118_000002_composite_booking',
   },
 ];

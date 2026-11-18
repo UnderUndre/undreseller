@@ -178,15 +178,36 @@ export const ProductsCollection: CollectionOverride = ({ defaultCollection }) =>
               admin: { description: 'Bookable as an appointment service (spec 002-booking-domain)' },
             },
             {
-              name: 'durationMin',
-              type: 'number',
-              min: 5,
+              name: 'addOn',
+              type: 'checkbox',
+              defaultValue: false,
               admin: {
                 condition: ({ bookable }) => bookable === true,
-                description: 'Service duration in minutes (required when bookable)',
+                description:
+                  'Add-on service (spec 014 FR-1401): can join a composite basket; durationMin may be 0 (included in the primary slot)',
+              },
+            },
+            {
+              name: 'durationMin',
+              type: 'number',
+              // 014 T1402 (fix AG-F1.2): the HTML min drops to 0 so an add-on with
+              // durationMin = 0 can be saved from the Admin UI; the business
+              // boundary (≥ 5 for primary services, ≥ 0 for add-ons) lives in
+              // `validate` below.
+              min: 0,
+              admin: {
+                condition: ({ bookable }) => bookable === true,
+                description: 'Service duration in minutes (required when bookable; 0 allowed for add-ons)',
               },
               validate: (value: unknown, options: { data?: Record<string, unknown> | null }) => {
                 if (!options.data?.bookable) return true
+                const isAddOn = (options.data as { addOn?: boolean }).addOn === true
+                if (isAddOn) {
+                  return (
+                    (typeof value === 'number' && value >= 0) ||
+                    'durationMin must be a number >= 0 for add-on services'
+                  )
+                }
                 return (
                   (typeof value === 'number' && value >= 5) ||
                   'durationMin >= 5 is required for bookable services'
@@ -241,6 +262,13 @@ export const ProductsCollection: CollectionOverride = ({ defaultCollection }) =>
               },
               validate: (value: unknown, options: { data?: Record<string, unknown> | null }) => {
                 if (options.data?.paymentMode !== 'DEPOSIT') return true
+                // 014 T1402 (fix AG-F4.2): a FREE add-on (priceInUSD 0) may carry
+                // depositAmount 0 while the basket is in DEPOSIT mode — it is
+                // paymentMode-neutral and contributes nothing to the intent.
+                const d = options.data as { addOn?: boolean; priceInUSD?: number }
+                if (d?.addOn === true && (d?.priceInUSD ?? 0) === 0 && (typeof value === 'number' ? value : 0) === 0) {
+                  return true
+                }
                 if (typeof value !== 'number' || value <= 0) {
                   return 'depositAmount must be greater than 0'
                 }

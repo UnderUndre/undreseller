@@ -13,6 +13,18 @@ export interface ResolveAvailabilityInput {
   date: string
   resourceId?: string
   now?: Date
+  /**
+   * Composite override (spec 014 FR-1403): when present, the pure `computeSlots`
+   * kernel receives these container parameters instead of the product's own
+   * duration/buffers (the kernel is already fully parameterized — Option 0).
+   * The `productId` remains the PRIMARY position: it still drives the
+   * SERVICE_NOT_FOUND / SERVICE_NOT_BOOKABLE validation codes (AG-F3.2 parity).
+   */
+  composite?: {
+    durationMin: number
+    bufferBeforeMin: number
+    bufferAfterMin: number
+  }
 }
 
 export type ResolveAvailabilityResult =
@@ -126,11 +138,17 @@ export async function resolveAvailability(
   const computed: ComputedSlot[] = computeSlots({
     date: input.date,
     weekday,
-    service: {
-      durationMin: product.durationMin as number,
-      bufferBeforeMin: (product.bufferBeforeMin as number) ?? 0,
-      bufferAfterMin: (product.bufferAfterMin as number) ?? 0,
-    },
+    service: input.composite
+      ? {
+          durationMin: input.composite.durationMin,
+          bufferBeforeMin: input.composite.bufferBeforeMin,
+          bufferAfterMin: input.composite.bufferAfterMin,
+        }
+      : {
+          durationMin: product.durationMin as number,
+          bufferBeforeMin: (product.bufferBeforeMin as number) ?? 0,
+          bufferAfterMin: (product.bufferAfterMin as number) ?? 0,
+        },
     weeklyHours: weeklyHours.map((w) => ({
       weekday,
       startMin: w.startMin,

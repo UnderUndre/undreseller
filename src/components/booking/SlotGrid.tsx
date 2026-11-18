@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 
-import type { ComputedSlotDTO } from '@/components/booking/types'
+import type { ComputedSlotDTO, CompositeItemDTO } from '@/components/booking/types'
 import { BookingFormOTP } from '@/components/booking/BookingFormOTP'
 import { WaitlistJoinForm } from '@/components/booking/WaitlistJoinForm'
 
@@ -11,18 +11,29 @@ import { WaitlistJoinForm } from '@/components/booking/WaitlistJoinForm'
  * Client slot grid (spec 002 US7; two-phase trust gate per spec 007; i18n per
  * spec 010): fetches availability for the selected date, renders the grid.
  * All user-facing strings go through next-intl `t()`.
+ *
+ * 014 FR-1405 (T1432): «Добавить к визит» checkbox block — a running
+ * Σ duration/Σ price total, grid recompute for the composite duration (every
+ * selection change re-fetches the container grid via repeated `items`
+ * query-params), and an `items[]` submit. A single-slot basket keeps the
+ * legacy `productId` submit (bitwise compat).
  */
 export function SlotGrid({
   serviceId,
+  primaryService,
+  availableAddOns = [],
   onBooked,
 }: {
   serviceId: string
+  primaryService?: CompositeItemDTO
+  availableAddOns?: CompositeItemDTO[]
   onBooked?: (result: { reservationId: string; accessToken: string; cancelToken: string }) => void
 }) {
   const t = useTranslations('booking')
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [slots, setSlots] = useState<ComputedSlotDTO[]>([])
   const [selected, setSelected] = useState<string | null>(null)
+  const [selectedAddOnIds, setSelectedAddOnIds] = useState<string[]>([])
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerEmail, setCustomerEmail] = useState('')
@@ -36,13 +47,25 @@ export function SlotGrid({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const selectedItems = useMemo(
+    () => availableAddOns.filter((a) => selectedAddOnIds.includes(a.productId)),
+    [availableAddOns, selectedAddOnIds],
+  )
+  const isComposite = selectedItems.length > 0
+  const totalDurationMin =
+    (primaryService?.durationMin ?? 0) + selectedItems.reduce((s, i) => s + (i.durationMin ?? 0), 0)
+  const totalPrice = (primaryService?.priceInUSD ?? 0) + selectedItems.reduce((s, i) => s + (i.priceInUSD ?? 0), 0)
+
   const loadSlots = useCallback(async () => {
     setLoading(true)
     setConflict(false)
     try {
-      const res = await fetch(
-        `/api/availability?service=${encodeURIComponent(serviceId)}&date=${encodeURIComponent(date)}`,
-      )
+      const params = new URLSearchParams({ service: serviceId, date })
+      for (const addOnId of selectedAddOnIds) {
+        params.append('items', serviceId)
+        params.append('items', addOnId)
+      }
+      const res = await fetch(`/api/availability?${params.toString()}`)
       const data = (await res.json()) as { slots?: ComputedSlotDTO[] }
       setSlots(data.slots ?? [])
     } catch {
@@ -51,7 +74,7 @@ export function SlotGrid({
     } finally {
       setLoading(false)
     }
-  }, [serviceId, date, t])
+  }, [serviceId, date, selectedAddOnIds, t])
 
   useEffect(() => {
     void loadSlots()
@@ -77,7 +100,9 @@ export function SlotGrid({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          productId: serviceId,
+          // Composite basket → items[]; single-slot basket → legacy productId
+          // (bitwise-compat fast path, spec 014 FR-1402).
+          ...(isComposite ? { items: [serviceId, ...selectedAddOnIds] } : { productId: serviceId }),
           start: selected,
           customerName,
           customerPhone,
@@ -110,6 +135,13 @@ export function SlotGrid({
     }
   }
 
+  const toggleAddOn = (productId: string) => {
+    setSelectedAddOnIds((prev) =>
+      prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId],
+    )
+    setSelected(null)
+  }
+
   return (
     <div data-testid="slot-grid" className="flex flex-col gap-4">
       {otpPhase ? (
@@ -138,6 +170,32 @@ export function SlotGrid({
               className="rounded border border-neutral-300 px-3 py-2"
             />
           </div>
+
+          {availableAddOns.length > 0 && (
+            <fieldset data-testid="addon-block" className="rounded-lg border border-neutral-200 p-4">
+              <legend className="mb-2 text-sm font-medium">{t('addToVisit')}</legend>
+              <div className="flex flex-col gap-2">
+                {availableAddOns.map((addOn) => (
+                  <label key={addOn.productId} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      data-testid={`addon-${addOn.productId}`}
+                      checked={selectedAddOnIds.includes(addOn.productId)}
+                      onChange={() => toggleAddOn(addOn.productId)}
+                    />
+                    <span>
+                      {addOn.title}
+                      {addOn.addOn ? ` · ${t('includedInSlot')}` : ` · ${addOn.durationMin} min`} · $
+                      {addOn.priceInUSD.toFixed(2)}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-2 text-sm text-neutral-500" data-testid="basket-total">
+                {t('basketTotal')}: {totalDurationMin} min · ${totalPrice.toFixed(2)}
+              </p>
+            </fieldset>
+          )}
 
           {loading ? (
             <p className="text-muted-foreground">{t('loadingSlots')}</p>

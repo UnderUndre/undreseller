@@ -204,12 +204,13 @@ POST /api/booking {..., customerNotes?} (≤2000 chars; 007 phase 1→2 DB-ги�
 | Multitenant | 011 | ❄️ frozen | design.md: tenant-per-database (A) / shared DB (B) |
 | Deposit flow | 012 | ✅ | paymentMode DEPOSIT + DepositPayment (Stripe Elements) |
 | Local AI Triage (LM Studio) | 013 | ✅ | async Payload Job + PII sanitizer + LM Studio fetch + deterministic delegation |
+| Composite Booking (cart-in-slot) | 014 | ✅ | `items[]` слот-контейнер (Option 0): `compositeService.deriveComposite` (PURE), `Product.addOn`, `items_json` snapshot ×2, money-канон `orders.amount` = списываемая (0/Σdeposit/Σprice) + `totalPriceMinor` производная, composite grid через `computeSlots` override, OTP-гидратация из `items_json` + drift → intent dead |
 | Stars / NOWPayments | — | roadmap | PaymentGateway-интерфейс готов (`stripeGateway.ts`), адаптеры не писаны |
 
 ## 6. Governance
 
 - Constitution: `.specify/memory/constitution.md` v1.10.1 (app-repo adaptation: pnpm/vitest/playwright; clai-helpers/publish gates N/A).
-- Quality gates: `pnpm validate` · `pnpm lint` · `pnpm test:int` (212) · `pnpm build` · `pnpm generate:types` drift-free · `pnpm audit` 0 H/C · log-hygiene (PCI DSS Req 10).
+- Quality gates: `pnpm validate` · `pnpm lint` · `pnpm test:int` (232) · `pnpm build` · `pnpm generate:types` drift-free · `pnpm audit` 0 H/C · log-hygiene (PCI DSS Req 10).
 - Deploy: Docker image из тегированных коммитов на VPS заказчика; app ≤500 MB RAM (NFR-103); миграции — `payload migrate`; single-instance (`REPLICA_COUNT=1` enforced на буте).
 - Deployment runbook (bootstrap владельца до ingress): §4.1.
 
@@ -230,4 +231,5 @@ POST /api/booking {..., customerNotes?} (≤2000 chars; 007 phase 1→2 DB-ги�
 | 011-multitenant | ❄️ frozen | design.md (подход A/B), кода нет |
 | 012-deposit-telegram | ✅ implemented | deposit flow, DepositPayment, bot token env |
 | 013-local-ai-triage | ✅ implemented | `src/lib/ai/*`, `src/jobs/aiTriage.ts`, `tests/eval/` (LM Studio на GPU хоста) |
+| 014-composite-booking | ✅ implemented | `src/lib/booking/compositeService.ts` (PURE derive) + bookingService/intentService/resolver/route deltas + `Product.addOn` + миграция `20261118_000002_composite_booking` (twin-column `_products_v.version_add_on`) + itemized staffCard/email/confirmation + `tests/int/composite-booking.int.spec.ts` (232/232 int) |
 | Легаси 001–007 (v1.x) | archived (`../undreseller-legacy`) | port-map: `specs/001-.../legacy-port-map.md` |

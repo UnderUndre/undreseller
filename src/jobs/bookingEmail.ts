@@ -38,17 +38,25 @@ export const bookingEmailTask = {
     const db: any = payload.db
     const row = await db.execute({
       drizzle: db.drizzle,
-      sql: sql`SELECT sr.start_time, p.title AS service_title
+      sql: sql`SELECT sr.start_time, sr.items_json, p.title AS service_title
                FROM slot_reservations sr
-               LEFT JOIN products p ON p.id = sr.item_id
+               LEFT JOIN products p ON p.id::text = sr.item_id
                WHERE sr.id = ${data.reservationId} LIMIT 1`,
     })
-    const booking = (row.rows?.[0] ?? {}) as { start_time?: string; service_title?: string | null }
+    const booking = (row.rows?.[0] ?? {}) as {
+      start_time?: string
+      service_title?: string | null
+      items_json?: Array<{ productId: string; title: string; durationMin: number; priceInUSD: number; depositAmount: number; addOn: boolean }> | null
+    }
     const message = confirmationEmail({
       customerName: data.customerName,
       bookingId: data.reservationId,
       startTime: booking.start_time ?? new Date().toISOString(),
       serviceName: booking.service_title ?? undefined,
+      // 014 FR-1405 (fix AG-F7.3): itemized letter from the SNAPSHOT; legacy
+      // rows (items_json NULL) keep the single-item body via the JOINed title.
+      // The JOIN is type-safe: products.id is serial, sr.item_id is varchar.
+      items: Array.isArray(booking.items_json) ? booking.items_json : null,
       cancelToken: data.cancelToken,
       rescheduleToken: data.rescheduleToken,
     })

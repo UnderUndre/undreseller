@@ -17,14 +17,35 @@ export function confirmationEmail(params: {
   serviceName?: string
   cancelToken: string
   rescheduleToken: string
+  /** Composite snapshot (spec 014 FR-1405) — primary-first; absent for legacy rows. */
+  items?: Array<{ title: string; durationMin: number; priceInUSD: number; addOn?: boolean }> | null
 }): { subject: string; html: string } {
   const root = baseUrl()
   const cancelUrl = `${root}/booking/cancel?bookingId=${params.bookingId}&token=${params.cancelToken}`
   const rescheduleUrl = `${root}/booking/reschedule?bookingId=${params.bookingId}&token=${params.rescheduleToken}`
+  // 014 (fix AG-F6.2): itemized list from the SNAPSHOT — prices fixed at booking
+  // time (never re-read from live products). Legacy single-item rows keep the
+  // old body.
+  const items = params.items ?? []
+  const total = items.reduce((sum, i) => sum + (i.priceInUSD ?? 0), 0)
+  const itemsHtml =
+    items.length > 1
+      ? `<p>Your appointment includes:</p>
+<ul>${items
+          .map(
+            (i) =>
+              `<li>${escapeHtml(i.title)} — ${i.durationMin} min · $${(i.priceInUSD ?? 0).toFixed(2)}${
+                i.addOn ? ' (add-on)' : ''
+              }</li>`,
+          )
+          .join('')}</ul>
+<p><strong>Total: $${total.toFixed(2)}</strong></p>`
+      : ''
   return {
     subject: `Booking confirmed${params.serviceName ? ` — ${params.serviceName}` : ''}`,
     html: `<p>Hi ${escapeHtml(params.customerName)}, your appointment is confirmed.</p>
 <p>When: ${escapeHtml(new Date(params.startTime).toLocaleString())}</p>
+${itemsHtml}
 <p>Need to change plans? You can
 <a href="${cancelUrl}">cancel</a> or
 <a href="${rescheduleUrl}">reschedule</a> your booking.</p>`,

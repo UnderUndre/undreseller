@@ -40,6 +40,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       customerNotes: d.customerNotes ?? null,
       aiTriageStatus: d.aiTriageStatus ?? 'skipped',
       aiTriage: d.aiTriageJson ?? null,
+      // 014 FR-1405 (fix AG-F6): additive itemized basket; null = legacy
+      // single-item row (the client UI renders from the service title).
+      items: d.itemsJson ?? null,
     })),
   })
 }

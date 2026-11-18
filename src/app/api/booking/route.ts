@@ -5,6 +5,7 @@ import configPromise from '@payload-config'
 
 import { BookingError, createBooking } from '@/lib/booking/bookingService'
 import { hashToken } from '@/lib/booking/tokens'
+import { compositeIdempotencySeed, deriveComposite } from '@/lib/booking/compositeService'
 import { resolveAvailability } from '@/lib/availability/resolver'
 import {
   createIntent,
@@ -57,6 +58,34 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const productId = typeof body.productId === 'string' ? body.productId : null
+  // 014 FR-1402 (composite intake): `items` is an array of product ids (1..6).
+  // Mutual exclusion (fix AG-F5/contract §1): `productId` AND `items` together
+  // → 400 — one canonical entry point per request.
+  const rawItems = body.items
+  const items =
+    rawItems === undefined || rawItems === null
+      ? null
+      : Array.isArray(rawItems) && rawItems.every((v) => typeof v === 'string' && v.length > 0)
+        ? (rawItems as string[])
+        : null
+  if (rawItems !== undefined && rawItems !== null && items === null) {
+    return NextResponse.json(
+      { error: 'VALIDATION_FAILED', message: 'items must be an array of product ids' },
+      { status: 400 },
+    )
+  }
+  if (items !== null && (items.length === 0 || items.length > 6)) {
+    return NextResponse.json(
+      { error: 'VALIDATION_FAILED', message: 'items must contain 1..6 product ids' },
+      { status: 400 },
+    )
+  }
+  if (productId && items !== null) {
+    return NextResponse.json(
+      { error: 'VALIDATION_FAILED', message: 'pass either productId or items, not both' },
+      { status: 400 },
+    )
+  }
   const start = typeof body.start === 'string' ? body.start : null
   const customerName = typeof body.customerName === 'string' ? body.customerName.trim() : ''
   const customerPhone = typeof body.customerPhone === 'string' ? body.customerPhone.trim() : ''
@@ -71,7 +100,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   void body.idempotencyKey
   // Spec 003 FR-301 (review F7) still holds: a client-supplied paymentMode is
   // ignored by design. In phase 2 EVERY param comes from the DB intent (F5) —
-  // nothing in this body can influence the booked slot or customer data.
+  // nothing in this body can influence the booked slot or customer data
+  // (spec 014: the composite basket hydrates from `booking_intents.items_json`).
 
   // ---- Phase 2: intentId + otp -------------------------------------------
   if (intentId) {
@@ -94,11 +124,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // ---- Phase 1: no intentId ----------------------------------------------
-  if (!productId || !start || !customerName || !customerPhone || !customerEmail) {
+  if ((!productId && items === null) || !start || !customerName || !customerPhone || !customerEmail) {
     return NextResponse.json(
       {
         error: 'VALIDATION_FAILED',
-        required: ['productId', 'start', 'customerName', 'customerPhone', 'customerEmail'],
+        required: ['productId | items', 'start', 'customerName', 'customerPhone', 'customerEmail'],
       },
       { status: 400 },
     )
@@ -128,13 +158,62 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
       // 008 T821 (SEC-A-08): Grid validation on the trust-cookie fast path too!
       // Arbitrary/unverified slots or non-active resources cannot bypass the grid.
+      // 014 FR-1403 (fix AG-F3.1): the composite basket is derived SERVER-SIDE
+      // and validated against the container grid (Σ duration + max buffers).
       const startIso = new Date(start).toISOString()
       const date = startIso.slice(0, 10)
+      const bookingItemIds = items ?? [productId as string]
+
+      let compositeOverride: { durationMin: number; bufferBeforeMin: number; bufferAfterMin: number } | undefined
+      if (items !== null) {
+        const docs = await payload.find({
+          collection: 'products',
+          where: { id: { in: bookingItemIds } },
+          limit: 6,
+          overrideAccess: true,
+          depth: 0,
+        })
+        const byId = new Map<string, Record<string, unknown>>(
+          docs.docs.map((d) => [String(d.id), d as unknown as Record<string, unknown>]),
+        )
+        const rows = bookingItemIds.map((id) => {
+          const d = (byId.get(String(id)) ?? {}) as Record<string, unknown>
+          return {
+            id: String(id),
+            title: (d.title as string) ?? '',
+            durationMin: (d.durationMin as number) ?? 0,
+            priceInUSD: (d.priceInUSD as number) ?? 0,
+            depositAmount: (d.depositAmount as number) ?? 0,
+            addOn: d.addOn === true,
+            paymentMode: (d.paymentMode as string) ?? 'NONE',
+            bufferBeforeMin: (d.bufferBeforeMin as number) ?? 0,
+            bufferAfterMin: (d.bufferAfterMin as number) ?? 0,
+            outCallEnabled: d.outCallEnabled === true,
+          }
+        })
+        // Legacy parity (fix AG-F5.2): a single-item basket keeps the old codes.
+        if (bookingItemIds.length === 1) {
+          const doc = byId.get(String(bookingItemIds[0]))
+          if (!doc) return NextResponse.json({ error: 'SERVICE_NOT_FOUND' }, { status: 404 })
+          if (doc.bookable !== true) return NextResponse.json({ error: 'SERVICE_NOT_BOOKABLE' }, { status: 422 })
+        }
+        const derived = deriveComposite(bookingItemIds, rows)
+        if (!derived.ok) {
+          return NextResponse.json({ error: derived.code, message: derived.message }, { status: 422 })
+        }
+        compositeOverride = {
+          durationMin: derived.composite.totalDurationMin,
+          bufferBeforeMin: derived.composite.bufferBeforeMin,
+          bufferAfterMin: derived.composite.bufferAfterMin,
+        }
+      }
+
       const grid = await resolveAvailability(payload, {
-        productId,
+        productId: compositeOverride ? bookingItemIds[0] : (productId as string),
         date,
         resourceId: resourceId ? String(resourceId) : undefined,
         now: new Date(),
+        composite: compositeOverride,
       })
       if (!grid.ok) {
         if (grid.code === 'SERVICE_NOT_FOUND') return NextResponse.json({ error: 'SERVICE_NOT_FOUND' }, { status: 404 })
@@ -148,10 +227,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       // 008 T812 (F-BE-02): deterministic SERVER-derived idempotency key —
       // a repeat of the same (email, service, slot) is an idempotent re-book,
-      // anything else is a fresh booking.
-      const serverIdempotencyKey = hashToken(`booking-idem:${customerEmail}:${productId}:${startIso}`)
+      // anything else is a fresh booking. 014 (fix AG-F7.2): the basket seed is
+      // the sorted id list WITH duplicates preserved.
+      const serverIdempotencyKey = hashToken(
+        `booking-idem:${customerEmail}:${compositeIdempotencySeed(bookingItemIds)}:${startIso}`,
+      )
       const result = await createBooking(payload, {
-        productId,
+        productId: bookingItemIds[0],
+        items: items ?? undefined,
         resourceId: grid.resourceId,
         start,
         customerName,
@@ -173,7 +256,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // live intents per email live inside the service).
   try {
     const intent = await createIntent(payload, {
-      productId,
+      productId: items !== null ? items[0] : (productId as string),
+      items: items ?? undefined,
       start,
       customerName,
       customerPhone,
@@ -208,6 +292,12 @@ function bookingResponse(
       rescheduleToken: result.rescheduleToken,
       status: result.status,
       scheduleVersion: result.scheduleVersion,
+      // 014 FR-1402/1404 (additive, fix AG-F2): itemized basket + container
+      // duration + the FULL basket cost as a derived value — `orders.amount`
+      // itself stays the 003/012 chargeable canon and is not re-exposed here.
+      ...(result.items ? { items: result.items, totalDurationMin: result.totalDurationMin } : {}),
+      ...(result.totalPriceInUSD !== undefined ? { totalPriceInUSD: result.totalPriceInUSD } : {}),
+      ...(result.totalDepositInUSD !== undefined ? { totalDepositInUSD: result.totalDepositInUSD } : {}),
       payment: {
         mode: result.paymentMode,
         paymentIntentId: result.paymentIntentId ?? null,

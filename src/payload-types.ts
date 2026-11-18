@@ -367,7 +367,11 @@ export interface Product {
    */
   bookable?: boolean | null;
   /**
-   * Service duration in minutes (required when bookable)
+   * Add-on service (spec 014 FR-1401): can join a composite basket; durationMin may be 0 (included in the primary slot)
+   */
+  addOn?: boolean | null;
+  /**
+   * Service duration in minutes (required when bookable; 0 allowed for add-ons)
    */
   durationMin?: number | null;
   bufferBeforeMin?: number | null;
@@ -1178,6 +1182,18 @@ export interface SlotReservation {
     | number
     | boolean
     | null;
+  /**
+   * Composite basket snapshot at booking time [{productId,title,durationMin,priceInUSD,depositAmount,addOn}] (spec 014). NULL = legacy single-item row (read via itemId).
+   */
+  itemsJson?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -1449,6 +1465,18 @@ export interface BookingIntent {
    */
   attempts?: number | null;
   status: 'pending' | 'consumed' | 'dead' | 'expired';
+  /**
+   * Composite basket ids for phase-2 hydration (spec 014, canon 007 F5)
+   */
+  itemsJson?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -2023,6 +2051,7 @@ export interface SlotReservationsSelect<T extends boolean = true> {
   customerNotes?: T;
   aiTriageStatus?: T;
   aiTriageJson?: T;
+  itemsJson?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -2193,6 +2222,7 @@ export interface BookingIntentsSelect<T extends boolean = true> {
   expiresAt?: T;
   attempts?: T;
   status?: T;
+  itemsJson?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -2435,6 +2465,7 @@ export interface ProductsSelect<T extends boolean = true> {
   priceInUSD?: T;
   relatedProducts?: T;
   bookable?: T;
+  addOn?: T;
   durationMin?: T;
   bufferBeforeMin?: T;
   bufferAfterMin?: T;
