@@ -2,7 +2,7 @@
 
 **Slug:** `015-e2e-regression-suite`
 **Репозиторий:** `UnderUndre/undreseller` · **База:** 001–014 (`specs/main/architecture.md` v3.1.0)
-**Статус:** **DRAFT v1.0 (2026-11-19; specify-стадия; ready for `/speckit.clarify`)**
+**Статус:** **CLARIFIED — v1.1 (2026-11-19; 4 open questions закрыты решениями владельца по рекомендациям; ready for `/speckit.plan`)**
 **Триггер / Signal (L1):** 014-composite-booking IMPLEMENTED с **нулём браузерного e2e** — корректность корзины проверена только int-тестами и разовым ручным GUI QA (не воспроизводимым в CI). Регрессионная база NFR-1401 не имеет UI-слоя для фич 002–014.
 **Source of truth по бизнесу:** бизнес-план v2.7.2 unchanged — спека укрепляет качество уже проданного канона §2.2 (витрина услуг → корзина → бронь → холд/оплата), коммерческая дельта = 0. **Business plan: unchanged.**
 **Design references:**
@@ -100,7 +100,7 @@ Cancel: GET-ссылка отменяет бронь (статус RELEASED, ч�
 ### Functional Requirements
 
 * **FR-1501 (Composite journey e2e):** браузерный сценарий US1 от чекбоксов до itemized confirmation; локаторы — только `data-testid` канон (`slot-grid`, `addon-*`, `basket-total`, `slot-option`, `booking-otp-*`, `booking-items`).
-* **FR-1502 (Money surfaces e2e):** US2 — DepositPayment Σ-агрегаты + absence-кейс; gateway-сеам для PI фиксируется в clarify (env-гейт fake-gateway / Stripe test-keys) — **без сетевых вызовов к реальному Stripe**.
+* **FR-1502 (Money surfaces e2e):** US2 — DepositPayment Σ-агрегаты + absence-кейс; **gateway-сеам РЕШЁН (clarify 2026-11-19): env-гейт `E2E_GATEWAY=fake`** — при выставленной переменной `stripeGateway`-сеам возвращает детерминированный fake-PI (тот же паттерн, что `input.gateway` в int-тестах); **без сетевых вызовов к реальному Stripe** на любом пути e2e.
 * **FR-1503 (Token pages e2e):** US3 — cancel/reschedule/acknowledge GET-страницы, one-time семантика + composite-reschedule контейнерной сеткой.
 * **FR-1504 (Fast path e2e):** US4 — trust-cookie повторная бронь без OTP.
 * **FR-1505 (Waitlist/Admin/i18n e2e):** US5–US7 в P2-тире, опциональны к MVP-гейту спеки.
@@ -140,18 +140,22 @@ tests/e2e/trust-fast-path.e2e.spec.ts             # NEW: US4 trust-cookie пов
 tests/e2e/waitlist-admin-i18n.e2e.spec.ts         # NEW: US5–US7 (P2, опционально к MVP)
 tests/e2e/booking.e2e.spec.ts                     # UNCHANGED (канон не трогается)
 tests/helpers/otpFromDb.ts                        # UNCHANGED (переиспользуется)
-src/lib/payments/*                                # MOD?: только если clarify выберет env-гейт fake-gateway
+src/lib/payments/*                                # MOD: env-гейт E2E_GATEWAY=fake в stripeGateway-сеаме (РЕШЕНО clarify Q1)
 ```
 
 ---
 
 ## 7. Open Questions / Для этапа `/speckit.clarify`
 
-1. **Gateway-сеам для money-e2e (US2):** как создать PI без сети? → (A, рекомендация) env-гейт `E2E_GATEWAY=fake` в `stripeGateway`-сеаме (тот же паттерн, что `input.gateway` в int) / (B) Stripe test-keys в e2e-env / (C) не бронировать prepaid через UI вовсе, DepositPayment проверять через подсунутый clientSecret на legacy-брони.
-2. **Целевая БД e2e:** dev-БД (как сейчас, уникальные бакеты) или выделенная `undreseller_e2e` через `DATABASE_URL` override в webServer-command? → рекомендация: остаться на dev-БД (канон существующих e2e), выделенную БД — по L1-сигналу.
-3. **CI-гейт:** `pnpm test` уже гоняет e2e — оставить как есть или добавить отдельный job с кэшем браузеров? → уточнить при clarify.
-4. **Visual regression:** подтверждить табу (вне скоупа) или заложить в Wave-2.
+1. **Gateway-сеам для money-e2e (US2):** как создать PI без сети? → **A (РЕШЕНО 2026-11-19): env-гейт `E2E_GATEWAY=fake`** в `stripeGateway`-сеаме (детерминированный fake-PI + тестовый clientSecret; тот же паттерн, что `input.gateway` в int-тестах).
+2. **Целевая БД e2e:** dev-БД или выделенная `undreseller_e2e`? → **A (РЕШЕНО 2026-11-19): dev-БД + уникальные слаги/hour-бакеты** (канон существующих e2e, workers CI=1); выделенная БД — по L1-сигналу.
+3. **CI-гейт:** как запускать e2e в CI? → **A (РЕШЕНО 2026-11-19): оставить `pnpm test` (int+e2e) как есть**; отдельный job — по мере роста прогонa.
+4. **Visual regression:** в скоуп? → **A (РЕШЕНО 2026-11-19): табу, вне скоупа** — html-репорт + trace достаточны.
 
 ## Clarifications
 
-_(пусто — ждёт `/speckit.clarify`)_
+### Session 2026-11-19
+- Q: Gateway-сеам для money-e2e → A: `E2E_GATEWAY=fake` — env-гейт в payments-сеаме, fake-PI детерминирован, 0 сетевых вызовов (NFR-1505 усилен: гейт доказывается отсутствием ключей + всегда-фейковым путём в e2e-режиме).
+- Q: БД e2e → A: dev-БД + уникальные слаги/hour-бакеты на прогон (канон существующих e2e; TRUNCATE запрещён Via Negativa).
+- Q: CI → A: `pnpm test` (int+e2e) без выделенного job; пересмотреть при росте прогона.
+- Q: Visual regression → A: вне скоупа (табу §1.3 подтверждено владельцем).
