@@ -2,7 +2,7 @@
 
 **Slug:** `015-e2e-regression-suite`
 **Репозиторий:** `UnderUndre/undreseller` · **База:** 001–014 (`specs/main/architecture.md` v3.1.0)
-**Статус:** **CLARIFIED — v1.1 (2026-11-19; 4 open questions закрыты решениями владельца по рекомендациям; ready for `/speckit.plan`)**
+**Статус:** **REVIEWED — v1.2 (2026-11-19; внешнее ревью antigravity AG-F1..F7 исправлено; v1.1 clarify; ready for implement per owner override)**
 **Триггер / Signal (L1):** 014-composite-booking IMPLEMENTED с **нулём браузерного e2e** — корректность корзины проверена только int-тестами и разовым ручным GUI QA (не воспроизводимым в CI). Регрессионная база NFR-1401 не имеет UI-слоя для фич 002–014.
 **Source of truth по бизнесу:** бизнес-план v2.7.2 unchanged — спека укрепляет качество уже проданного канона §2.2 (витрина услуг → корзина → бронь → холд/оплата), коммерческая дельта = 0. **Business plan: unchanged.**
 **Design references:**
@@ -105,7 +105,13 @@ Cancel: GET-ссылка отменяет бронь (статус RELEASED, ч�
 * **FR-1504 (Fast path e2e):** US4 — trust-cookie повторная бронь без OTP.
 * **FR-1505 (Waitlist/Admin/i18n e2e):** US5–US7 в P2-тире, опциональны к MVP-гейту спеки.
 * **FR-1506 (Fixtures канон):** `tests/helpers/seed-booking.ts` — сеяние услуг (уникальные slug, addOn/режимы/депозиты) + hour-бакеты через Payload Local API; OTP — только `getOtpCodeFromDb`.
-* **FR-1507 (Config fix):** `baseURL: http://localhost:3000` в `playwright.config.ts`; прочие правки — additive.
+* **FR-1507 (Config fix):** `baseURL: http://localhost:3000` в `playwright.config.ts`; **`webServer.env` пробрасывает `E2E_GATEWAY=fake`** в процесс Next (иначе reuse-сервер вернёт 502 на DEPOSIT — fix AG-F1.2); прочие правки — additive.
+* **FR-1508 (Prerequisite UI fixes, 014-хвост — fix AG-F2/F4/F5):** браузерные баги, блокирующие e2e, чинятся в Phase 1 этой спеки:
+  * `SlotGrid.loadSlots` — `serviceId` добавляется в `items` ОДИН раз (сейчас дублируется per-addon → 135-мин грид при 2 addOn, fix AG-F2.1);
+  * confirmation-страница ищет `slot-reservations` по `id` из URL (SlotGrid редиректит с `reservationId`), затем order по `slot.order` + сверка `accessToken` (сейчас ищет orders по reservationId — 404 при расхождении последовательностей, fix AG-F2.2); `CancelBookingButton` получает `reservationId = slot.id`;
+  * `/book` витрина исключает голые addOn (`addOn not_equals true` — иначе seed-addOn ломает существующий `booking.e2e`), `/book/[slug]` грузит primary отдельным slug-запросом (limit:50 списка больше не решает 404);
+  * `ReschedulePage` читает `items_json` и прокидывает состав в `ReschedulePicker` → `&items=...` в availability (иначе пикер рисует 60-мин грид для 75-мин брони, fix AG-F5).
+* **FR-1509 (Rate-limit isolation, fix AG-F3):** каждый e2e `BrowserContext` шлёт уникальный заголовок `x-forwarded-for: 203.0.113.<n>` (RFC 5737 TEST-NET-3 — не loopback/internal для rateLimiter) — изоляция бакетов без изменений прод-логики `rateLimiter.ts`; иначе сьют сам себя забанит (`RL_IP_MAX=10` интентов / 10 мин на общий 127.0.0.1).
 
 ### Non-Functional Requirements
 
@@ -114,7 +120,7 @@ Cancel: GET-ссылка отменяет бронь (статус RELEASED, ч�
 * **NFR-1503 (Determinism):** уникальные hour-бакеты/слаги на прогон (канон prepaid-тестов); retries CI×3 (уже); trace on-first-retry (уже).
 * **NFR-1504 (Speed Budget):** полный e2e-прогон ≤ 10 мин локально (холодный webServer-бут не считается).
 * **NFR-1505 (No External Calls):** 0 сетевых обращений к реальному Stripe/Resend на любом пути e2e (верифицируется отсутствием их ключей в e2e-режиме).
-* **NFR-1506 (Locator Hygiene):** никаких guessed-селекторов — только testid-канон и snapshot-факты; таймаут-бюджеты по умолчанию Playwright.
+* **NFR-1506 (Locator Hygiene):** никаких guessed-селекторов — только `data-testid`-канон; **недостающие testid добавляются в `ConfirmCancelForm`, `ReschedulePicker`, `AcknowledgeClient`, `WaitlistJoinForm`** (сейчас 0 testid — fix AG-F6), `booking-items` список на confirmation рендерится при любом составе (≥1 позиция); таймаут-бюджеты по умолчанию Playwright.
 
 ---
 
@@ -131,16 +137,25 @@ Cancel: GET-ссылка отменяет бронь (статус RELEASED, ч�
 ## 6. Предполагаемая карта файлов
 
 ```text
-playwright.config.ts                              # MOD: baseURL (+ опц. env-гейт для gateway-сеама)
-tests/helpers/seed-booking.ts                     # NEW: fixture-канон сеяния услуг/ресурсов/часов
+playwright.config.ts                              # MOD: baseURL + webServer.env E2E_GATEWAY=fake (fix AG-F1.2)
+tests/helpers/seed-booking.ts                     # NEW: fixtures — уникальные ДАТЫ (не hour-бакеты), XFF TEST-NET-3 per context,
+                                                  #      weekly-hours 1..7, cleanup() по ID (fix AG-F3/F4)
+src/components/booking/SlotGrid.tsx               # MOD: fix дублирования serviceId в items-цикле (fix AG-F2.1)
+src/app/[locale]/book/confirmation/[id]/page.tsx  # MOD: lookup slot-reservations по id → order по slot.order (fix AG-F2.2)
+src/app/[locale]/book/page.tsx                    # MOD: витрина без голых addOn (fix AG-F4.1)
+src/app/[locale]/book/[slug]/page.tsx             # MOD: primary по slug-запросу (fix AG-F4.3)
+src/app/[locale]/booking/reschedule/page.tsx      # MOD: items_json → ReschedulePicker (fix AG-F5)
+src/components/booking/ReschedulePicker.tsx       # MOD: &items=... в availability + testid (fix AG-F5/F6)
+src/components/booking/DepositPayment.tsx         # MOD: fake-ветка для pi_e2e_ clientSecret без loadStripe (fix AG-F1.1)
+src/components/booking/{ConfirmCancelForm,AcknowledgeClient,WaitlistJoinForm}.tsx  # MOD: +testid (fix AG-F6)
+src/lib/payments/stripeGateway.ts                 # MOD: env-гейт E2E_GATEWAY=fake (РЕШЕНО clarify Q1, fix AG-F1)
 tests/e2e/composite-booking.e2e.spec.ts           # NEW: US1 composite journey + кэш-изоляция + 409 race (P0)
-tests/e2e/money-surfaces.e2e.spec.ts              # NEW: US2 DepositPayment Σ + absence (P0; зависит от gateway-сеама)
+tests/e2e/money-surfaces.e2e.spec.ts              # NEW: US2 DepositPayment Σ + absence (P0)
 tests/e2e/token-pages.e2e.spec.ts                 # NEW: US3 cancel/reschedule/acknowledge (+composite reschedule) (P1)
 tests/e2e/trust-fast-path.e2e.spec.ts             # NEW: US4 trust-cookie повторная бронь (P1)
 tests/e2e/waitlist-admin-i18n.e2e.spec.ts         # NEW: US5–US7 (P2, опционально к MVP)
 tests/e2e/booking.e2e.spec.ts                     # UNCHANGED (канон не трогается)
 tests/helpers/otpFromDb.ts                        # UNCHANGED (переиспользуется)
-src/lib/payments/*                                # MOD: env-гейт E2E_GATEWAY=fake в stripeGateway-сеаме (РЕШЕНО clarify Q1)
 ```
 
 ---
@@ -159,3 +174,12 @@ src/lib/payments/*                                # MOD: env-гейт E2E_GATEWA
 - Q: БД e2e → A: dev-БД + уникальные слаги/hour-бакеты на прогон (канон существующих e2e; TRUNCATE запрещён Via Negativa).
 - Q: CI → A: `pnpm test` (int+e2e) без выделенного job; пересмотреть при росте прогона.
 - Q: Visual regression → A: вне скоупа (табу §1.3 подтверждено владельцем).
+
+### Review fixes 2026-11-19 (antigravity AG-F1..F7, все 7 верифицированы TRUE)
+- **AG-F1 (CRITICAL):** fake-`clientSecret` = `pi_e2e_<id>_secret_e2e` (формат Stripe); `DepositPayment` рендерит fake-ветку (section/form/pay-button, `depositNotice`/`remainingNotice`) **без `loadStripe()`/`<Elements>`** — 0 ключей, 0 запросов к Stripe CDN; `E2E_GATEWAY=fake` пробрасывается через `webServer.env`.
+- **AG-F2 (CRITICAL):** fix `SlotGrid` items-дублирования + confirmation lookup через `slot-reservations.id` (sequence-luck 404 закрыт).
+- **AG-F3 (HIGH):** rate-limit изоляция через `x-forwarded-for: 203.0.113.<n>` per BrowserContext (TEST-NET-3, не loopback) — без правок прод-`rateLimiter.ts`.
+- **AG-F4 (HIGH):** seed выдаёт уникальные **даты** (today+2+N), не hour-бакеты (браузерный UI гранулярен по дате; nowMin не активен в любое время суток); weekly-hours на все 7 дней; `/book` без голых addOn; `[slug]` primary по slug-запросу; `cleanup()` по ID в afterAll.
+- **AG-F5 (HIGH):** reschedule page/picker прокидывают `items_json` состав → контейнерный грид в браузере.
+- **AG-F6 (MEDIUM):** testid добавляются в 4 компонента; `booking-items` при любом составе.
+- **AG-F7 (LOW):** `qa/waiver.md` (Principle XII: test-only фича → RTM-lite) пишется в T1540.

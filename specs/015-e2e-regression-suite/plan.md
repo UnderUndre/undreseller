@@ -40,17 +40,18 @@ Tiered Playwright-покрытие UI-слоя 002–014 поверх сущес
 
 ## Key Design Decisions
 
-- **Gateway-сеам (clarify Q1):** `E2E_GATEWAY=fake` читается в `stripeGateway.ts` на экспорте: fake `createPaymentIntent` → `{ id: 'pi_e2e_<bookingId>', clientSecret: 'cs_test_e2e' }`, fake `createRefund`, и **`retrieveClientSecret` возвращает fake-секрет для refs с префиксом `pi_e2e_`** (иначе confirmation-страница не отрендерит `DepositPayment`). Prod-путь не задет: без переменной поведение байт-в-байт прежнее.
-- **Детерминизм (clarify Q2):** уникальные slug (`svc-e2e-<ts>-<rand>`) + hour-бакеты (канон int-тестов) на dev-БД; seed ТОЛЬКО через Payload Local API (`overrideAccess: true`).
+- **Gateway-сеам (clarify Q1, fix AG-F1):** `E2E_GATEWAY=fake` читается в `stripeGateway.ts` на экспорте: fake `createPaymentIntent` → `{ id: 'pi_e2e_<bookingId>', clientSecret: 'pi_e2e_<bookingId>_secret_e2e' }` (**Stripe-формат clientSecret**), fake `createRefund`, `retrieveClientSecret` возвращает fake-секрет для `pi_e2e_`-refs. **`DepositPayment` получает fake-ветку** (`clientSecret.startsWith('pi_e2e_')` → рендер section/form/pay-button без `loadStripe()`/`<Elements>` — 0 ключей, 0 запросов к Stripe CDN; иначе компонент возвращает `null` без publishable key или крашится на не-Stripe формате). `E2E_GATEWAY=fake` пробрасывается через `webServer.env` в `playwright.config.ts`. Prod-путь не задет: без переменной поведение байт-в-байт прежнее.
+- **Детерминизм (clarify Q2, fix AG-F3/F4):** уникальные slug (`svc-e2e-<ts>-<rand>`) через Payload Local API; **уникальные будущие ДАТЫ per test (`today + 2 + offset`), не hour-бакеты** — браузерный UI гранулярен по дате, nowMin не активен в любое время суток, слоты тестов не пересекаются на общем дефолтном ресурсе; weekly-hours 09:00–18:00 на все 7 дней; **rate-limit изоляция через `x-forwarded-for: 203.0.113.<n>` per BrowserContext** (RFC 5737 TEST-NET-3 — не loopback/internal, прод-`rateLimiter.ts` не трогается — иначе сьют сам себя забанит: RL_IP_MAX=10 интентов/10 мин на общий 127.0.0.1); `cleanup()` — точечный delete по ID в afterAll.
+- **Prerequisite UI fixes (fix AG-F2/F4/F5):** баги живого 014-UI, блокирующие сьют, чинятся в Phase 1 (T1504): SlotGrid items-дублирование, confirmation lookup по `slot-reservations.id` (sequence-luck 404), `/book` без голых addOn, `[slug]` primary по slug-запросу; reschedule-прокидка `items_json` в пикер — в T1520.
 - **OTP:** исключительно `getOtpCodeFromDb(payload, intentId)` — intentId берётся из состояния UI/ответа 202; никаких 6-значных регекспов на сетевом слое.
-- **Локаторы:** `data-testid` из DOM-фактов; никаких guessed-селекторов (урок GUI QA: кириллические role-локаторы чекбоксов — через testid + programmatic click при необходимости).
+- **Локаторы:** `data-testid` из DOM-фактов; недостающие testid добавляются в `ConfirmCancelForm`/`ReschedulePicker`/`AcknowledgeClient`/`WaitlistJoinForm` (fix AG-F6); никаких guessed-селекторов.
 - **Граница с int:** браузерные тесты не перепроверяют валидации домена — только интеграцию UI→API→FSM→БД→surfaces (Via Negativa).
 
 ## Implementation Phases
 
-Phase 1 — Infra (1d)
+Phase 1 — Infra & prerequisite fixes (1.5d)
 
-- env-гейт fake-gateway (T1501), baseURL (T1502), `seed-booking.ts` fixture (T1503)
+- env-гейт fake-gateway + DepositPayment fake-ветка (T1501), baseURL + webServer.env (T1502), `seed-booking.ts` fixtures — уникальные даты/XFF/cleanup (T1503), **prerequisite UI fixes (T1504): SlotGrid items-дублирование, confirmation lookup, `/book` addOn-фильтр, `[slug]` slug-запрос**
 
 Phase 2 — P0 tests (2.5d)
 
@@ -74,9 +75,11 @@ Phase 5 — Verify & Docs (1d)
 
 | Риск | Вероятность | Митигация |
 | --- | --- | --- |
-| Флейк из-за общей dev-БД (чужие брони в бакете) | Средняя | Уникальные hour-бакеты на прогон + retries CI×3 + trace on-first-retry |
-| Зависание dev-бута в webServer (наблюдается на Windows) | Низкая/Средняя | reuseExistingServer (уже) + pre-launch health-check curl в helper |
-| Fake-gateway протечёт в prod | Низкая | Гейт только по env-переменной; тест «без E2E_GATEWAY путь прежний» в int? (нет — чисто e2e-инфра; проверка код-ревью) |
+| Self-DoS rate-limiter на общем 127.0.0.1 (429 после 5-й брони) | Высокая без митигации | Уникальный `x-forwarded-for` TEST-NET-3 per BrowserContext (fix AG-F3) — прод-логика не тронута |
+| Флейк из-за общей dev-БД | Средняя | Уникальные будущие ДАТЫ per test + `cleanup()` по ID + retries CI×3 + trace on-first-retry |
+| Вечерние прогоны: nowMin отрезает слоты сегодняшней даты | Средняя | Уникальные будущие даты (не «сегодня») — nowMin не активен (fix AG-F4.2) |
+| Зависание dev-бута в webServer (наблюдается на Windows) | Низкая/Средняя | reuseExistingServer (уже) + pre-launch health-check в helper |
+| Fake-gateway протечёт в prod | Низкая | Гейт только по env-переменной; код-ревью T1501 |
 | Turbopack HMR-зомби (урок 014 GUI QA) | Средняя | В README e2e-секции: `netstat+taskkill //T //F` при EADDRINUSE; webServer reuse |
 
 ## Next
