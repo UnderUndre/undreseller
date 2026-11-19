@@ -16,13 +16,16 @@ export default defineConfig({
   /* Retry on CI only */
   retries: process.env.CI ? 3 : 1,
   /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  // 015 (NFR-1503, fix AG-F4): workers are pinned to 1 EVERYWHERE — parallel
+  // files race on the shared dev DB (pushDevSchema DDL deadlocks — the same
+  // lesson as vitest fileParallelism:false — and storefront/listing pollution).
+  workers: 1,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    // baseURL: 'http://localhost:3000',
+    baseURL: 'http://localhost:3000',
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -37,5 +40,13 @@ export default defineConfig({
     command: 'pnpm dev',
     reuseExistingServer: true,
     url: 'http://localhost:3000',
+    // 015 (fix AG-F1.2): the e2e money path runs on the fake gateway seam —
+    // the spawned (or reused) dev server MUST have the flag, otherwise any
+    // DEPOSIT booking 502s with PAYMENT_INIT_FAILED.
+    env: {
+      ...process.env,
+      E2E_GATEWAY: 'fake',
+      NODE_OPTIONS: '--no-deprecation --max-old-space-size=8000',
+    },
   },
 })

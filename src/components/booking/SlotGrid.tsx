@@ -61,9 +61,14 @@ export function SlotGrid({
     setConflict(false)
     try {
       const params = new URLSearchParams({ service: serviceId, date })
-      for (const addOnId of selectedAddOnIds) {
+      // 015 (fix AG-F2.1): the primary goes into `items` exactly ONCE — the
+      // per-add-on loop used to duplicate it (items=[A, B, A, C] → a 135-min
+      // grid instead of 75-min with two add-ons).
+      if (selectedAddOnIds.length > 0) {
         params.append('items', serviceId)
-        params.append('items', addOnId)
+        for (const addOnId of selectedAddOnIds) {
+          params.append('items', addOnId)
+        }
       }
       const res = await fetch(`/api/availability?${params.toString()}`)
       const data = (await res.json()) as { slots?: ComputedSlotDTO[] }
@@ -160,6 +165,7 @@ export function SlotGrid({
             </label>
             <input
               id="booking-date"
+              data-testid="booking-date"
               type="date"
               value={date}
               min={new Date().toISOString().slice(0, 10)}

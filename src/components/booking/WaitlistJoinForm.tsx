@@ -48,12 +48,12 @@ export function WaitlistJoinForm({ serviceId }: { serviceId: string }) {
     }
   }
 
-  if (state === 'done') return <p role="status">{message}</p>
+  if (state === 'done') return <p role="status" data-testid="waitlist-status">{message}</p>
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-3">
+    <form onSubmit={submit} className="flex flex-col gap-3" data-testid="waitlist-form">
       <p>{t('title')}</p>
-      {state === 'error' && <p role="alert">{message}</p>}
+      {state === 'error' && <p role="alert" data-testid="waitlist-error">{message}</p>}
       <div>
         <label htmlFor="wl-name" className="mb-1 block text-sm font-medium">{t('name')}</label>
         <input id="wl-name" name="customerName" placeholder={t('name')} required maxLength={200}

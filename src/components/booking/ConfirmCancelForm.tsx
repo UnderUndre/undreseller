@@ -39,13 +39,13 @@ export function ConfirmCancelForm({ bookingId, token }: { bookingId: string; tok
     }
   }
 
-  if (state === 'cancelled') return <p role="status">{message}</p>
+  if (state === 'cancelled') return <p role="status" data-testid="cancel-status">{message}</p>
 
   return (
-    <div>
+    <div data-testid="cancel-confirm">
       <p>Do you really want to cancel this booking?</p>
-      {state === 'error' && <p role="alert">{message}</p>}
-      <button onClick={submit} disabled={state === 'working'}>
+      {state === 'error' && <p role="alert" data-testid="cancel-error">{message}</p>}
+      <button onClick={submit} disabled={state === 'working'} data-testid="cancel-confirm-button">
         {state === 'working' ? 'Cancelling…' : 'Confirm cancellation'}
       </button>
     </div>

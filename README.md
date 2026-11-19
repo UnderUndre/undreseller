@@ -78,12 +78,25 @@ pnpm eval:ai
 | `pnpm validate` | tsc --noEmit |
 | `pnpm lint` | eslint (flat config) |
 | `pnpm build` | production Next build |
-| `pnpm test:int` | vitest — 21 integration suites (isolated `undreseller_test` via `test.env`) |
+| `pnpm test:int` | vitest — 22 integration suites, 232 tests (isolated `undreseller_test` via `test.env`) |
 | `pnpm eval:ai` | live 26-case AI triage benchmark against local LM Studio |
-| `pnpm test:e2e` | playwright (needs Stripe test keys + `pnpm stripe-webhooks`) |
+| `pnpm test:e2e` | playwright (spec 015 regression suite; uses `E2E_GATEWAY=fake` — no Stripe/Resend keys needed) |
 | `pnpm stripe-webhooks` | stripe CLI forward → `/api/payments/stripe/webhooks` (dev) |
 | `pnpm generate:types` | regenerate `src/payload-types.ts` (hand edits prohibited) |
 | `pnpm audit` | supply-chain gate (0 High/Critical) |
+
+### E2E Testing (Playwright, spec 015)
+
+`playwright.config.ts` spawns `pnpm dev` on `:3000` with `E2E_GATEWAY=fake` (`reuseExistingServer: true`, `workers: 1`, `trace: 'on-first-retry'`, HTML report in `playwright-report/`).
+
+```bash
+# Run the 015 booking regression suites + core booking e2e:
+npx playwright test --config=playwright.config.ts tests/e2e/booking.e2e.spec.ts tests/e2e/composite-booking.e2e.spec.ts tests/e2e/money-surfaces.e2e.spec.ts tests/e2e/token-pages.e2e.spec.ts tests/e2e/trust-fast-path.e2e.spec.ts tests/e2e/waitlist-admin-i18n.e2e.spec.ts
+```
+
+- **Reusing a running dev server:** make sure it was started with `E2E_GATEWAY=fake` (otherwise `DEPOSIT` bookings return `502 PAYMENT_INIT_FAILED`).
+- **Port `:3000` zombie on Windows:** if a prior aborted run left `next dev` holding `:3000` or `.next/dev/lock`, run `netstat -ano | grep :3000` and `taskkill /PID <pid> /T /F` before retrying.
+- **Inspecting failures:** `npx playwright show-report` or `npx playwright show-trace test-results/<dir>/trace.zip`.
 
 ### Roles & access
 

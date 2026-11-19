@@ -32,9 +32,42 @@ export default async function BookingConfirmationPage({
   if (!accessToken) notFound()
 
   const payload = await getPayload({ config: configPromise })
+
+  // 015 (fix AG-F2.2): the URL id is the RESERVATION id (SlotGrid redirects
+  // with `data.reservationId`), not the order id — the two id sequences diverge
+  // as soon as any order exists without a reservation (e.g. shop carts), and
+  // the old orders-by-id lookup 404ed the whole confirmation page.
+  // Legacy compat: fall back to the old order-id semantics when no reservation
+  // with this id exists.
+  let reservations = await payload.find({
+    collection: 'slot-reservations',
+    where: { id: { equals: id } },
+    limit: 1,
+    overrideAccess: true,
+    depth: 0,
+  })
+  if (reservations.docs.length === 0) {
+    reservations = await payload.find({
+      collection: 'slot-reservations',
+      where: { order: { equals: id } },
+      limit: 1,
+      overrideAccess: true,
+      depth: 0,
+    })
+  }
+  const slot = reservations.docs[0] as unknown as {
+    id: number
+    order?: number | string | null
+    status: string
+    startTime: string
+    itemId?: string | null
+    itemsJson?: SnapshotItem[] | null
+  } | undefined
+  if (!slot || !slot.order) notFound()
+
   const orders = await payload.find({
     collection: 'orders',
-    where: { and: [{ id: { equals: id } }, { accessToken: { equals: accessToken } }] },
+    where: { and: [{ id: { equals: String(slot.order) } }, { accessToken: { equals: accessToken } }] },
     limit: 1,
     overrideAccess: true,
     depth: 0,
@@ -46,21 +79,6 @@ export default async function BookingConfirmationPage({
     stripePaymentIntentRef?: string | null
     amount?: number
   }
-
-  const reservation = await payload.find({
-    collection: 'slot-reservations',
-    where: { order: { equals: id } },
-    limit: 1,
-    overrideAccess: true,
-    depth: 0,
-  })
-  const slot = reservation.docs[0] as unknown as {
-    id: number
-    status: string
-    startTime: string
-    itemId?: string | null
-    itemsJson?: SnapshotItem[] | null
-  } | undefined
 
   // 014 FR-1405 (fix AG-F6.2): aggregates come from the items_json SNAPSHOT
   // (Σ deposit, Σ price) with a legacy fallback that resolves the product via
@@ -107,7 +125,7 @@ export default async function BookingConfirmationPage({
           {String(slot.status)}
         </p>
       ) : null}
-      {snapshot.length > 1 ? (
+      {snapshot.length > 0 ? (
         <ul className="mb-4 list-disc pl-6" data-testid="booking-items">
           {snapshot.map((i) => (
             <li key={`${i.productId}-${i.title}`}>
@@ -136,7 +154,7 @@ export default async function BookingConfirmationPage({
       {cancelToken ? (
         <div className="mt-6">
           <CancelBookingButton
-            reservationId={id}
+            reservationId={String(slot.id)}
             cancelToken={cancelToken}
             testId="cancel-link"
             label="Cancel this appointment"

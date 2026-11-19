@@ -107,8 +107,44 @@ export function DepositPayment({
   totalPrice,
   publishableKey,
 }: DepositPaymentProps) {
+  const t = useTranslations('confirmation.deposit')
+  const isFakeSecret = clientSecret.startsWith('pi_e2e_')
   const apiKey = publishableKey || process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || ''
-  const [stripePromise] = useState(() => (apiKey ? loadStripe(apiKey) : null))
+  const [stripePromise] = useState(() => (!isFakeSecret && apiKey ? loadStripe(apiKey) : null))
+
+  const remaining = typeof totalPrice === 'number' && totalPrice > depositAmount
+    ? (totalPrice - depositAmount).toFixed(2)
+    : null
+
+  // E2E fake seam (spec 015 FR-1502, fix AG-F1.1): pi_e2e_ client secrets come
+  // from the E2E_GATEWAY=fake seam. They are NOT real Stripe secrets — loading
+  // the Stripe JS SDK (a network call to js.stripe.com) and mounting <Elements>
+  // would both violate NFR-1505 and crash synchronously on the format. The
+  // fake branch renders the SAME surfaces (section/form/pay-button/notice
+  // texts) with zero Stripe involvement; the prod branch below is untouched.
+  if (isFakeSecret) {
+    return (
+      <div className="my-6 max-w-lg" data-testid="deposit-payment-section">
+        <form className="flex flex-col gap-4 rounded-lg border border-border p-6" data-testid="deposit-payment-form">
+          <div>
+            <h2 className="text-xl font-bold">{t('title')}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t('depositNotice', { amount: `$${depositAmount}` })}
+              {remaining && ` ${t('remainingNotice', { remaining: `$${remaining}` })}`}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled
+            data-testid="deposit-pay-button"
+            className="rounded bg-primary px-4 py-2.5 font-medium text-white transition-opacity disabled:opacity-50"
+          >
+            {t('payDeposit', { amount: `$${depositAmount}` })}
+          </button>
+        </form>
+      </div>
+    )
+  }
 
   if (!apiKey || !stripePromise) {
     return null

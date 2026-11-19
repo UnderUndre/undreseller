@@ -13,10 +13,27 @@ export default async function BookServicePage({ params }: { params: Promise<{ sl
   const { slug } = await params
   const payload = await getPayload({ config: configPromise })
 
-  // 014 (fix AG-F6.1): the server page loads ALL active bookable services once,
-  // picks the primary by slug and filters the «Добавить к визит» candidates by
-  // payment-mode compatibility (same mode, or a FREE add-on which is
-  // mode-neutral). The client never sees checkboxes that would 422 on submit.
+  // 015 (fix AG-F4.3): the primary is loaded by a SLUG-SCOPED query — finding it
+  // inside a `limit: 50` list scan breaks (404) once more than 50 bookable
+  // products exist (long e2e runs seed dozens of services).
+  const primaries = await payload.find({
+    collection: 'products',
+    where: { and: [{ slug: { equals: slug } }, { bookable: { equals: true } }] },
+    limit: 1,
+    overrideAccess: true,
+    depth: 0,
+  })
+  if (primaries.docs.length === 0) notFound()
+  const primary = primaries.docs[0] as unknown as Record<string, unknown> & {
+    id: number | string
+    title: string
+    slug?: string
+  }
+
+  // 014 (fix AG-F6.1): candidates for «Добавить к визит» — all active bookable
+  // services filtered by payment-mode compatibility (same mode, or a FREE
+  // add-on which is mode-neutral). The client never sees checkboxes that would
+  // 422 on submit.
   const bookable = await payload.find({
     collection: 'products',
     where: { bookable: { equals: true } },
@@ -27,8 +44,6 @@ export default async function BookServicePage({ params }: { params: Promise<{ sl
   const docs = bookable.docs as unknown as Array<
     Record<string, unknown> & { id: number | string; title: string; slug?: string }
   >
-  const primary = docs.find((d) => d.slug === slug)
-  if (!primary) notFound()
 
   const primaryMode = (primary.paymentMode as string) ?? 'NONE'
   const toDto = (d: Record<string, unknown>): CompositeItemDTO => ({

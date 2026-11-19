@@ -110,4 +110,4 @@
 - Тест-изоляция: int-тесты никогда не трогают dev-БД (`test.env` delete-then-load — dotenv@8 не умеет override).
 - Чистые вычисления: FSM/availability/invariants/amounts — pure-модули с БД-фетчерами отдельно (урок легаси).
 - **GDPR-контур**: nightly gdprPurge + Telegram redaction + EmailDeliveryLog recipientHash + AuditEvents PII-redact append-only.
-- Регрессия: `pnpm validate && pnpm lint && pnpm test:int && pnpm build` перед done; **232 int-теста / 22 сьюта** — текущая база (+ e2e: admin / booking two-phase OTP / frontend composite).
+- Регрессия: `pnpm validate && pnpm lint && pnpm test:int && pnpm build` перед done; **232 int-теста / 22 сьюта** — текущая база (+ e2e: `booking.e2e` + 5 сьютов 015 composite/money/tokens/trust/waitlist-admin-i18n на `E2E_GATEWAY=fake`).

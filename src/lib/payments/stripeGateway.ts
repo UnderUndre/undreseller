@@ -33,30 +33,54 @@ function getStripe(): Stripe {
   return client
 }
 
-export const stripeGateway: PaymentGateway = {
-  async createPaymentIntent({ amountMinor, currency, bookingId }) {
-    const intent = await getStripe().paymentIntents.create({
-      amount: amountMinor,
-      currency: currency.toLowerCase(),
-      metadata: { bookingId: String(bookingId) },
-      automatic_payment_methods: { enabled: true },
-    })
-    return { id: intent.id, clientSecret: intent.client_secret }
+/**
+ * E2E fake seam (spec 015 FR-1502, fix AG-F1): when E2E_GATEWAY=fake the whole
+ * money path runs WITHOUT any Stripe SDK/network call — deterministic intents
+ * with a Stripe-FORMAT clientSecret (`pi_e2e_<id>_secret_e2e`) so the
+ * confirmation page renders <DepositPayment> end-to-end. The prod path without
+ * the env var is byte-identical to the pre-015 gateway.
+ */
+const fakeGateway: PaymentGateway = {
+  async createPaymentIntent({ bookingId }) {
+    return { id: `pi_e2e_${bookingId}`, clientSecret: `pi_e2e_${bookingId}_secret_e2e` }
   },
-
-  async createRefund({ paymentIntentId, idempotencyKey }) {
-    const refund = await getStripe().refunds.create(
-      { payment_intent: paymentIntentId },
-      idempotencyKey ? { idempotencyKey } : undefined,
-    )
-    return { id: refund.id }
+  async createRefund({ paymentIntentId }) {
+    return { id: `re_e2e_${paymentIntentId}` }
   },
 }
+
+const isFakeGateway = process.env.E2E_GATEWAY === 'fake'
+
+export const stripeGateway: PaymentGateway = isFakeGateway
+  ? fakeGateway
+  : {
+      async createPaymentIntent({ amountMinor, currency, bookingId }) {
+        const intent = await getStripe().paymentIntents.create({
+          amount: amountMinor,
+          currency: currency.toLowerCase(),
+          metadata: { bookingId: String(bookingId) },
+          automatic_payment_methods: { enabled: true },
+        })
+        return { id: intent.id, clientSecret: intent.client_secret }
+      },
+
+      async createRefund({ paymentIntentId, idempotencyKey }) {
+        const refund = await getStripe().refunds.create(
+          { payment_intent: paymentIntentId },
+          idempotencyKey ? { idempotencyKey } : undefined,
+        )
+        return { id: refund.id }
+      },
+    }
 
 /**
  * Retrieve client_secret for an existing PaymentIntent on server-rendered pages (spec 012).
  */
 export async function retrieveClientSecret(paymentIntentId: string): Promise<string | null> {
+  // E2E fake seam: pi_e2e_ refs resolve deterministically, no SDK call (AG-F1).
+  if (isFakeGateway && paymentIntentId.startsWith('pi_e2e_')) {
+    return `${paymentIntentId}_secret_e2e`
+  }
   try {
     const intent = await getStripe().paymentIntents.retrieve(paymentIntentId)
     return intent.client_secret

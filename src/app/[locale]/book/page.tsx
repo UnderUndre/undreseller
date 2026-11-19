@@ -10,7 +10,10 @@ export default async function BookPage() {
   const payload = await getPayload({ config: configPromise })
   const services = await payload.find({
     collection: 'products',
-    where: { bookable: { equals: true } },
+    // 015 (fix AG-F4.1): the storefront lists PRIMARY services only — a bare
+    // add-on (durationMin 0) cannot be booked alone and, being the freshest
+    // product, used to land first and break the existing /book e2e flow.
+    where: { and: [{ bookable: { equals: true } }, { addOn: { not_equals: true } }] },
     limit: 50,
     overrideAccess: true,
     depth: 0,

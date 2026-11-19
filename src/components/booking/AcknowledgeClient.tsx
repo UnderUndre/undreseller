@@ -35,7 +35,7 @@ export function AcknowledgeClient({ accessToken }: { accessToken: string }) {
     })()
   }, [accessToken])
 
-  if (state === 'done') return <p role="status">{message}</p>
-  if (state === 'error') return <p role="alert">{message}</p>
-  return <p>Confirming…</p>
+  if (state === 'done') return <p role="status" data-testid="ack-status">{message}</p>
+  if (state === 'error') return <p role="alert" data-testid="ack-error">{message}</p>
+  return <p data-testid="ack-pending">Confirming…</p>
 }
